@@ -18,9 +18,14 @@
     status: null,
     settings: null,
     dirPending: null,
-    mode: "total",
-    gran: null,
-    range: { total: "all", day: "90", month: "12" },
+    trend: null,
+    budget: null,
+    budgetDismissed: "",
+    visit: null,
+    analysis: null,
+    recentAll: false,
+    an: { range: "12m", from: "", to: "", tab: "calendar", gran: "month" },
+    cal: { month: "", sel: null, focus: "", source: "all", article: "", days: new Map(), key: "", detail: [], detailKey: "", shown: 120, year: null, yearDays: [], yearKey: "", undatedOpen: false },
     sort: { key: "citations", dir: -1 },
     query: "",
     open: new Set(),
@@ -31,7 +36,6 @@
     page: "panel",
     bfInfo: null,
     bfProgress: null,
-    hist: null,
     bf: new Map(),
     health: null,
     update: null,
@@ -40,14 +44,13 @@
     doiKey: null,
     doiOnly: false,
     doiBarHidden: false,
-    forecast: null,
     risers: null,
     risDays: 30,
     next: null,
     citing: [],
     citingGroups: [],
     citingLoaded: false,
-    cw: { query: "", article: "", dir: -1, shown: 200 },
+    cw: { query: "", article: "", dir: -1, shown: 200, country: "", venue: "", date: "", period: null },
     dist: null,
     recent: [],
     scan: null,
@@ -57,6 +60,8 @@
     keyMsg: { openalex: null },
     firstDay: null,
   };
+
+  state.cal.month = new Date().getFullYear() + "-" + String(new Date().getMonth() + 1).padStart(2, "0");
 
   const noProfile = () => !state.settings?.profile_id;
 
@@ -113,8 +118,8 @@
   }
   async function loadStatus() { state.status = await safe(() => invoke("get_status"), state.status); renderHeader(); }
   async function loadOverview() { state.overview = await safe(() => invoke("get_overview"), state.overview); renderHeader(); renderPanel(); }
-  async function loadSeries() { state.series = await safe(() => invoke("get_series"), []); renderMain(); }
-  async function loadArticles() { state.articles = await safe(() => invoke("get_articles"), []); renderArticles(); renderRecent(); renderScan(); }
+  async function loadSeries() { state.series = await safe(() => invoke("get_series"), []); }
+  async function loadArticles() { state.articles = await safe(() => invoke("get_articles"), []); renderArticles(); renderRecent(); renderScan(); renderVisit(); }
   async function loadLog() { state.log = await safe(() => invoke("get_log"), []); renderLog(); }
   async function loadBfInfo() {
     state.bfInfo = await safe(() => invoke("get_backfill_info"), state.bfInfo);
@@ -123,15 +128,26 @@
     renderBackfill();
   }
   async function loadHealth() { state.health = await safe(() => invoke("get_health"), state.health); renderHealth(); }
-  async function loadHistory() { state.hist = await safe(() => invoke("get_history"), state.hist); renderMain(); }
+  async function loadTrend() { state.trend = await safe(() => invoke("get_trend"), state.trend); renderMini(); }
+  async function loadBudget() { state.budget = await safe(() => invoke("get_budget_pause"), null); renderBudget(); }
+  async function loadVisit() { state.visit = await safe(() => invoke("get_visit_summary"), state.visit); renderVisit(); }
+  async function loadAnalysis() {
+    state.analysis = await safe(() => invoke("get_analysis"), state.analysis);
+    calInvalidate();
+    renderAnalysis();
+    renderReportPreview();
+  }
   async function refreshAll() {
     state.history.clear();
     state.bf.clear();
     state.changes.clear();
-    await Promise.all([
-      loadOverview(), loadSeries(), loadArticles(), loadLog(), loadBfInfo(), loadHistory(), loadHealth(),
-      loadForecast(), loadRisers(), loadNext(), loadCiting(), loadDist(), loadRecent(),
-    ]);
+    const jobs = [
+      loadOverview(), loadSeries(), loadArticles(), loadLog(), loadBfInfo(), loadHealth(),
+      loadNext(), loadCiting(), loadDist(), loadRecent(), loadTrend(), loadVisit(), loadBudget(),
+    ];
+    if (state.page === "analysis" || state.page === "report" || state.analysis) jobs.push(loadAnalysis());
+    if (state.page === "analysis") jobs.push(loadRisers());
+    await Promise.all(jobs);
   }
 
   // ------------------------------------------------------------ language
@@ -149,13 +165,14 @@
     renderHealth();
     renderUpdate();
     renderAbout();
-    renderForecast();
-    renderRisers();
-    renderNext();
+    renderAnalysis();
     renderCiting();
     renderKeys();
     renderRecent();
     renderScan();
+    renderBudget();
+    renderReportPage();
+    renderReportPreview();
     state.open.forEach(drawDetail);
   }
 
@@ -284,11 +301,43 @@
   }
 
   // ------------------------------------------------------------ panel
-  function kpiCard(label, value, small, sub, d) {
+  const DAY_MS = 86400e3;
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const pl = (n, key) => t(key + (n === 1 ? ".one" : ".many"));
+  const shortText = (s, n) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s);
+  const monthLabel = (ym, long) => {
+    const [y, m] = ym.split("-").map(Number);
+    return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString(loc(), { month: long ? "long" : "short", year: long ? "numeric" : undefined, timeZone: "UTC" });
+  };
+  const hideTip = () => { const el = $("#tooltip"); if (el) el.hidden = true; };
+  const srcName = (s) => (s === "openalex" ? "OpenAlex" : String(s || ""));
+
+  /** Turkish dative suffix of a number as it is spoken: 7'ye, 8'e, 9'a, 6'ya, 20'ye, 10'a. */
+  function trDative(n) {
+    n = Math.abs(Math.trunc(n));
+    const digit = ["a", "e", "ye", "e", "e", "e", "ya", "ye", "e", "a"];
+    const tens = ["", "a", "ye", "a", "a", "ye", "a", "e", "e", "a"];
+    let s;
+    if (n === 0) s = digit[0];
+    else if (n % 100 === 0) s = "e";
+    else if (n % 10 === 0) s = tens[(n / 10) % 10];
+    else s = digit[n % 10];
+    return "'" + s;
+  }
+
+  /** "h=9 için 3 atıf": what the next step of an index needs (empty when unknown). */
+  function nextLine(label, s) {
+    if (!s) return "";
+    if (s.picks.length) return t("kpi.next", { label, n: nf.format(s.total_needed), unit: pl(s.total_needed, "unit.citation") });
+    return t("kpi.next_new", { label, n: nf.format(s.new_papers), unit: pl(s.new_papers, "unit.article") });
+  }
+
+  function kpiCard(label, value, small, sub, d, next) {
     return `<div class="card kpi">
       <div class="kpi-label">${esc(label)}</div>
       <div class="kpi-value">${nf.format(value)}${small !== null ? `<small>/ ${nf.format(small)}</small>` : ""}</div>
       <div class="kpi-sub">${esc(sub)}</div>
+      <div class="kpi-next">${esc(next || "")}</div>
       <div class="chips">${chip(t("chip.today"), d.today)}${chip(t("chip.d7"), d.d7)}${chip(t("chip.d30"), d.d30)}</div>
     </div>`;
   }
@@ -302,22 +351,92 @@
     if (none || orcidOnly) renderSetup(orcidOnly);
     $("#emptyState").hidden = none || has || ov === null;
     $("#panelData").hidden = none || !has;
-    if (none || !has) return;
+    renderVisit();
+    if (none || !has) { Charts.disposeIn($("#miniCard")); return; }
     const s = ov.snapshot;
     const d = ov.deltas;
     const z = { today: 0, d7: 0, d30: 0 };
     const y = { year: s.since_year };
+    const n = state.next;
     $("#kpis").innerHTML = [
-      kpiCard(t("kpi.total"), s.cit_all, null, t("kpi.total_sub"), d?.cit_all || z),
-      kpiCard(t("kpi.since", y), s.cit_since, null, t("kpi.since_sub"), d?.cit_since || z),
-      kpiCard(t("kpi.h"), s.h_all, s.h_since, t("kpi.both_sub", y), d?.h_all || z),
-      kpiCard(t("kpi.i10"), s.i10_all, s.i10_since, t("kpi.both_sub", y), d?.i10_all || z),
+      kpiCard(t("kpi.total"), s.cit_all, null, t("kpi.total_sub"), d?.cit_all || z, ""),
+      kpiCard(t("kpi.since", y), s.cit_since, null, t("kpi.since_sub"), d?.cit_since || z, ""),
+      kpiCard(t("kpi.h"), s.h_all, s.h_since, t("kpi.both_sub", y), d?.h_all || z, n ? nextLine(`h=${n.h.target}`, n.h) : ""),
+      kpiCard(t("kpi.i10"), s.i10_all, s.i10_since, t("kpi.both_sub", y), d?.i10_all || z, n ? nextLine(`i10=${n.i10.target}`, n.i10) : ""),
     ].join("");
-    renderMain();
+    renderMini();
     renderRecent();
-    renderForecast();
-    renderRisers();
-    renderNext();
+  }
+
+  // ------------------------------------------------------------ "since your last visit" sentence
+  /** A date like "12 Kasım" (the year is added when it is not the current one). */
+  function fmtDayMonth(iso) {
+    const d = new Date(iso);
+    if (isNaN(d)) return "—";
+    return d.toLocaleDateString(loc(), { day: "numeric", month: "long", ...(d.getFullYear() === new Date().getFullYear() ? {} : { year: "numeric" }) });
+  }
+
+  /** The sentence as HTML: priority (a) index threshold, (b) new citations and the top article, (c) a net
+   *  decrease, (d) closeness to the next h; otherwise the calm state. The article and the h phrase are links. */
+  function visitHtml(s) {
+    const link = (go, text, extra) => `<button type="button" class="vs-link" data-go="${go}"${extra || ""}>${esc(text)}</button>`;
+    const art = (x) => link("article", shortText(x.title, 80), ` data-key="${esc(x.key)}"`);
+    const tr = window.I18N.lang === "tr";
+    switch (s.kind) {
+      case "first":
+        return esc(t("vs.first", { n: nf.format(s.total), h: s.h }));
+      case "threshold": {
+        const phrase = t(s.metric === "h" ? "vs.h_phrase" : "vs.i10_phrase", { value: s.value, sfx: tr ? trDative(s.value) : "" });
+        return t("vs.threshold", { phrase: link("indices", phrase) });
+      }
+      case "gain": {
+        const unit = pl(s.net, "unit.citation");
+        if (s.top && s.top.gain >= s.net) return t("vs.gain_one", { n: nf.format(s.net), unit, article: art(s.top) });
+        if (s.top) return t("vs.gain", { n: nf.format(s.net), unit, article: art(s.top), k: nf.format(s.top.gain) });
+        return esc(t("vs.gain_plain", { n: nf.format(s.net), unit }));
+      }
+      case "loss":
+        return esc(t("vs.loss", { n: nf.format(-s.net), unit: pl(-s.net, "unit.citation") }));
+      case "closeness": {
+        const n = s.next_h_needs;
+        return t("vs.closeness", { target: link("indices", `h=${s.next_h_target}`), n: nf.format(n), unit: pl(n, "unit.citation") });
+      }
+      default:
+        return esc(s.last_gain_at ? t("vs.calm_with", { date: fmtDayMonth(s.last_gain_at) }) : t("vs.calm"));
+    }
+  }
+
+  function renderVisit() {
+    const el = $("#visitSummary");
+    const s = state.visit;
+    const show = state.page === "panel" && !!s && !noProfile() && !needOrcid() && !!state.overview?.snapshot;
+    el.hidden = !show;
+    if (show) el.innerHTML = visitHtml(s);
+  }
+
+  /** Opens one article's detail row on the Articles page. */
+  function openArticle(key) {
+    state.open.add(key);
+    showPage("articles");
+    setTimeout(() => {
+      const row = $(`#articleBody tr.row[data-key="${CSS.escape(key)}"]`);
+      if (row) row.scrollIntoView({ block: "center", behavior: "smooth" });
+    }, 200);
+  }
+  function openAnalysis(tab) {
+    if (tab) state.an.tab = tab;
+    showPage("analysis");
+  }
+
+  // ------------------------------------------------------------ panel: compact citation history
+  function renderMini() {
+    if (state.page !== "panel" || $("#panelData").hidden) return;
+    const el = $("#miniChart");
+    const tr = state.trend;
+    const c = Charts.ctx({ mini: true, forecast: false, goal: false, range: { from: Date.now() - 365 * DAY_MS, to: null } });
+    const built = tr && tr.has_data ? Charts.build.trend({ trend: tr }, c) : null;
+    Charts.mount(el, built, { emptyText: t("chart.no_data") });
+    $("#miniCaption").textContent = tr && tr.has_data ? t(tr.hist.length ? "mini.cap_merged" : "mini.cap") : "";
   }
 
   /** First-run card (profile + ORCID + language) or, for older settings, the ORCID-only variant. */
@@ -343,275 +462,6 @@
     $("#startBtn").disabled = !(orcidOk && idOk);
   }
 
-  // ------------------------------------------------------------ charts
-  function niceTicks(min, max, count) {
-    if (max === min) { max += 1; min -= 1; }
-    const raw = (max - min) / count;
-    const mag = Math.pow(10, Math.floor(Math.log10(raw)));
-    const norm = raw / mag;
-    const step = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10) * mag;
-    const start = Math.floor(min / step) * step;
-    const end = Math.ceil(max / step) * step;
-    const out = [];
-    for (let v = start; v <= end + step / 2; v += step) out.push(Math.round(v * 1e6) / 1e6);
-    return out;
-  }
-
-  const tip = $("#tooltip");
-  function showTip(html, x, y) {
-    tip.innerHTML = html;
-    tip.hidden = false;
-    const r = tip.getBoundingClientRect();
-    let left = x + 14, top = y - r.height - 10;
-    if (left + r.width > window.innerWidth - 8) left = x - r.width - 14;
-    if (top < 8) top = y + 14;
-    tip.style.left = Math.max(8, left) + "px";
-    tip.style.top = top + "px";
-  }
-  const hideTip = () => { tip.hidden = true; };
-
-  /** series: [{pts:[{t,v}], cls, name}] ; the first series gets the area fill and the end marker.
-   *  cls: "main" (solid accent), "bf" (dashed, lighter: estimated history), "alt" (dashed grey). */
-  function lineChart(el, series, o = {}) {
-    const w = el.clientWidth, h = el.clientHeight;
-    const all = series.flatMap((s) => s.pts);
-    if (!all.length || w < 60) { el.innerHTML = `<div class="chart-empty">${esc(t("chart.no_data"))}</div>`; return; }
-    const m = { l: o.small ? 34 : 44, r: 16, t: 12, b: 26 };
-    let tMin = Math.min(...all.map((p) => p.t)), tMax = Math.max(...all.map((p) => p.t));
-    if (tMin === tMax) { tMin -= 12 * 3600e3; tMax += 12 * 3600e3; }
-    const vMin = Math.min(...all.map((p) => p.v)), vMax = Math.max(...all.map((p) => p.v));
-    const ticks = niceTicks(vMin, vMax, o.small ? 3 : 4);
-    const y0 = ticks[0], y1 = ticks[ticks.length - 1];
-    const X = (tv) => m.l + ((tv - tMin) / (tMax - tMin)) * (w - m.l - m.r);
-    const Y = (v) => m.t + (1 - (v - y0) / (y1 - y0)) * (h - m.t - m.b);
-
-    let svg = `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img">`;
-    for (const tv of ticks) {
-      svg += `<line class="grid-line" x1="${m.l}" x2="${w - m.r}" y1="${Y(tv)}" y2="${Y(tv)}"/>`;
-      svg += `<text x="${m.l - 8}" y="${Y(tv) + 4}" text-anchor="end">${nf.format(tv)}</text>`;
-    }
-    const span = tMax - tMin;
-    const nx = Math.max(2, Math.min(5, Math.floor((w - m.l - m.r) / 110)));
-    for (let i = 0; i < nx; i++) {
-      const tt = tMin + (span * i) / (nx - 1);
-      const d = new Date(tt);
-      const lab = span < 2 * 86400e3
-        ? d.toLocaleTimeString(loc(), { hour: "2-digit", minute: "2-digit" })
-        : span > 400 * 86400e3
-          ? d.toLocaleDateString(loc(), { month: "short", year: "2-digit" })
-          : d.toLocaleDateString(loc(), { day: "numeric", month: "short" });
-      const anchor = i === 0 ? "start" : i === nx - 1 ? "end" : "middle";
-      svg += `<text x="${X(tt)}" y="${h - 6}" text-anchor="${anchor}">${esc(lab)}</text>`;
-    }
-    series.forEach((s, idx) => {
-      if (!s.pts.length) return;
-      const d = s.pts.map((p, i) => `${i ? "L" : "M"}${X(p.t).toFixed(1)},${Y(p.v).toFixed(1)}`).join(" ");
-      if (idx === 0 && s.pts.length > 1) {
-        const base = h - m.b;
-        svg += `<path class="area" d="${d} L${X(s.pts[s.pts.length - 1].t).toFixed(1)},${base} L${X(s.pts[0].t).toFixed(1)},${base} Z"/>`;
-      }
-      if (s.pts.length > 1) svg += `<path class="${s.cls === "alt" ? "line-alt" : s.cls === "bf" ? "line-bf" : "line-main"}" d="${d}"/>`;
-    });
-    const first = series[0].pts;
-    const last = first[first.length - 1];
-    svg += `<g id="hov" visibility="hidden"><line class="hover-line" y1="${m.t}" y2="${h - m.b}"/><circle class="dot-main" r="5"/></g>`;
-    if (last) svg += `<circle class="dot-main" cx="${X(last.t)}" cy="${Y(last.v)}" r="${first.length > 1 ? 3.5 : 5}"/>`;
-    svg += `<rect class="hit" x="${m.l}" y="${m.t}" width="${w - m.l - m.r}" height="${h - m.t - m.b}" fill="transparent"/></svg>`;
-    el.innerHTML = svg;
-
-    const flat = series.flatMap((s) => s.pts.map((p) => ({ p, s })));
-    const hit = $("rect.hit", el), hov = $("#hov", el);
-    hit.addEventListener("mousemove", (ev) => {
-      const px = ev.clientX - el.getBoundingClientRect().left;
-      let best = flat[0];
-      for (const f of flat) if (Math.abs(X(f.p.t) - px) < Math.abs(X(best.p.t) - px)) best = f;
-      hov.setAttribute("visibility", "visible");
-      $("line", hov).setAttribute("x1", X(best.p.t)); $("line", hov).setAttribute("x2", X(best.p.t));
-      const c = $("circle", hov); c.setAttribute("cx", X(best.p.t)); c.setAttribute("cy", Y(best.p.v));
-      let html = `<div class="tt-t">${esc(fmtDateTime(new Date(best.p.t).toISOString()))}</div>`;
-      html += `<div><span class="tt-v">${nf.format(best.p.v)}</span> <span class="tt-t">${esc(best.s.name)}</span></div>`;
-      showTip(html, ev.clientX, ev.clientY);
-    });
-    hit.addEventListener("mouseleave", () => { hov.setAttribute("visibility", "hidden"); hideTip(); });
-  }
-
-  // ------------------------------------------------------------ period bars
-  const DAY_MS = 86400e3;
-  const pad2 = (n) => String(n).padStart(2, "0");
-  const ymd = (ms) => { const d = new Date(ms); return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`; };
-  const keyMs = (key) => { const [y, m = 1, d = 1] = key.split("-").map(Number); return Date.UTC(y, m - 1, d); };
-
-  /** Continuous periods (zeros filled) from the first data point to today. */
-  function buildPeriods(points, gran) {
-    if (!points.length) return [];
-    const map = new Map(points);
-    const first = keyMs(points[0][0]);
-    const last = keyMs(points[points.length - 1][0]);
-    const now = new Date();
-    const end = Math.max(last, Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
-    const out = [];
-    const push = (key, tms) => { out.push({ key, t: tms, v: map.get(key) || 0 }); };
-    if (gran === "day") {
-      for (let tms = first; tms <= end; tms += DAY_MS) push(ymd(tms), tms);
-    } else if (gran === "month") {
-      let y = new Date(first).getUTCFullYear(), m = new Date(first).getUTCMonth();
-      const ey = new Date(end).getUTCFullYear(), em = new Date(end).getUTCMonth();
-      while (y < ey || (y === ey && m <= em)) {
-        push(`${y}-${pad2(m + 1)}`, Date.UTC(y, m, 1));
-        if (++m > 11) { m = 0; y++; }
-      }
-    } else {
-      for (let y = new Date(first).getUTCFullYear(); y <= new Date(end).getUTCFullYear(); y++) push(String(y), Date.UTC(y, 0, 1));
-    }
-    return out;
-  }
-
-  function periodLabel(p, gran, long, small, withYear) {
-    const d = new Date(p.t);
-    if (gran === "year") return String(d.getUTCFullYear());
-    if (gran === "month") return d.toLocaleDateString(loc(), { month: long ? "long" : "short", year: small ? "2-digit" : "numeric", timeZone: "UTC" });
-    return d.toLocaleDateString(loc(), { day: "numeric", month: long ? "long" : "short", year: long ? "numeric" : withYear ? "2-digit" : undefined, timeZone: "UTC" });
-  }
-
-  /** periods: [{key,t,v}] -> one bar per period (new citations). One y-axis only. */
-  function barPeriods(el, periods, o = {}) {
-    const w = el.clientWidth, h = el.clientHeight;
-    if (!periods.length || w < 60) { el.innerHTML = `<div class="chart-empty">${esc(o.emptyText || t("chart.no_data"))}</div>`; return; }
-    const m = { l: o.small ? 34 : 44, r: 12, t: 12, b: 26 };
-    const ticks = niceTicks(0, Math.max(1, ...periods.map((p) => p.v)), o.small ? 3 : 4);
-    const y1 = ticks[ticks.length - 1];
-    const pw = w - m.l - m.r;
-    const band = pw / periods.length;
-    const X = (i) => m.l + band * (i + 0.5);
-    const Y = (v) => m.t + (1 - v / y1) * (h - m.t - m.b);
-    const base = Y(0);
-
-    let svg = `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img">`;
-    for (const tv of ticks) {
-      svg += `<line class="grid-line" x1="${m.l}" x2="${w - m.r}" y1="${Y(tv)}" y2="${Y(tv)}"/>`;
-      svg += `<text x="${m.l - 8}" y="${Y(tv) + 4}" text-anchor="end">${nf.format(tv)}</text>`;
-    }
-    const bw = Math.max(1, Math.min(32, band * 0.72));
-    periods.forEach((p, i) => {
-      if (!p.v) return;
-      const bh = Math.max(1.5, base - Y(p.v));
-      svg += `<rect class="bar" x="${(X(i) - bw / 2).toFixed(2)}" y="${(base - bh).toFixed(2)}" width="${bw.toFixed(2)}" height="${bh.toFixed(2)}" rx="${bw > 6 ? 2 : 0}"/>`;
-    });
-    const nx = Math.max(2, Math.min(7, Math.floor(pw / 96)));
-    const shown = Math.min(nx, periods.length);
-    const seen = new Set();
-    for (let k = 0; k < shown; k++) {
-      const i = shown === 1 ? 0 : Math.round((k * (periods.length - 1)) / (shown - 1));
-      if (seen.has(i)) continue;
-      seen.add(i);
-      const anchor = i === 0 ? "start" : i === periods.length - 1 ? "end" : "middle";
-      const x = anchor === "start" ? m.l : anchor === "end" ? w - m.r : X(i);
-      svg += `<text x="${x}" y="${h - 6}" text-anchor="${anchor}">${esc(periodLabel(periods[i], o.gran, false, o.small, periods.length > 120))}</text>`;
-    }
-    svg += `<rect class="hist-hover" x="0" y="${m.t}" width="${Math.max(band, 1)}" height="${h - m.t - m.b}" visibility="hidden"/>`;
-    svg += `<rect class="hit" x="${m.l}" y="${m.t}" width="${pw}" height="${h - m.t - m.b}" fill="transparent"/></svg>`;
-    el.innerHTML = svg;
-
-    const hit = $("rect.hit", el), hov = $("rect.hist-hover", el);
-    hit.addEventListener("mousemove", (ev) => {
-      const px = ev.clientX - el.getBoundingClientRect().left;
-      const i = Math.max(0, Math.min(periods.length - 1, Math.floor((px - m.l) / band)));
-      const p = periods[i];
-      hov.setAttribute("x", m.l + band * i);
-      hov.setAttribute("visibility", "visible");
-      const html = `<div class="tt-t">${esc(periodLabel(p, o.gran, true, false))}</div>`
-        + `<div><span class="tt-v">${nf.format(p.v)}</span> <span class="tt-t">${esc(t("main.tt_new"))}</span></div>`;
-      showTip(html, ev.clientX, ev.clientY);
-    });
-    hit.addEventListener("mouseleave", () => { hov.setAttribute("visibility", "hidden"); hideTip(); });
-  }
-
-  // ------------------------------------------------------------ main chart: citation history
-  /** Snapshot totals inside the chosen range (plus the point just before it, so the line starts at the edge). */
-  function totalPoints(rangeKey) {
-    const pts = state.series.map((p) => ({ t: new Date(p.t).getTime(), v: p.cit_all }));
-    if (rangeKey === "all") return pts;
-    const cutoff = Date.now() - Number(rangeKey) * DAY_MS;
-    const inRange = pts.filter((p) => p.t >= cutoff);
-    const before = pts.filter((p) => p.t < cutoff).pop();
-    return before ? [before, ...inRange] : inRange;
-  }
-
-  /** Cumulative citing works of the historical lookup, one point at the end of each month, before the first snapshot. */
-  function backfillTotalPoints(rangeKey) {
-    const h = state.hist;
-    const firstSnap = state.series[0] ? new Date(state.series[0].t).getTime() : null;
-    if (!h || !h.month.points.length || firstSnap === null) return [];
-    let cum = 0;
-    let pts = h.month.points.map(([key, n]) => {
-      cum += n;
-      const [y, m] = key.split("-").map(Number);
-      return { t: Date.UTC(y, m, 0, 23, 59), v: cum };
-    }).filter((p) => p.t < firstSnap);
-    if (rangeKey !== "all") {
-      const cutoff = Date.now() - Number(rangeKey) * DAY_MS;
-      pts = pts.filter((p) => p.t >= cutoff);
-    }
-    return pts;
-  }
-
-  const hasBackfill = () => !!state.hist && (state.hist.month.points.length > 0 || state.hist.day.points.length > 0);
-  const PERIOD_RANGES = {
-    day: [["30", "main.r_30d"], ["90", "main.r_90d"], ["365", "main.r_12m"], ["all", "main.r_all"]],
-    month: [["12", "main.r_12m"], ["36", "main.r_3y"], ["all", "main.r_all"]],
-    year: [],
-  };
-  const TOTAL_RANGES = [["30", "main.r_30d"], ["365", "main.r_12m"], ["all", "main.r_all"]];
-
-  function renderMain() {
-    if (state.page !== "panel" || $("#panelData").hidden) return;
-    const bf = hasBackfill();
-    if (state.gran === null) state.gran = bf && state.hist.month.points.length ? "month" : "year";
-    if (!bf && state.gran !== "year") state.gran = "year";
-    const mode = state.mode;
-    const gran = state.gran;
-    $$("#modeSeg button").forEach((b) => b.classList.toggle("on", b.dataset.mode === mode));
-    $("#granSeg").hidden = mode !== "period";
-    $$("#granSeg button").forEach((b) => {
-      b.classList.toggle("on", b.dataset.gran === gran);
-      const off = !bf && b.dataset.gran !== "year";
-      b.disabled = off;
-      b.title = off ? t("main.gran_disabled") : "";
-    });
-    const ranges = mode === "total" ? TOTAL_RANGES : PERIOD_RANGES[gran];
-    const rkey = mode === "total" ? "total" : gran;
-    const range = state.range[rkey];
-    const seg = $("#rangeSeg");
-    seg.hidden = !ranges.length;
-    seg.innerHTML = ranges.map(([v, k]) => `<button data-range="${v}" class="${v === range ? "on" : ""}">${esc(t(k))}</button>`).join("");
-
-    const chart = $("#mainChart"), legend = $("#mainLegend"), cap = $("#mainCaption");
-    if (mode === "total") {
-      const sch = totalPoints(range);
-      const bfp = backfillTotalPoints(range);
-      const series = [{ pts: sch, cls: "main", name: t("main.s_scholar") }];
-      if (bfp.length) series.push({ pts: bfp, cls: "bf", name: t("main.s_backfill") });
-      if (!sch.length) chart.innerHTML = `<div class="chart-empty">${esc(t("chart.no_data_range"))}</div>`;
-      else lineChart(chart, series);
-      legend.hidden = false;
-      legend.innerHTML = `<span class="lg"><i class="sw sw-line-main"></i><span>${esc(t("main.s_scholar"))}</span></span>`
-        + (bfp.length ? `<span class="lg"><i class="sw sw-line-bf"></i><span>${esc(t("main.s_backfill"))}</span></span>` : "");
-      cap.textContent = t(bfp.length ? "main.cap_total_bf" : "main.cap_total");
-      return;
-    }
-    legend.hidden = true;
-    const scholarYear = gran === "year";
-    const series = state.hist ? state.hist[gran] : null;
-    const points = scholarYear ? (state.overview?.yearly || []).map(([y, c]) => [String(y), c]) : (series ? series.points : []);
-    let periods = buildPeriods(points, gran);
-    if (range !== "all" && ranges.length) periods = periods.slice(-Number(range));
-    const running = !!state.bfProgress?.running;
-    barPeriods(chart, periods, { gran, emptyText: running ? t("main.empty_running") : t("main.empty") });
-    let text = t(scholarYear ? "main.cap_scholar_year" : "main.cap_backfill");
-    if (!scholarYear && series && series.excluded > 0) text += " " + t("main.note_excluded", { n: nf.format(series.excluded) });
-    cap.textContent = text;
-  }
-
   // ------------------------------------------------------------ articles
   const scholarUrl = (ids) => `https://scholar.google.com/scholar?oi=bibs&hl=${window.I18N.lang}&cites=${encodeURIComponent(ids)}&scisbd=1`;
   const doiUrl = (doi) => "https://doi.org/" + encodeURI(doi);
@@ -624,6 +474,14 @@
     $("#doiBar").hidden = !show;
     $("#doiOnly").checked = state.doiOnly;
     if (show) $("#doiBarText").textContent = t(miss === 1 ? "doibar.text.one" : "doibar.text.many", { n: nf.format(miss) });
+  }
+
+  /** "Scholar 59 · identified 40 · not yet identified 19" with a thin two-part bar (only once citing works exist). */
+  function idLine(a) {
+    if (!state.articles.some((x) => x.identified > 0)) return "";
+    const unidentified = Math.max(0, a.citations - a.identified);
+    const pct = a.citations > 0 ? Math.min(100, Math.round((a.identified / a.citations) * 100)) : 0;
+    return `<div class="idbar-line"><span class="idbar" aria-hidden="true"><i style="width:${pct}%"></i></span><span class="idbar-text">${esc(t("gap.line", { s: nf.format(a.citations), i: nf.format(a.identified), u: nf.format(unidentified) }))}</span></div>`;
   }
 
   function renderArticles() {
@@ -643,6 +501,7 @@
       if (th.dataset.sort === key) th.insertAdjacentHTML("beforeend", `<span class="sort">${dir > 0 ? "&#xE70E;" : "&#xE70D;"}</span>`);
     });
     const body = $("#articleBody");
+    Charts.disposeIn(body);
     if (!rows.length) {
       body.innerHTML = `<tr><td colspan="5" class="empty-row">${esc(state.articles.length ? t("articles.none_match") : t("articles.none"))}</td></tr>`;
       return;
@@ -655,7 +514,7 @@
       return `<tr class="row ${open ? "open" : ""}" data-key="${esc(a.key)}">
         <td><div class="title-cell"><span class="chev"></span><div class="title-body">
           <a href="#" class="title-link" data-url="${esc(a.url)}">${esc(a.title)}</a>${a.is_new ? `<span class="badge-new">${esc(t("articles.new"))}</span>` : ""}
-          <div class="title-meta"><span class="venue">${esc(a.venue)}</span>${doi}</div></div></div></td>
+          <div class="title-meta"><span class="venue">${esc(a.venue)}</span>${doi}</div>${idLine(a)}</div></div></td>
         <td class="num">${a.year ?? "—"}</td>
         <td class="num"><b>${nf.format(a.citations)}</b></td>
         <td class="num">${chip("", a.today)}</td>
@@ -734,10 +593,10 @@
     if (!view) view = hist.length >= 2 || !monthly.length ? "scholar" : "bf";
     $$(".d-seg button", row).forEach((b) => b.classList.toggle("on", b.dataset.view === view));
     if (view === "scholar") {
-      const pts = hist.map(([ts, v]) => ({ t: new Date(ts).getTime(), v }));
-      lineChart($(".d-chart", row), [{ pts, cls: "main", name: t("chart.series_cites") }], { small: true });
+      const pts = hist.map(([ts, v]) => [new Date(ts).getTime(), v]);
+      Charts.mount($(".d-chart", row), Charts.build.articleLine(pts, Charts.ctx()), { emptyText: t("chart.no_data") });
     } else {
-      barPeriods($(".d-chart", row), buildPeriods(monthly, "month").slice(-120), { gran: "month", small: true, emptyText: t("art.bf_empty") });
+      Charts.mount($(".d-chart", row), Charts.build.articleMonthly(monthly, Charts.ctx()), { emptyText: t("art.bf_empty") });
     }
     $(".d-match", row).innerHTML = matchHtml(bfd);
     const art = state.articles.find((a) => a.key === key);
@@ -867,49 +726,141 @@
       <td class="msg">${esc(r.message)}</td></tr>`).join("");
   }
 
-  // ------------------------------------------------------------ recent citations
-  async function loadRecent() { state.recent = await safe(() => invoke("get_recent_citations", { limit: 10 }), state.recent); renderRecent(); }
+  // ------------------------------------------------------------ recent changes
+  const RECENT_SHORT = 6;
+  const RECENT_ALL = 40;
+  async function loadRecent() {
+    state.recent = await safe(() => invoke("get_recent_citations", { limit: state.recentAll ? RECENT_ALL : RECENT_SHORT }), state.recent);
+    renderRecent();
+  }
 
-  /** "21 Kas" (the year is added when it is not the current one). */
-  function fmtRecentDate(iso, precision) {
-    if (precision === "month") return fmtCitingDate(iso, "month");
-    const d = precision === "day" ? new Date(Date.UTC(...iso.split("-").map((x, i) => (i === 1 ? Number(x) - 1 : Number(x))))) : new Date(iso);
-    if (isNaN(d)) return "—";
-    const opt = precision === "day" ? { timeZone: "UTC" } : {};
-    const sameYear = d.getFullYear() === new Date().getFullYear();
-    return d.toLocaleDateString(loc(), { day: "numeric", month: "short", ...(sameYear ? {} : { year: "numeric" }), ...opt });
+  const isoLocalDay = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  /** The calendar day a recent row belongs to (Scholar rows: local day of the check; citing works: their own date). */
+  function recentDay(r) {
+    if (r.kind === "citing") return r.precision === "day" ? r.date : r.date.length === 7 ? r.date + "-01" : r.date.slice(0, 10);
+    return isoLocalDay(new Date(r.date));
+  }
+  /** "Bugün" / "Dün" / "21 Kasım" for a `YYYY-MM-DD` day. */
+  function recentHeading(day) {
+    const [y, m, d] = day.split("-").map(Number);
+    const dt = new Date(y, m - 1, d);
+    const today = new Date();
+    const yest = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+    const text = dt.toLocaleDateString(loc(), { weekday: "long", day: "numeric", month: "long", ...(y === today.getFullYear() ? {} : { year: "numeric" }) });
+    if (isoLocalDay(today) === day) return `${t("recent.today")} · ${text}`;
+    if (isoLocalDay(yest) === day) return `${t("recent.yesterday")} · ${text}`;
+    return text;
   }
 
   function recentRow(r) {
-    const date = `<span class="rc-date">${esc(fmtRecentDate(r.date, r.kind === "citing" ? r.precision : ""))}</span>`;
     if (r.kind === "citing") {
       const url = r.doi ? doiUrl(r.doi) : r.url || "";
       const title = url
         ? `<a href="#" class="title-link rc-title" data-url="${esc(url)}">${esc(r.citing_title || "—")}</a>`
         : `<span class="rc-title body-strong">${esc(r.citing_title || "—")}</span>`;
-      return `<li class="rc-row">${date}<div class="rc-main">${title}
-        <div class="rc-sub secondary">${r.venue ? esc(r.venue) + " " : ""}<span class="rc-arrow">→</span> <span title="${esc(r.article_title)}">${esc(shortText(r.article_title, 70))}</span></div></div>
-        <div class="rc-side"><span class="src-badge">OpenAlex</span></div></li>`;
+      return `<li class="rc-row rc2"><div class="rc-main">${title}
+        <div class="rc-sub secondary">${r.venue ? esc(r.venue) + " " : ""}<span class="rc-arrow">→</span> <span title="${esc(r.article_title)}">${esc(shortText(r.article_title, 70))}</span> · <span class="src-badge">OpenAlex</span></div></div></li>`;
     }
     const down = r.kind === "scholar_down";
-    const link = r.cites_ids
-      ? `<button type="button" class="btn btn-link" data-act="scholar" data-cites="${esc(r.cites_ids)}" title="${esc(t("scholar.tip"))}"><span>${esc(t("scholar.view"))}</span></button>` : "";
-    return `<li class="rc-row ${down ? "rc-down" : ""}">${date}<div class="rc-main">
-        <div class="rc-line"><span class="rc-title body-strong" title="${esc(r.article_title)}">${esc(r.article_title)}</span>${chip("", r.delta)}</div>
+    const open = r.cites_ids
+      ? `<button type="button" class="rc-open" data-act="scholar" data-cites="${esc(r.cites_ids)}" title="${esc(t("scholar.tip"))}" aria-label="${esc(t("scholar.view"))}"><span class="icon">&#xE8A7;</span></button>` : "";
+    return `<li class="rc-row rc2 ${down ? "rc-down" : ""}"><div class="rc-main">
+        <div class="rc-line"><a href="#" class="rc-title body-strong title-link" data-open-article="${esc(r.article_key)}" title="${esc(r.article_title)}">${esc(r.article_title)}</a>${chip("", r.delta)}</div>
         ${down ? `<div class="rc-sub neg-text">${esc(t("recent.decreased"))} · ${nf.format(r.old)} → ${nf.format(r.new)}</div>` : `<div class="rc-sub secondary">${nf.format(r.old)} → ${nf.format(r.new)}</div>`}</div>
-        <div class="rc-side"><span class="src-badge">Google Scholar</span>${link}</div></li>`;
+        <div class="rc-side">${open}</div></li>`;
   }
 
   function renderRecent() {
     if (state.page !== "panel" || $("#panelData").hidden) return;
     const el = $("#recentList");
-    el.innerHTML = state.recent.length
-      ? `<ul class="rc-list">${state.recent.map(recentRow).join("")}</ul>`
-      : `<div class="ris-empty secondary">${esc(t("recent.empty"))}</div>`;
+    if (!state.recent.length) {
+      el.innerHTML = `<div class="ris-empty secondary">${esc(t("recent.empty"))}</div>`;
+    } else {
+      let html = "";
+      let cur = "";
+      for (const r of state.recent) {
+        const day = recentDay(r);
+        if (day !== cur) {
+          if (cur) html += "</ul>";
+          cur = day;
+          html += `<div class="rc-group-head"><button type="button" class="rc-group-btn" data-day="${day}" title="${esc(t("recent.open_day"))}">${esc(recentHeading(day))}</button></div><ul class="rc-list">`;
+        }
+        html += recentRow(r);
+      }
+      el.innerHTML = html + "</ul>";
+    }
+    $("#recentAllText").textContent = t(state.recentAll ? "recent.less" : "recent.all");
+    $("#recentAll").hidden = !state.recent.length || (!state.recentAll && state.recent.length < RECENT_SHORT);
     const miss = missingDoi().length;
     const hint = $("#recentDoiHint");
     hint.hidden = miss === 0;
     if (miss) hint.innerHTML = `${esc(t("recent.doi_hint", { n: nf.format(miss) }))} <a href="#" class="ext-link" data-act="missing-doi">${esc(t("recent.doi_link"))}</a>`;
+  }
+
+  // ------------------------------------------------------------ OpenAlex daily budget notice
+  /** "'te" / "'de" / "'ta" / "'da" for a clock time as it is spoken (03:00 -> 'te, 01:00 -> 'de, 06:00 -> 'da). */
+  function trLocative(hh, mm) {
+    const n = mm !== 0 ? mm : hh;
+    const unit = { 1: "de", 2: "de", 3: "te", 4: "te", 5: "te", 6: "da", 7: "de", 8: "de", 9: "da" };
+    const tens = { 0: "da", 1: "da", 2: "de", 3: "da", 4: "ta", 5: "de" };
+    return "'" + (n % 10 ? unit[n % 10] : tens[n / 10]);
+  }
+  /** Local clock time of an instant plus the Turkish suffix when the language is Turkish. */
+  function clockOf(d) {
+    const text = d.toLocaleTimeString(loc(), { hour: "2-digit", minute: "2-digit" });
+    return { time: text, sfx: window.I18N.lang === "tr" ? trLocative(d.getHours(), d.getMinutes()) : "" };
+  }
+  function tzLabel(d) {
+    if (window.I18N.lang === "tr" && d.getTimezoneOffset() === -180) return "TSİ";
+    const part = new Intl.DateTimeFormat(loc(), { timeZoneName: "short" }).formatToParts(d).find((x) => x.type === "timeZoneName");
+    return part ? part.value : "";
+  }
+  /** The active pause (its resume time still ahead), or null. */
+  const activeBudget = () => (state.budget && new Date(state.budget.resume_at).getTime() > Date.now() ? state.budget : null);
+
+  function budgetInfo(b) {
+    const resume = clockOf(new Date(b.resume_at));
+    const reset = new Date(b.resets_at);
+    const r = clockOf(reset);
+    return {
+      main: b.has_key ? t("budget.key", { time: resume.time, sfx: resume.sfx }) : t("budget.keyless"),
+      line: t("budget.reset", { time: r.time, sfx: r.sfx, tz: tzLabel(reset) }),
+    };
+  }
+  function budgetButtons(b) {
+    const btn = (act, label, icon) => `<button type="button" class="btn" data-budget="${act}"><span class="icon">${icon}</span><span>${esc(t(label))}</span></button>`;
+    return (b.has_key ? "" : btn("key", "budget.get_key", "&#xE8A7;") + btn("mail", "budget.mail", "&#xE715;")) + btn("settings", "budget.settings", "&#xE713;");
+  }
+
+  function renderBudget() {
+    const b = activeBudget();
+    const info = b ? budgetInfo(b) : null;
+    // dismissible bar on Panel, Analysis and Citing works
+    const show = !!b && ["panel", "analysis", "citing"].includes(state.page) && state.budgetDismissed !== b.resume_at;
+    $("#budgetBar").hidden = !show;
+    if (show) {
+      $("#budgetText").textContent = info.main;
+      $("#budgetReset").textContent = info.line;
+      $("#budgetBtns").innerHTML = budgetButtons(b);
+    }
+    // scan side panel
+    const sp = $("#scanBudget");
+    sp.hidden = !b;
+    if (b) sp.innerHTML = `<div class="body-strong">${esc(info.main)}</div><div class="bn-line">${esc(info.line)}</div><div class="sbtns">${budgetButtons(b)}</div>`;
+    // Settings > API keys card
+    const kb = $("#keyBudget");
+    kb.hidden = !b;
+    if (b) kb.textContent = info.main + " " + info.line;
+  }
+
+  function budgetAction(act) {
+    if (act === "key") safe(() => invoke("open_url", { url: "https://openalex.org/" }));
+    else if (act === "settings" || act === "mail") {
+      closeScan();
+      showPage("settings");
+      const target = act === "mail" ? $("#keyOaEmail") : $("#keyOa");
+      setTimeout(() => { target.scrollIntoView({ block: "center" }); target.focus(); }, 100);
+    }
   }
 
   // ------------------------------------------------------------ historical scan panel
@@ -1043,7 +994,8 @@
     sum.hidden = running || !sc.end;
     if (!running && sc.end) {
       const s = sc.summary;
-      const head = sc.end === "failed" ? t("scan.sum_failed", { message: sc.message }) : t(sc.end === "cancelled" ? "scan.sum_cancelled" : "scan.sum_head");
+      const head = sc.end === "failed" ? t("scan.sum_failed", { message: sc.message })
+        : s && s.paused_budget ? t("scan.sum_paused") : t(sc.end === "cancelled" ? "scan.sum_cancelled" : "scan.sum_head");
       let body = "";
       if (s) {
         body = `<div>${esc(t("scan.sum_line", { matched: nf.format(s.matched), total: nf.format(s.total), records: nf.format(s.records), added: nf.format(s.new_total), time: fmtDur(state.bfProgress?.elapsed_secs || sc.elapsed) }))}</div>`;
@@ -1169,7 +1121,7 @@
   }
 
   // ------------------------------------------------------------ historical data
-  const RUN_ST = { ok: "bf.st_ok", partial: "bf.st_partial", error: "bf.st_error", interrupted: "bf.st_interrupted", running: "bf.st_running", cancelled: "bf.st_cancelled" };
+  const RUN_ST = { paused_budget: "bf.st_paused_budget", ok: "bf.st_ok", partial: "bf.st_partial", error: "bf.st_error", interrupted: "bf.st_interrupted", running: "bf.st_running", cancelled: "bf.st_cancelled" };
 
   function renderBackfill() {
     const info = state.bfInfo;
@@ -1252,7 +1204,7 @@
       showInfo(t("bf.cleared"), false);
     } catch (e) { showInfo(String(e), true); }
     state.bf.clear();
-    await Promise.all([loadBfInfo(), loadHistory()]);
+    await Promise.all([loadBfInfo(), loadTrend(), state.analysis ? loadAnalysis() : null]);
     state.open.forEach(drawDetail);
   }
 
@@ -1319,62 +1271,89 @@
     }
   }
 
-  // ------------------------------------------------------------ forecast, risers, h next step
-  const pl = (n, key) => t(key + (n === 1 ? ".one" : ".many"));
-  const shortText = (s, n) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s);
-  const monthLabel = (ym, long) => {
-    const [y, m] = ym.split("-").map(Number);
-    return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString(loc(), { month: long ? "long" : "short", year: long ? "numeric" : undefined, timeZone: "UTC" });
-  };
+  // ------------------------------------------------------------ Analysis page
+  async function loadRisers() { state.risers = await safe(() => invoke("get_risers", { days: state.risDays }), state.risers); renderRisersChart(); }
+  async function loadNext() { state.next = await safe(() => invoke("get_next_steps"), state.next); renderPanel(); renderNextLists(); }
 
-  async function loadForecast() { state.forecast = await safe(() => invoke("get_forecast"), state.forecast); renderForecast(); }
-  async function loadRisers() { state.risers = await safe(() => invoke("get_risers", { days: state.risDays }), state.risers); renderRisers(); }
-  async function loadNext() { state.next = await safe(() => invoke("get_next_steps"), state.next); renderNext(); }
-
-  function ensureForecastSkeleton() {
-    const body = $("#fcBody");
-    if ($("#fcGoal", body)) return;
-    body.innerHTML = `
-      <div class="fc-main">
-        <div class="fc-stat"><div class="fc-big" id="fcYearEnd">—</div><div class="caption secondary" id="fcYearLabel"></div></div>
-        <div class="fc-stat"><div class="fc-big" id="fcRate">—</div><div class="caption secondary" data-i18n="fc.per_month"></div></div>
-        <div class="fc-stat"><div class="fc-big" id="fcLast12">—</div><div class="caption secondary" data-i18n="fc.last12"></div></div>
-      </div>
-      <div class="fc-goal">
-        <label class="caption secondary" for="fcGoal" data-i18n="fc.goal_label"></label>
-        <input id="fcGoal" class="input input-num" type="number" min="1" step="1" inputmode="numeric">
-        <button id="fcGoalSave" class="btn"><span data-i18n="fc.goal_save"></span></button>
-        <div id="fcGoalText" class="fc-goal-text"></div>
-      </div>
-      <div class="caption secondary fc-note" id="fcNote"></div>`;
-    window.I18N.applyStatic(body);
-    $("#fcGoalSave").addEventListener("click", saveGoal);
-    $("#fcGoal").addEventListener("keydown", (e) => { if (e.key === "Enter") saveGoal(); });
+  /** The period selector of the page as {from, to} in ms (null: open end). A custom end in the future means "until today". */
+  function anRange() {
+    const r = state.an;
+    const now = Date.now();
+    if (r.range === "30d") return { from: now - 30 * DAY_MS, to: null };
+    if (r.range === "90d") return { from: now - 90 * DAY_MS, to: null };
+    if (r.range === "12m") return { from: now - 365 * DAY_MS, to: null };
+    if (r.range === "all") return { from: null, to: null };
+    const from = r.from ? new Date(r.from + "T00:00:00").getTime() : null;
+    let to = r.to ? new Date(r.to + "T23:59:59").getTime() : null;
+    if (to !== null && to >= now - DAY_MS) to = null;
+    return { from, to };
   }
 
-  function renderForecast() {
-    if (state.page !== "panel" || $("#panelData").hidden) return;
-    ensureForecastSkeleton();
-    const f = state.forecast;
-    if (!f) return;
-    const known = f.months.filter((x) => x.count !== null);
-    $("#fcYearLabel").textContent = t("fc.year_end", { year: f.year });
-    $("#fcYearEnd").textContent = f.year_end === null ? "—" : "≈ " + nf.format(f.year_end);
-    $("#fcRate").textContent = f.per_month === null ? "—" : nf.format(Math.round(f.per_month * 10) / 10);
-    $("#fcLast12").textContent = known.length ? nf.format(known.reduce((a, x) => a + x.count, 0)) : "—";
+  const hasHistory = () => !!state.analysis && state.analysis.history_year.total > 0;
+  /** Why a chart that depends on the historical lookup is empty. */
+  const needHistoryText = () => t(state.settings?.backfill_enabled ? "an.no_history" : "an.need_backfill");
+
+  function renderAnalysis() {
+    if (state.page !== "analysis") return;
+    const a = state.analysis;
+    const has = !!a && a.trend.has_data;
+    $("#analysisEmpty").hidden = has || a === null;
+    $("#analysisData").hidden = !has;
+    if (!has) { Charts.disposeIn($("#page-analysis")); return; }
+    $$("#anRange button").forEach((b) => b.classList.toggle("on", b.dataset.range === state.an.range));
+    $("#anCustom").hidden = state.an.range !== "custom";
+    $("#anFrom").value = state.an.from;
+    $("#anTo").value = state.an.to;
+    $$("#anTabs .tab").forEach((tb) => {
+      const on = tb.dataset.tab === state.an.tab;
+      tb.setAttribute("aria-selected", on ? "true" : "false");
+      tb.tabIndex = on ? 0 : -1;
+    });
+    $$(".an-tab").forEach((p) => {
+      const on = p.id === "anTab-" + state.an.tab;
+      if (!on) Charts.disposeIn(p);
+      p.hidden = !on;
+    });
+    if (!state.citingLoaded) loadCiting();
+    ({ trend: renderTrendTab, articles: renderArticlesTab, indices: renderIndicesTab, calendar: renderCalendarTab }[state.an.tab])();
+  }
+
+  // ---- trend tab
+  function renderTrendTab() {
+    const a = state.analysis;
+    const tr = a.trend;
+    const range = anRange();
+    const c = Charts.ctx({ range });
+    const built = Charts.build.trend(a, c);
+    Charts.mount($("#chTrend"), built, { emptyText: t("chart.no_data_range") });
+    const parts = [t(tr.hist.length ? "trend.cap_hist" : "trend.cap_scholar")];
+    if (tr.merge && tr.merge.year_only > 0 && tr.hist.length) parts.push(t("trend.cap_year_only", { n: nf.format(tr.merge.year_only) }));
+    if (tr.forecast_hidden) {
+      const [have, need] = tr.forecast_hidden;
+      parts.push(t("trend.fc_hidden", { need, have, left: Math.max(1, need - have) }));
+      if (tr.oa_per_month != null && tr.oa_latest) parts.push(t("trend.oa_rate", { n: nf.format(Math.round(tr.oa_per_month * 10) / 10), date: fmtCitingDate(tr.oa_latest, "day") }));
+    } else if (tr.forecast) {
+      parts.push(t(tr.forecast.thin ? "trend.fc_thin" : "trend.fc_basis"));
+    }
+    $("#trendCaption").textContent = parts.join(" ");
+    const f = tr.forecast;
+    const yearEnd = f
+      ? `≈ ${nf.format(f.mid)} <span class="fc-sub">(${nf.format(f.low)}–${nf.format(f.high)})</span>`
+      : "—";
+    const last12Note = tr.last12 !== null && tr.last12_days < 360 ? ` <span class="fc-sub">(${esc(t("trend.last_days", { n: tr.last12_days }))})</span>` : "";
+    $("#trendStats").innerHTML = `
+      <div class="fc-stat"><div class="fc-big">${yearEnd}</div><div class="caption secondary">${esc(t("fc.year_end", { year: tr.year }))}</div></div>
+      <div class="fc-stat"><div class="fc-big">${tr.monthly_avg === null ? "—" : nf.format(Math.round(tr.monthly_avg * 10) / 10)}</div><div class="caption secondary">${esc(t("fc.per_month"))}</div></div>
+      <div class="fc-stat"><div class="fc-big">${tr.last12 === null ? "—" : nf.format(tr.last12)}${last12Note}</div><div class="caption secondary">${esc(t("fc.last12"))}</div></div>`;
     const input = $("#fcGoal");
-    if (document.activeElement !== input) input.value = f.goal ?? "";
+    if (document.activeElement !== input) input.value = tr.goal ?? "";
     const g = $("#fcGoalText");
-    g.className = "fc-goal-text" + (f.goal_status === "reached" ? " pos" : "");
-    if (f.goal_status === "none") g.textContent = t("fc.goal_none");
-    else if (f.goal_status === "reached") g.textContent = t("fc.goal_reached", { goal: nf.format(f.goal) });
-    else if (f.goal_status === "month") g.textContent = t("fc.goal_eta", { goal: nf.format(f.goal), date: monthLabel(f.goal_ym, true) });
+    g.className = "fc-goal-text" + (tr.goal_status === "reached" ? " pos" : "");
+    if (tr.goal_status === "none") g.textContent = t("fc.goal_none");
+    else if (tr.goal_status === "reached") g.textContent = t("fc.goal_reached", { goal: nf.format(tr.goal) });
+    else if (tr.goal_status === "month") g.textContent = t("fc.goal_eta", { goal: nf.format(tr.goal), date: monthLabel(tr.goal_ym, true) });
     else g.textContent = t("fc.goal_unknown");
-    const parts = [];
-    if (f.source !== "none") parts.push(t("fc.note_src", { src: t("fc.src_" + f.source) }));
-    if (f.basis) parts.push(t("fc.basis_" + f.basis));
-    parts.push(t("fc.estimate_note"));
-    $("#fcNote").textContent = parts.join(" ");
+    renderPeriodChart();
   }
 
   async function saveGoal() {
@@ -1383,58 +1362,541 @@
     if (n !== null && !(n > 0)) { toast(t("fc.goal_err"), true); return; }
     try {
       await invoke("set_goal", { goal: n });
-      await loadForecast();
+      await loadAnalysis();
     } catch (e) { toast(String(e), true); }
   }
 
-  function renderRisers() {
-    if (state.page !== "panel" || $("#panelData").hidden) return;
-    $$("#risSeg button").forEach((b) => b.classList.toggle("on", Number(b.dataset.days) === state.risDays));
-    const r = state.risers;
-    const body = $("#risBody");
-    if (!r) { body.innerHTML = ""; return; }
-    const max = Math.max(1, ...r.items.map((x) => x.gain));
-    let html = "";
-    if (!r.items.length) {
-      html = `<div class="ris-empty secondary">${esc(t(r.basis === "none" ? "ris.no_history" : "ris.empty"))}</div>`;
-    } else {
-      html = `<ol class="ris-list">` + r.items.map((x) => `<li>
-        <div class="ris-bar" style="width:${Math.max(4, Math.round((x.gain / max) * 100))}%"></div>
-        <span class="ris-title" title="${esc(x.title)}">${esc(shortText(x.title, 90))}</span>
-        ${chip("", x.gain)}</li>`).join("") + `</ol>`;
+  function renderPeriodChart() {
+    const a = state.analysis;
+    const hist = hasHistory();
+    if (!hist && state.an.gran !== "year") state.an.gran = "year";
+    $$("#anGran button").forEach((b) => {
+      const off = !hist && b.dataset.gran !== "year";
+      b.classList.toggle("on", b.dataset.gran === state.an.gran);
+      b.disabled = off;
+      b.title = off ? t("main.gran_disabled") : "";
+    });
+    const c = Charts.ctx({ range: anRange(), gran: state.an.gran, onPick: pickPeriod, oaLatest: a.trend.oa_latest });
+    const built = Charts.build.period(a, c);
+    Charts.mount($("#chPeriod"), built, { emptyText: hist ? t("chart.no_data_range") : needHistoryText() });
+    const cap = $("#periodCaption");
+    if (!built) { cap.textContent = ""; return; }
+    let text = t(built.meta.source === "scholar" ? "an.cap_period_scholar" : "an.cap_period");
+    if (built.meta.source === "openalex" && built.meta.excluded > 0 && state.an.gran !== "year") text += " " + t("main.note_excluded", { n: nf.format(built.meta.excluded) });
+    if (built.meta.source === "openalex") {
+      if (built.meta.tail > 0) text += " " + t("an.lag_tail_note", { date: fmtDayMonth(a.trend.oa_latest) });
+      text += " " + lagHint();
     }
-    const basis = r.basis === "snapshots" ? t("ris.basis_snapshots")
-      : r.basis === "backfill" ? t("ris.basis_backfill")
-      : r.basis === "snapshots_partial" ? t("ris.basis_partial", { days: r.covered_days })
-      : "";
-    body.innerHTML = html + (basis ? `<div class="caption secondary ris-basis">${esc(basis)}</div>` : "");
+    cap.textContent = text;
   }
 
-  /** "h=5 for: 2 articles need 3 more citations" plus the closest articles. */
-  function nextBlock(label, s) {
+  /** "OpenAlex's newest citing work: 14 Oct 2026 - new papers are usually added weeks late." */
+  function lagHint() {
+    const d = state.analysis?.trend.oa_latest;
+    return d ? t("ris.lag", { date: fmtCitingDate(d, "day") }) : t("ris.lag_none");
+  }
+
+  /** A bar was clicked: select that period in the calendar (a day, a whole month or a whole year). */
+  function pickPeriod(per, gran) {
+    const cal = state.cal;
+    if (gran === "day") { openCalendarDay(per.key); return; }
+    const first = gran === "year" ? `${per.key}-01-01` : `${per.key}-01`;
+    const last = gran === "year" ? `${per.key}-12-31` : monthRange(per.key)[1];
+    cal.month = first.slice(0, 7);
+    cal.sel = { from: first, to: last, whole: true };
+    cal.focus = first;
+    cal.year = null;
+    cal.shown = 120;
+    state.an.tab = "calendar";
+    renderAnalysis();
+    const card = $("#calDetail");
+    if (card) card.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+
+  // ---- articles tab
+  function renderArticlesTab() {
+    renderGapList();
+    $$("#risSeg button").forEach((b) => b.classList.toggle("on", Number(b.dataset.days) === state.risDays));
+    if (!state.risers) loadRisers(); else renderRisersChart();
+    const a = state.analysis;
+    const c = Charts.ctx({ range: anRange() });
+    const built = Charts.build.stacked(a, c);
+    Charts.mount($("#chStacked"), built, { emptyText: hasHistory() ? t("chart.no_data_range") : needHistoryText() });
+    const cap = $("#stackedCaption");
+    if (!built) { cap.textContent = ""; return; }
+    let text = t("an.cap_stacked");
+    if (a.stacked.year_only > 0) text += " " + t("an.cap_stacked_year", { n: nf.format(a.stacked.year_only) });
+    cap.textContent = text;
+  }
+
+  function renderRisersChart() {
+    if (state.page !== "analysis" || state.an.tab !== "articles") return;
+    const r = state.risers;
+    const days = state.risDays;
+    const el = $("#chRisers"), elOa = $("#chRisersOa");
+    const fit = (box, n) => { box.style.height = n ? Math.max(120, n * 38 + 20) + "px" : ""; };
+    const lag = (r && r.oa_latest) ? t("ris.lag", { date: fmtCitingDate(r.oa_latest, "day") }) : t("ris.lag_none");
+    const onPick = (x) => openArticle(x.key);
+    if (!r) { Charts.mount(el, null); $("#risEmpty").hidden = true; return; }
+    const snapItems = r.items.length > 0;
+    const oaItems = r.oa_items.length > 0;
+    // Scholar block: what the snapshots say, with the days they cover
+    let head = "";
+    if (r.basis === "snapshots") head = t("ris.snap_full", { days, total: signed(r.snap_total) });
+    else if (r.basis === "snapshots_partial") head = t("ris.snap_partial", { covered: r.covered_days, total: signed(r.snap_total) });
+    $("#risScholarHead").textContent = head;
+    $("#risScholarHead").hidden = !head;
+    fit(el, snapItems ? r.items.length : 0);
+    el.hidden = !snapItems;
+    Charts.mount(el, snapItems ? Charts.build.risers(r.items, Charts.ctx({ onPick })) : null);
+    $("#risCaption").textContent = r.basis === "none" ? t("ris.snap_none") : snapItems ? "" : t("ris.snap_empty");
+    // OpenAlex block, apart and always labelled; shown when Scholar cannot cover the window or has nothing to say
+    const showOa = oaItems && (r.basis !== "snapshots" || !snapItems);
+    $("#risOa").hidden = !showOa;
+    $("#risOaHead").textContent = t("ris.oa_head");
+    fit(elOa, showOa ? r.oa_items.length : 0);
+    Charts.mount(elOa, showOa ? Charts.build.risers(r.oa_items, Charts.ctx({ onPick })) : null);
+    // the lag hint wherever OpenAlex dates are used (or would be)
+    $("#risLag").hidden = !(showOa || r.basis !== "snapshots" || (!snapItems && !oaItems));
+    $("#risLag").textContent = lag;
+    // never just "nothing": say why and what to try
+    const empty = !snapItems && !oaItems;
+    const why = [];
+    if (empty) {
+      why.push(r.basis === "none" ? t("ris.why_scholar_none") : r.basis === "snapshots_partial" ? t("ris.why_scholar", { covered: r.covered_days }) : t("ris.why_scholar_flat", { days }));
+      why.push(r.oa_latest ? t("ris.why_oa", { date: fmtCitingDate(r.oa_latest, "day") }) : t("ris.why_oa_none"));
+    }
+    const box = $("#risEmpty");
+    box.hidden = !empty;
+    if (empty) box.textContent = t("ris.empty_reason", { why: why.join("; ") }) + " " + t(days === 30 ? "ris.try_wider" : "ris.try_later");
+  }
+
+  // ---- indices tab
+  /** "h=5 for: 2 articles need 3 more citations" plus every article still below the threshold, closest first. */
+  function nextColumn(label, s) {
     let line;
     if (s.picks.length) {
-      line = t("hn.line", {
-        label, papers: nf.format(s.picks.length), paper_word: pl(s.picks.length, "unit.article"),
-        total: nf.format(s.total_needed), cite_word: pl(s.total_needed, "unit.citation"),
-      });
+      line = t("hn.line", { label, papers: nf.format(s.picks.length), paper_word: pl(s.picks.length, "unit.article"), total: nf.format(s.total_needed), cite_word: pl(s.total_needed, "unit.citation") });
       if (s.new_papers > 0) line += " " + t("hn.plus_new", { n: nf.format(s.new_papers), paper_word: pl(s.new_papers, "unit.article") });
     } else {
       line = t("hn.new_only", { label, n: nf.format(s.new_papers), paper_word: pl(s.new_papers, "unit.article") });
     }
-    const list = s.picks.length
-      ? `<ul class="hn-list">${s.picks.map((p) => `<li><span class="hn-title" title="${esc(p.title)}">${esc(shortText(p.title, 80))}</span><span class="chip"><b>${nf.format(p.citations)}</b> → +${nf.format(p.needs)}</span></li>`).join("")}</ul>`
+    const picks = new Set(s.picks.map((p) => p.key));
+    const list = s.candidates.length
+      ? `<ul class="cand-list">${s.candidates.map((p) => `<li class="${picks.has(p.key) ? "pick" : ""}"><a href="#" class="cand-t title-link" data-open-article="${esc(p.key)}" title="${esc(p.title)}">${esc(p.title)}</a><span class="chip"><b>${nf.format(p.citations)}</b> → +${nf.format(p.needs)}</span></li>`).join("")}</ul>`
       : "";
-    return `<div class="hn-block"><div class="hn-line">${esc(line)}</div>${list}</div>`;
+    return `<div class="next-col"><h3>${esc(line)}</h3><div class="caption secondary">${esc(t("an.next_hint", { th: s.threshold }))}</div>${list}</div>`;
   }
 
-  function renderNext() {
-    if (state.page !== "panel" || $("#panelData").hidden) return;
-    const n = state.next;
-    const el = $("#hNext");
-    if (!n) { el.innerHTML = ""; return; }
-    el.innerHTML = `<div class="hn-title-row body-strong">${esc(t("hn.title"))}</div>`
-      + nextBlock(`h=${n.h.target}`, n.h) + nextBlock(`i10=${n.i10.target}`, n.i10);
+  function renderNextLists() {
+    if (state.page !== "analysis" || state.an.tab !== "indices") return;
+    const n = state.analysis?.next;
+    $("#nextLists").innerHTML = n ? nextColumn(`h=${n.h.target}`, n.h) + nextColumn(`i10=${n.i10.target}`, n.i10) : "";
+  }
+
+  function renderIndicesTab() {
+    const a = state.analysis;
+    const c = Charts.ctx({ range: anRange() });
+    const few = a.indices.points.length < 2;
+    const built = few ? null : Charts.build.indices(a, c);
+    const checks = state.overview?.snapshot_count || 0;
+    Charts.mount($("#chIndex"), built, { emptyText: t("an.idx_need", { n: Math.max(1, 2 - checks) }) });
+    $("#indexCaption").textContent = built ? t("an.cap_index") : "";
+    renderNextLists();
+  }
+
+  // ---- calendar tab: the main way to explore citations (which article was cited on which day)
+  /** Date -> {n, titles} of the citing works that were published on that day (for the year heat map tooltip). */
+  let dayInfoFor = null, dayInfoCache = null;
+  function dayInfo() {
+    if (dayInfoFor === state.citingGroups && dayInfoCache) return dayInfoCache;
+    const map = new Map();
+    for (const g of state.citingGroups || []) {
+      if (g.precision !== "day") continue;
+      const e = map.get(g.date) || map.set(g.date, { n: 0, titles: [] }).get(g.date);
+      e.n++;
+      e.titles.push(g.title || "—");
+    }
+    dayInfoFor = state.citingGroups;
+    dayInfoCache = map;
+    return map;
+  }
+
+  /** [start, end) of the period a citing work's date names (a month or a year when the day is unknown). */
+  function dateSpan(date, precision) {
+    const [y, m, d] = date.split("-").map(Number);
+    if (precision === "day") { const s = Date.UTC(y, m - 1, d); return [s, s + DAY_MS]; }
+    if (precision === "month") return [Date.UTC(y, m - 1, 1), Date.UTC(y, m, 1)];
+    return [Date.UTC(y, 0, 1), Date.UTC(y + 1, 0, 1)];
+  }
+  const spanTouches = (g, from, to) => {
+    const [s, e] = dateSpan(g.date, g.precision);
+    return (from == null || e > from) && (to == null || s <= to);
+  };
+
+  const keyMsOf = (iso) => Charts.util.keyMs(iso);
+  const monthRange = (ym) => {
+    const [y, m] = ym.split("-").map(Number);
+    return [`${ym}-01`, `${ym}-${pad2(new Date(Date.UTC(y, m, 0)).getUTCDate())}`];
+  };
+  const addDays = (iso, n) => {
+    const d = new Date(keyMsOf(iso) + n * DAY_MS);
+    return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+  };
+  const longDay = (iso) => new Date(keyMsOf(iso)).toLocaleDateString(loc(), { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+  const shortDay = (iso) => new Date(keyMsOf(iso)).toLocaleDateString(loc(), { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+  const todayIso = () => isoDay(new Date());
+  const calSig = () => `${state.cal.source}|${state.cal.article}`;
+
+  /** Forget what was fetched for the calendar (data changed): it is fetched again when shown. */
+  function calInvalidate() { Object.assign(state.cal, { key: "", detailKey: "", yearKey: "" }); }
+
+  function renderCalendarTab() {
+    const cal = state.cal;
+    $$("#calSource button").forEach((b) => b.classList.toggle("on", b.dataset.source === cal.source));
+    const sel = $("#calArticle");
+    const arts = state.articles.slice().sort((a, b) => a.title.localeCompare(b.title, loc()));
+    sel.innerHTML = `<option value="">${esc(t("cw.all_articles"))}</option>` + arts.map((a) => `<option value="${esc(a.key)}">${esc(shortText(a.title, 70))}</option>`).join("");
+    sel.value = cal.article;
+    const [y, m] = cal.month.split("-").map(Number);
+    $("#mcMonth").innerHTML = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((i) =>
+      `<option value="${i + 1}">${esc(new Date(Date.UTC(2023, i, 1)).toLocaleDateString(loc(), { month: "long", timeZone: "UTC" }))}</option>`).join("");
+    $("#mcMonth").value = String(m);
+    if (document.activeElement !== $("#mcYear")) $("#mcYear").value = String(y);
+    renderMonthGrid();
+    loadCalMonth();
+    renderDetail();
+    loadDetail();
+    renderUndatedBtn();
+    renderYearHeat();
+    loadYear();
+    renderCalTrend();
+  }
+
+  async function loadCalMonth() {
+    const cal = state.cal;
+    const key = `${cal.month}|${calSig()}`;
+    if (cal.key === key) return;
+    const [from, to] = monthRange(cal.month);
+    const res = await safe(() => invoke("get_calendar_days", { from, to, source: cal.source, article: cal.article }), null);
+    if (!res || key !== `${state.cal.month}|${calSig()}`) return;
+    cal.key = key;
+    cal.days = new Map(res.days.map((d) => [d.date, d]));
+    renderMonthGrid();
+  }
+
+  /** The month as a grid of day buttons (WinUI CalendarView style): intensity by count, markers per source. */
+  function renderMonthGrid(focusAfter) {
+    if (state.page !== "analysis" || state.an.tab !== "calendar") return;
+    const cal = state.cal;
+    const grid = $("#mcGrid");
+    const [y, m] = cal.month.split("-").map(Number);
+    const weekStart = window.I18N.lang === "tr" ? 1 : 0;
+    const lead = (new Date(Date.UTC(y, m - 1, 1)).getUTCDay() - weekStart + 7) % 7;
+    const dim = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    const today = todayIso();
+    const oaLatest = state.analysis?.trend.oa_latest;
+    const focus = cal.focus && cal.focus.startsWith(cal.month) ? cal.focus : today.startsWith(cal.month) ? today : `${cal.month}-01`;
+    const s = cal.sel;
+    let html = `<div class="mc-row" role="row" style="display:contents">`;
+    for (let i = 0; i < 7; i++) {
+      const dt = new Date(Date.UTC(2023, 0, 1 + ((i + weekStart) % 7)));
+      html += `<div class="mc-wd" role="columnheader">${esc(dt.toLocaleDateString(loc(), { weekday: "short", timeZone: "UTC" }))}</div>`;
+    }
+    html += "</div>";
+    const total = Math.ceil((lead + dim) / 7) * 7;
+    for (let i = 0; i < total; i++) {
+      if (i % 7 === 0) html += `<div class="mc-row" role="row" style="display:contents">`;
+      const day = i - lead + 1;
+      if (day < 1 || day > dim) {
+        html += `<span class="mc-day empty" role="gridcell" aria-hidden="true"></span>`;
+      } else {
+        const date = `${cal.month}-${pad2(day)}`;
+        const info = cal.days.get(date);
+        const up = info?.scholar_up || 0, down = info?.scholar_down || 0, oa = info?.openalex || 0;
+        const n = up + oa;
+        const lvl = n >= 5 ? 4 : n >= 3 ? 3 : n === 2 ? 2 : n === 1 ? 1 : 0;
+        const tail = !!oaLatest && date > oaLatest && date <= today && cal.source !== "scholar";
+        const isSel = s && (date === s.from || date === s.to);
+        const inRange = s && !isSel && date > s.from && date < s.to;
+        const parts = [];
+        if (up) parts.push(t("cal.aria_scholar_up", { n: up }));
+        if (down) parts.push(t("cal.aria_scholar_down", { n: down }));
+        if (oa) parts.push(t("cal.aria_oa", { n: oa }));
+        if (!parts.length) parts.push(t("cal.aria_none"));
+        if (tail) parts.push(t("an.tail_label"));
+        html += `<button type="button" role="gridcell" class="mc-day${lvl ? " i" + lvl : ""}${date === today ? " today" : ""}${isSel ? " sel" : ""}${inRange ? " inrange" : ""}${tail ? " tail" : ""}" data-date="${date}" tabindex="${date === focus ? 0 : -1}" aria-selected="${isSel || inRange ? "true" : "false"}" aria-label="${esc(longDay(date) + " — " + parts.join(", "))}">
+          <span class="mc-n">${day}</span>
+          <span class="mc-dots">${up ? '<i class="dot sc"></i>' : ""}${oa ? '<i class="dot oa"></i>' : ""}${down ? '<i class="dot dn"></i>' : ""}</span>
+          ${n ? `<span class="mc-badge">${nf.format(n)}</span>` : ""}</button>`;
+      }
+      if (i % 7 === 6) html += "</div>";
+    }
+    grid.innerHTML = html;
+    grid.setAttribute("aria-label", new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString(loc(), { month: "long", year: "numeric", timeZone: "UTC" }));
+    const lag = $("#mcLag");
+    lag.hidden = cal.source === "scholar";
+    lag.textContent = lagHint() + (oaLatest ? " " + t("cal.lag_tail") : "");
+    if (focusAfter) { const b = grid.querySelector('.mc-day[tabindex="0"]'); if (b) b.focus(); }
+  }
+
+  /** Moves the keyboard focus to a day (changing the month when needed). */
+  function moveFocus(iso) {
+    const cal = state.cal;
+    const month = iso.slice(0, 7);
+    cal.focus = iso;
+    if (month !== cal.month) { cal.month = month; cal.year = null; renderCalendarTab(); }
+    renderMonthGrid(true);
+  }
+
+  function onGridKey(e) {
+    const b = e.target.closest(".mc-day[data-date]");
+    if (!b) return;
+    const d = b.dataset.date;
+    const weekStart = window.I18N.lang === "tr" ? 1 : 0;
+    const dow = (new Date(keyMsOf(d)).getUTCDay() - weekStart + 7) % 7;
+    let n = null;
+    if (e.key === "ArrowLeft") n = addDays(d, -1);
+    else if (e.key === "ArrowRight") n = addDays(d, 1);
+    else if (e.key === "ArrowUp") n = addDays(d, -7);
+    else if (e.key === "ArrowDown") n = addDays(d, 7);
+    else if (e.key === "Home") n = addDays(d, -dow);
+    else if (e.key === "End") n = addDays(d, 6 - dow);
+    else if (e.key === "PageUp" || e.key === "PageDown") {
+      const [y, m, dd] = d.split("-").map(Number);
+      const t0 = new Date(Date.UTC(y, m - 1 + (e.key === "PageUp" ? -1 : 1), 1));
+      const last = new Date(Date.UTC(t0.getUTCFullYear(), t0.getUTCMonth() + 1, 0)).getUTCDate();
+      n = `${t0.getUTCFullYear()}-${pad2(t0.getUTCMonth() + 1)}-${pad2(Math.min(dd, last))}`;
+    }
+    if (n) { e.preventDefault(); moveFocus(n); }
+  }
+
+  function selectDay(date, extend) {
+    const cal = state.cal;
+    const s = cal.sel;
+    cal.sel = extend && s && !s.whole ? { from: date < s.from ? date : s.from, to: date > s.to ? date : s.to } : { from: date, to: date };
+    cal.focus = date;
+    cal.shown = 120;
+    renderMonthGrid();
+    renderDetail();
+    loadDetail();
+    renderYearHeat();
+  }
+
+  function selectWholeMonth() {
+    const [from, to] = monthRange(state.cal.month);
+    state.cal.sel = { from, to, whole: true };
+    state.cal.shown = 120;
+    renderMonthGrid();
+    renderDetail();
+    loadDetail();
+  }
+
+  function changeMonth(delta) {
+    const cal = state.cal;
+    const [y, m] = cal.month.split("-").map(Number);
+    const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+    cal.month = `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}`;
+    cal.focus = "";
+    cal.year = null;
+    renderCalendarTab();
+  }
+
+  /** Opens Analysis > Calendar on one day. */
+  function openCalendarDay(day) {
+    const cal = state.cal;
+    cal.month = day.slice(0, 7);
+    cal.sel = { from: day, to: day };
+    cal.focus = day;
+    cal.year = null;
+    cal.shown = 120;
+    state.an.tab = "calendar";
+    if (state.page === "analysis") renderAnalysis(); else showPage("analysis");
+  }
+
+  // ---- day detail
+  async function loadDetail() {
+    const cal = state.cal;
+    const s = cal.sel;
+    if (!s) return;
+    const key = `${s.from}|${s.to}|${calSig()}`;
+    if (cal.detailKey === key) return;
+    const res = await safe(() => invoke("get_day_detail", { from: s.from, to: s.to, source: cal.source, article: cal.article }), null);
+    const now = state.cal.sel;
+    if (!res || !now || key !== `${now.from}|${now.to}|${calSig()}`) return;
+    cal.detail = res;
+    cal.detailKey = key;
+    renderDetail();
+  }
+
+  function scholarItem(e) {
+    const down = e.delta < 0;
+    const link = e.cites_ids
+      ? `<button type="button" class="rc-open" data-act="scholar" data-cites="${esc(e.cites_ids)}" title="${esc(t("scholar.tip"))}" aria-label="${esc(t("scholar.view"))}"><span class="icon">&#xE8A7;</span></button>` : "";
+    let nested = "";
+    if (!down) {
+      const maybe = e.probable.map((w) => `<div class="cd-maybe"><b>${esc(t("cal.maybe"))}</b> <a href="#" class="title-link" data-url="${esc(citingUrl({ doi: w.doi, id: w.citing_id }))}">${esc(w.title || "—")}</a>${w.venue ? " · " + esc(w.venue) : ""}</div>`).join("");
+      const rest = e.delta - e.probable.length;
+      nested = e.probable.length
+        ? `<div class="cd-nested">${maybe}${rest > 0 ? `<div class="cd-none">${esc(t("cal.some_unknown", { n: rest }))}</div>` : ""}</div>`
+        : `<div class="cd-none">${esc(t("cal.no_detail"))}</div>`;
+    }
+    return `<div class="cd-item"><i class="dot ${down ? "dn" : "sc"}"></i><div class="cd-main">
+      <div class="cd-line"><a href="#" class="title-link" data-open-article="${esc(e.article_key)}">${esc(e.title)}</a>${chip("", e.delta)}<span class="secondary ${down ? "cd-down" : ""}">${nf.format(e.old)} → ${nf.format(e.new)}</span></div>${nested}</div>${link}</div>`;
+  }
+
+  function oaItem(w) {
+    const arts = w.articles.map((a) => `<a href="#" class="title-link" data-open-article="${esc(a.key)}" title="${esc(a.title)}">${esc(shortText(a.title, 60))}</a>`).join(", ");
+    return `<div class="cd-item"><i class="dot oa"></i><div class="cd-main"><a href="#" class="title-link" data-url="${esc(citingUrl({ doi: w.doi, id: w.citing_id }))}">${esc(w.title || "—")}</a>
+      <div class="tl-sub">${w.venue ? esc(w.venue) + " " : ""}<span class="tl-arrow">→</span> ${arts}</div></div></div>`;
+  }
+
+  function renderDetail() {
+    const cal = state.cal;
+    const s = cal.sel;
+    const body = $("#cdBody");
+    $("#cdCiting").hidden = !s || cal.source === "scholar";
+    $("#cdMoreRow").hidden = true;
+    if (!s) {
+      $("#cdTitle").textContent = t("cal.pick_title");
+      body.innerHTML = `<div class="cd-empty">${esc(t("cal.pick_hint"))}</div>`;
+      return;
+    }
+    const single = s.from === s.to;
+    $("#cdTitle").textContent = single ? longDay(s.from)
+      : s.whole ? monthLabel(s.from.slice(0, 7), true) : `${shortDay(s.from)} – ${shortDay(s.to)}`;
+    if (cal.detailKey !== `${s.from}|${s.to}|${calSig()}`) { body.innerHTML = ""; return; }
+    const days = cal.detail.slice().sort((a, b) => (a.date < b.date ? 1 : -1));
+    const up = days.reduce((a, d) => a + d.scholar.filter((e) => e.delta > 0).reduce((x, e) => x + e.delta, 0), 0);
+    const down = days.reduce((a, d) => a + d.scholar.filter((e) => e.delta < 0).reduce((x, e) => x - e.delta, 0), 0);
+    const works = days.reduce((a, d) => a + d.openalex.length, 0);
+    const oaLatest = state.analysis?.trend.oa_latest;
+    let html = "";
+    if (days.length) {
+      const bits = [];
+      if (cal.source !== "openalex") bits.push(t("cal.sum_scholar", { up: "+" + nf.format(up), down: down ? " / −" + nf.format(down) : "" }));
+      if (cal.source !== "scholar") bits.push(t("cal.sum_oa", { n: nf.format(works) }));
+      html += `<div class="cd-summary">${esc(bits.join(" · "))}</div>`;
+    }
+    let shown = 0, cut = false;
+    for (const d of days) {
+      if (shown >= cal.shown) { cut = true; break; }
+      html += `<div class="cd-day">${single ? "" : `<div class="rc-group-head">${esc(longDay(d.date))}</div>`}`;
+      if (d.scholar.length) html += `<div class="cd-sub">${esc(t("cal.sh_scholar"))}</div>` + d.scholar.map(scholarItem).join("");
+      if (d.openalex.length) html += `<div class="cd-sub">${esc(t("cal.sh_oa"))}</div>` + d.openalex.map(oaItem).join("");
+      html += "</div>";
+      shown += d.scholar.length + d.openalex.length;
+    }
+    if (!days.length) {
+      const lagging = oaLatest && s.to > oaLatest && cal.source !== "scholar";
+      html = `<div class="cd-empty">${esc(t("cal.none_day"))}${lagging ? `<div class="cd-none">${esc(t("cal.none_lag", { date: fmtCitingDate(oaLatest, "day") }))}</div>` : ""}</div>`;
+    }
+    body.innerHTML = html;
+    $("#cdMoreRow").hidden = !cut;
+  }
+
+  function openCitingFromDetail() {
+    const s = state.cal.sel;
+    if (!s) return;
+    Object.assign(state.cw, { article: state.cal.article, country: "", venue: "", query: "", shown: 200, date: "", period: null });
+    if (s.from === s.to) state.cw.date = s.from;
+    else state.cw.period = { from: keyMsOf(s.from), to: keyMsOf(s.to) + DAY_MS - 1, label: s.whole ? monthLabel(s.from.slice(0, 7), true) : `${shortDay(s.from)} – ${shortDay(s.to)}` };
+    $("#citingSearch").value = "";
+    showPage("citing");
+  }
+
+  // ---- works that only have a month or a year: never on a day
+  const undatedGroups = () => (state.citingGroups || []).filter((g) => g.precision !== "day" && (!state.cal.article || g.articles.some((a) => a.key === state.cal.article)));
+
+  function renderUndatedBtn() {
+    const n = state.cal.source === "scholar" ? 0 : undatedGroups().length;
+    $("#calUndatedBtn").hidden = n === 0;
+    $("#calUndatedText").textContent = t("cal.undated", { n: nf.format(n) });
+    if (n === 0) state.cal.undatedOpen = false;
+    renderUndatedList();
+  }
+
+  function renderUndatedList() {
+    const card = $("#calUndatedCard");
+    card.hidden = !state.cal.undatedOpen;
+    if (!state.cal.undatedOpen) return;
+    const list = undatedGroups().sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    const mo = list.filter((g) => g.precision === "month").length;
+    $("#cuTitle").textContent = t("cal.undated", { n: nf.format(list.length) });
+    $("#cuNote").textContent = t("an.undated_note", { m: nf.format(mo), y: nf.format(list.length - mo) });
+    $("#cuList").innerHTML = list.slice(0, 300).map((g) => `<div class="tl-day"><div class="tl-daylabel">${esc(fmtCitingDate(g.date, g.precision))}</div><div class="tl-items">${tlItem(g)}</div></div>`).join("");
+  }
+
+  function tlItem(g) {
+    const arts = g.articles.map((x) => `<a href="#" class="title-link" data-open-article="${esc(x.key)}" title="${esc(x.title)}">${esc(shortText(x.title, 64))}</a>`).join(", ");
+    return `<div class="tl-item"><a href="#" class="title-link" data-url="${esc(citingUrl(g))}">${esc(g.title || "—")}</a>
+      <div class="tl-sub">${g.venue ? esc(g.venue) + " " : ""}<span class="tl-arrow">→</span> ${arts}</div></div>`;
+  }
+
+  // ---- year heat map and the cumulative line, below the month
+  const calYearNow = () => state.cal.year ?? Number(state.cal.month.slice(0, 4));
+
+  async function loadYear() {
+    const cal = state.cal;
+    const y = calYearNow();
+    const key = `${y}|${calSig()}`;
+    if (cal.yearKey === key) return;
+    const res = await safe(() => invoke("get_calendar_days", { from: `${y}-01-01`, to: `${y}-12-31`, source: cal.source, article: cal.article }), null);
+    if (!res || key !== `${calYearNow()}|${calSig()}`) return;
+    cal.yearKey = key;
+    cal.yearDays = res.days.map((d) => [d.date, d.scholar_up + d.openalex]).filter((d) => d[1] > 0);
+    renderYearHeat();
+  }
+
+  function renderYearHeat() {
+    if (state.page !== "analysis" || state.an.tab !== "calendar" || !state.analysis) return;
+    const cal = state.cal;
+    const y = calYearNow();
+    $("#calYear").textContent = String(y);
+    const c = Charts.ctx({
+      year: y, days: cal.yearDays, selected: cal.sel && cal.sel.from === cal.sel.to ? cal.sel.from : "", dayInfo: dayInfo(),
+      onPick: (d) => { selectDay(d); cal.month = d.slice(0, 7); renderCalendarTab(); }, oaLatest: state.analysis.trend.oa_latest,
+    });
+    const built = Charts.build.calendar(state.analysis, c);
+    Charts.mount($("#chCalendar"), built, { emptyText: t("chart.no_data_range") });
+    let text = t("cal.cap_year");
+    if (built && built.meta.tail > 0) text += " " + t("an.lag_tail_note", { date: fmtDayMonth(state.analysis.trend.oa_latest) });
+    $("#calCaption").textContent = text;
+  }
+
+  function renderCalTrend() {
+    const a = state.analysis;
+    const c = Charts.ctx({ range: anRange() });
+    Charts.mount($("#chCalTrend"), Charts.build.trend(a, c), { emptyText: t("chart.no_data_range") });
+    $("#calTrendCaption").textContent = t(a.trend.hist.length ? "trend.cap_hist" : "trend.cap_scholar");
+  }
+
+  /** Scholar count against the citing works identified so far, per article. */
+  function gapParts(a) {
+    const unidentified = Math.max(0, a.citations - a.identified);
+    return { unidentified, pct: a.citations > 0 ? Math.min(100, Math.round((a.identified / a.citations) * 100)) : 0 };
+  }
+  function renderGapList() {
+    const el = $("#gapList");
+    if (!el) return;
+    const rows = state.articles.filter((a) => a.citations > 0).sort((a, b) => gapParts(b).unidentified - gapParts(a).unidentified || b.citations - a.citations).slice(0, 14);
+    el.innerHTML = rows.length ? rows.map((a) => {
+      const g = gapParts(a);
+      return `<div class="gap-row"><div class="gap-title" title="${esc(a.title)}"><a href="#" class="title-link" data-open-article="${esc(a.key)}">${esc(a.title)}</a></div>
+        <span class="idbar" aria-hidden="true"><i style="width:${g.pct}%"></i></span>
+        <div class="gap-nums">${esc(t("gap.line", { s: nf.format(a.citations), i: nf.format(a.identified), u: nf.format(g.unidentified) }))}</div></div>`;
+    }).join("") : `<div class="an-note">${esc(t("chart.no_data"))}</div>`;
+  }
+
+  /** "Bu dönemi raporla": the Report page, filled with the period of this page. */
+  function reportThisPeriod() {
+    const r = anRange();
+    const first = state.series[0]?.t ? new Date(state.series[0].t).getTime() : Date.now() - 365 * DAY_MS;
+    const hist = state.analysis?.trend.hist[0]?.[0];
+    $("#repFrom").value = isoDay(new Date(r.from ?? (hist ?? first)));
+    $("#repTo").value = isoDay(new Date(r.to ?? Date.now()));
+    $("#repLang").value = window.I18N.lang;
+    showPage("report");
   }
 
   // ------------------------------------------------------------ citing works page
@@ -1443,6 +1905,8 @@
     state.citingLoaded = true;
     state.citingGroups = groupCiting(state.citing);
     renderCiting();
+    if (state.page === "analysis") renderAnalysis();
+    renderReportPreview();
   }
   async function loadDist() { state.dist = await safe(() => invoke("get_distribution"), state.dist); renderDist(); }
 
@@ -1471,13 +1935,19 @@
       : { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
   }
 
+  const sameText = (a, b) => String(a || "").trim().toLocaleLowerCase(loc()) === String(b || "").trim().toLocaleLowerCase(loc());
+
   function filteredCiting() {
-    const q = state.cw.query.trim().toLocaleLowerCase(loc());
-    const art = state.cw.article;
+    const cw = state.cw;
+    const q = cw.query.trim().toLocaleLowerCase(loc());
     let rows = (state.citingGroups || []).filter((g) =>
-      (!art || g.articles.some((a) => a.key === art)) &&
+      (!cw.article || g.articles.some((a) => a.key === cw.article)) &&
+      (!cw.country || (g.countries || "").split(",").map((c) => c.trim()).includes(cw.country)) &&
+      (!cw.venue || sameText(g.venue, cw.venue)) &&
+      (!cw.date || (g.precision === "day" && g.date === cw.date)) &&
+      (!cw.period || spanTouches(g, cw.period.from, cw.period.to)) &&
       (!q || `${g.title} ${g.venue} ${g.authors} ${g.articles.map((a) => a.title).join(" ")}`.toLocaleLowerCase(loc()).includes(q)));
-    const dir = state.cw.dir;
+    const dir = cw.dir;
     rows = rows.slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0) * dir || a.title.localeCompare(b.title, loc()));
     return rows;
   }
@@ -1492,6 +1962,21 @@
     sel.value = state.cw.article;
   }
 
+  /** Removable chips of the active filters (country / venue from the charts, date / period from the calendar). */
+  function renderCitingChips() {
+    const cw = state.cw;
+    const lang = window.I18N.lang;
+    const chips = [];
+    if (cw.country) chips.push(["country", t("cw.chip_country", { name: window.COUNTRIES.name(cw.country, lang) })]);
+    if (cw.venue) chips.push(["venue", t("cw.chip_venue", { name: shortText(cw.venue, 60) })]);
+    if (cw.date) chips.push(["date", t("cw.chip_date", { date: fmtCitingDate(cw.date, "day") })]);
+    if (cw.period) chips.push(["period", t("an.chip_period", { label: cw.period.label })]);
+    const box = $("#citingChips");
+    box.hidden = !chips.length;
+    box.innerHTML = chips.map(([k, label]) => `<span class="fchip"><span>${esc(label)}</span><button type="button" data-clear="${k}" aria-label="${esc(t("cw.chip_remove"))}" title="${esc(t("cw.chip_remove"))}"><span class="icon">&#xE711;</span></button></span>`).join("")
+      + (chips.length > 1 ? `<button type="button" class="btn btn-link" data-clear="all"><span>${esc(t("cw.chip_clear"))}</span></button>` : "");
+  }
+
   function renderCiting() {
     if (state.page !== "citing") return;
     const has = (state.citing || []).length > 0;
@@ -1500,6 +1985,7 @@
     renderDist();
     if (!has) return;
     fillArticleFilter();
+    renderCitingChips();
     const th = $("#citingTable th[data-csort]");
     const old = $(".sort", th); if (old) old.remove();
     th.insertAdjacentHTML("beforeend", `<span class="sort">${state.cw.dir > 0 ? "&#xE70E;" : "&#xE70D;"}</span>`);
@@ -1522,23 +2008,10 @@
     $("#citingMoreRow").hidden = rows.length <= shown.length;
   }
 
-  function hbarChart(el, items, labelOf) {
-    if (!items.length) { el.innerHTML = `<div class="chart-empty">${esc(t("chart.no_data"))}</div>`; return; }
-    if (!el.clientWidth) { requestAnimationFrame(() => { if (el.clientWidth) hbarChart(el, items, labelOf); }); return; }
-    const w = el.clientWidth, rowH = 26;
-    const labelW = Math.round(Math.min(190, w * 0.46));
-    const barMax = Math.max(40, w - labelW - 44);
-    const max = Math.max(...items.map((i) => i[1]));
-    const h = items.length * rowH + 4;
-    let svg = `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img">`;
-    items.forEach(([key, n], i) => {
-      const y = i * rowH + 2;
-      const label = labelOf(key);
-      svg += `<text x="${labelW - 8}" y="${y + 17}" text-anchor="end"><title>${esc(label)}</title>${esc(shortText(label, Math.max(10, Math.floor(labelW / 7))))}</text>`;
-      svg += `<rect class="bar" x="${labelW}" y="${y + 4}" width="${Math.max(2, (n / max) * barMax).toFixed(1)}" height="${rowH - 10}" rx="3"/>`;
-      svg += `<text class="bar-label" x="${labelW + Math.max(2, (n / max) * barMax) + 6}" y="${y + 17}">${nf.format(n)}</text>`;
-    });
-    el.innerHTML = svg + "</svg>";
+  function setCitingFilter(key, value) {
+    state.cw[key] = state.cw[key] === value ? "" : value;
+    state.cw.shown = 200;
+    renderCiting();
   }
 
   function renderDist() {
@@ -1546,13 +2019,25 @@
     const d = state.dist;
     if (!d) return;
     const lang = window.I18N.lang;
-    hbarChart($("#distCountry"), d.countries, (c) => `${window.COUNTRIES.name(c, lang)} (${c})`);
-    hbarChart($("#distVenue"), d.venues, (v) => v);
+    const draw = (sel, items, c) => {
+      const el = $(sel);
+      el.style.height = Math.max(120, items.length * 28 + 16) + "px";
+      Charts.mount(el, Charts.build.bars(items, c), { emptyText: t("chart.no_data") });
+    };
+    draw("#distCountry", d.countries, Charts.ctx({
+      labelOf: (k) => `${window.COUNTRIES.name(k, lang)} (${k})`, total: d.with_country, active: state.cw.country,
+      onPick: (k) => setCitingFilter("country", k), labelWidth: 150,
+    }));
+    draw("#distVenue", d.venues, Charts.ctx({
+      labelOf: (k) => k, total: d.total - d.without_venue, active: state.cw.venue,
+      onPick: (k) => setCitingFilter("venue", k), labelWidth: 170,
+    }));
     const notes = [];
     if (d.with_country === 0) notes.push(t("dist.country_none"));
     else if (d.without_country > 0) notes.push(t("dist.country_missing", { n: nf.format(d.without_country), total: nf.format(d.total) }));
     if (d.without_venue > 0) notes.push(t("dist.venue_missing", { n: nf.format(d.without_venue) }));
     notes.push(t("dist.distinct"));
+    notes.push(t("dist.click_hint"));
     $("#distCaption").textContent = notes.join(" ");
   }
 
@@ -1568,15 +2053,16 @@
     else { const d = new Date(now); d.setFullYear(d.getFullYear() - 1); d.setDate(d.getDate() + 1); from = isoDay(d); }
     $("#repFrom").value = from;
     $("#repTo").value = to;
+    renderReportPreview();
   }
 
   function renderReportPage() {
+    const first = state.series[0]?.t;
+    state.firstDay = first ? isoDay(new Date(first)) : null;
     if (!$("#repFrom").value) {
       setReportRange("12m");
       $("#repLang").value = window.I18N.lang;
     }
-    const first = state.series[0]?.t;
-    state.firstDay = first ? isoDay(new Date(first)) : null;
     $("#repCreate").disabled = noProfile() || !state.overview?.snapshot;
   }
 
@@ -1586,6 +2072,8 @@
     bar.className = "infobar" + (err ? " err" : "");
     bar.hidden = !text;
   }
+
+  const reportCharts = () => $$("#repCharts input[data-chart]").filter((i) => i.checked).map((i) => i.dataset.chart);
 
   async function createReport() {
     const from = $("#repFrom").value, to = $("#repTo").value;
@@ -1597,7 +2085,7 @@
     reportInfo("", false);
     try {
       const path = await invoke("create_report_pdf", {
-        options: { from, to, lang: $("#repLang").value, include_citing: $("#repCiting").checked, include_charts: $("#repCharts").checked },
+        options: { from, to, lang: $("#repLang").value, include_citing: $("#repCiting").checked, charts: reportCharts() },
       });
       if (path) reportInfo(t("rep.done", { path }), false);
     } catch (e) {
@@ -1606,6 +2094,75 @@
       btn.disabled = false;
       $("#repCreateText").textContent = t("rep.create");
     }
+  }
+
+  /** The range of the report inputs as {from, to} ms (a range that ends today stays open). */
+  function reportRangeMs() {
+    const f = $("#repFrom").value, e = $("#repTo").value;
+    const from = f ? new Date(f + "T00:00:00").getTime() : null;
+    let to = e ? new Date(e + "T23:59:59").getTime() : null;
+    if (to !== null && to >= Date.now() - DAY_MS) to = null;
+    return { from, to };
+  }
+
+  /** Country / venue counts of the citing works that touch the range (each work once), like the backend does for the PDF. */
+  function distOf(groups) {
+    const countries = new Map(), venues = new Map();
+    let withCountry = 0;
+    for (const g of groups) {
+      const codes = new Set((g.countries || "").split(",").map((c) => c.trim()).filter((c) => c.length === 2));
+      if (codes.size) withCountry++;
+      for (const c of codes) countries.set(c, (countries.get(c) || 0) + 1);
+      const v = (g.venue || "").trim();
+      if (v) { const k = v.toLowerCase(); const e = venues.get(k) || venues.set(k, [v, 0]).get(k); e[1]++; }
+    }
+    const top = (arr) => arr.sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]))).slice(0, 10);
+    return { countries: top(Array.from(countries.entries())), venues: top(Array.from(venues.values())), withCountry, total: groups.length };
+  }
+
+  /** Small live preview of the PDF: the same chart builders as the report, drawn as thumbnails. */
+  let previewTimer = 0;
+  function scheduleReportPreview() { clearTimeout(previewTimer); previewTimer = setTimeout(renderReportPreview, 150); }
+  async function renderReportPreview() {
+    if (state.page !== "report") return;
+    const grid = $("#repPreviewGrid");
+    if (!state.analysis) { await loadAnalysis(); if (!state.analysis) return; }
+    if (!state.citingLoaded) await loadCiting();
+    const a = state.analysis;
+    const range = reportRangeMs();
+    const charts = reportCharts();
+    Charts.disposeIn(grid);
+    const groups = (state.citingGroups || []).filter((g) => spanTouches(g, range.from, range.to));
+    $("#repPreviewSummary").textContent = t("rep.preview_sum", { charts: charts.length, n: nf.format(groups.length) });
+    grid.innerHTML = "";
+    const gran = Charts.util.autoGran(range.from ?? state.analysis.trend.snaps[0][0], range.to ?? Date.now());
+    const endYear = new Date(range.to ?? Date.now()).getFullYear();
+    const base = { range };
+    const tiles = {
+      trend: () => Charts.build.trend(a, Charts.ctx({ ...base, mini: true })),
+      period: () => Charts.build.period(a, Charts.ctx({ ...base, gran, oaLatest: a.trend.oa_latest })),
+      article: () => Charts.build.stacked(a, Charts.ctx(base)),
+      index: () => Charts.build.indices(a, Charts.ctx(base)),
+      calendar: () => Charts.build.calendar(a, Charts.ctx({ ...base, year: Math.min(Math.max(endYear, a.calendar.years[0] ?? endYear), a.calendar.years[a.calendar.years.length - 1] ?? endYear) })),
+      dist: () => {
+        const d = distOf(groups);
+        const lang = window.I18N.lang;
+        return Charts.build.bars(d.countries, Charts.ctx({ labelOf: (k) => window.COUNTRIES.name(k, lang), total: d.withCountry, print: true }));
+      },
+    };
+    for (const id of charts) {
+      const tile = document.createElement("div");
+      tile.className = "prev-tile";
+      const box = document.createElement("div");
+      box.className = "prev-chart" + (id === "calendar" ? " prev-cal" : "");
+      tile.innerHTML = `<div class="prev-t">${esc(t("rep.c_" + id))}</div>`;
+      tile.appendChild(box);
+      grid.appendChild(tile);
+      const built = Charts.thumb(tiles[id]());
+      if (built) Charts.mount(box, built);
+      else box.innerHTML = `<div class="prev-empty">${esc(t("rep.preview_none"))}</div>`;
+    }
+    if (!charts.length) grid.innerHTML = `<div class="prev-empty">${esc(t("rep.preview_empty"))}</div>`;
   }
 
   // ------------------------------------------------------------ API keys
@@ -1634,6 +2191,7 @@
     if (!key) { setKeyMsg(which, t("keys.err_empty"), "bad"); return; }
     try {
       state.keys = await invoke("save_api_key", { which, key });
+      loadBudget();
       $(k.input).value = "";
       setKeyMsg(which, t("keys.saved"), "ok");
     } catch (e) { setKeyMsg(which, String(e), "bad"); }
@@ -1654,6 +2212,7 @@
   async function removeKey(which) {
     try {
       state.keys = await invoke("delete_api_key", { which });
+      loadBudget();
       $(KEYS[which].input).value = "";
       setKeyMsg(which, t("keys.removed"), "ok");
     } catch (e) { setKeyMsg(which, String(e), "bad"); }
@@ -1666,6 +2225,7 @@
     btn.disabled = true;
     try {
       await invoke("request_openalex_key", { email });
+      loadBudget();
       $("#keyOaEmail").value = "";
       await loadKeyStatus();
       setKeyMsg("openalex", t("keys.requested"), "ok");
@@ -1682,27 +2242,68 @@
 
   // ------------------------------------------------------------ navigation / wiring
   function showPage(name) {
+    const prev = state.page;
     state.page = name;
+    // charts are created per page and disposed when it is left
+    if (prev !== name) Charts.disposeIn($("#page-" + prev));
     if (name === "settings") loadBfInfo();
     $$(".nav-item").forEach((b) => b.classList.toggle("selected", b.dataset.page === name));
     $$(".page").forEach((p) => { p.hidden = p.id !== "page-" + name; });
     hideTip();
-    if (name === "panel") { renderMain(); renderRecent(); renderForecast(); renderRisers(); renderNext(); }
+    renderVisit();
+    renderBudget();
+    if (name === "panel") { renderMini(); renderRecent(); }
     if (name === "articles") loadArticles();
     if (name !== "articles") $("#doiBar").hidden = true;
     if (name === "log") loadLog();
     if (name === "citing") { loadCiting(); loadDist(); }
-    if (name === "report") renderReportPage();
+    if (name === "analysis") { renderAnalysis(); loadAnalysis(); loadRisers(); }
+    if (name === "report") { renderReportPage(); renderReportPreview(); }
     if (name === "settings") { $("#infoBar").hidden = true; fillSettings(); loadKeyStatus(); }
   }
 
   /** Opens the Citing works page filtered to one article. */
   function showCitingFor(key) {
-    state.cw.article = key;
-    state.cw.query = "";
-    state.cw.shown = 200;
+    Object.assign(state.cw, { article: key, query: "", shown: 200, country: "", venue: "", date: "", period: null });
     $("#citingSearch").value = "";
     showPage("citing");
+  }
+
+  function clearFilter(box, st, kinds) {
+    box.addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-clear]");
+      if (!b) return;
+      const k = b.dataset.clear;
+      if (k === "all") { st.country = ""; st.venue = ""; st.date = ""; st.period = null; }
+      else if (k === "period") st.period = null;
+      else st[k] = "";
+      if (kinds === "cw") { state.cw.shown = 200; renderCiting(); }
+      else { state.an.tlShown = 100; renderCalendarTab(); }
+    });
+  }
+
+  function onTabKey(e) {
+    const tabs = $$("#anTabs .tab");
+    const i = tabs.findIndex((x) => x.dataset.tab === state.an.tab);
+    let n = -1;
+    if (e.key === "ArrowRight") n = (i + 1) % tabs.length;
+    else if (e.key === "ArrowLeft") n = (i - 1 + tabs.length) % tabs.length;
+    else if (e.key === "Home") n = 0;
+    else if (e.key === "End") n = tabs.length - 1;
+    if (n < 0) return;
+    e.preventDefault();
+    state.an.tab = tabs[n].dataset.tab;
+    renderAnalysis();
+    tabs[n].focus();
+  }
+
+  /** Re-draws the charts of the visible page (colour scheme change). */
+  function redrawCharts() {
+    if (state.page === "panel") renderMini();
+    else if (state.page === "analysis") renderAnalysis();
+    else if (state.page === "citing") renderDist();
+    else if (state.page === "report") renderReportPreview();
+    else if (state.page === "articles") state.open.forEach(drawDetail);
   }
 
   function wire() {
@@ -1715,16 +2316,92 @@
     $("#setBackfill").addEventListener("change", (e) => setBackfillEnabled(e.target.checked));
     $("#bfRunBtn").addEventListener("click", runBackfillNow);
     $("#bfClearBtn").addEventListener("click", clearBackfill);
-    $$("#modeSeg button").forEach((b) => b.addEventListener("click", () => { state.mode = b.dataset.mode; renderMain(); }));
-    $$("#granSeg button").forEach((b) => b.addEventListener("click", () => { if (!b.disabled) { state.gran = b.dataset.gran; renderMain(); } }));
-    $("#rangeSeg").addEventListener("click", (e) => {
+    // panel
+    $("#recentAll").addEventListener("click", async () => { state.recentAll = !state.recentAll; await loadRecent(); });
+    $("#recentCard").addEventListener("click", (e) => panelActions(e));
+    $("#miniOpen").addEventListener("click", () => { state.an.range = "12m"; openAnalysis("trend"); });
+    $("#visitSummary").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-go]");
+      if (!b) return;
+      if (b.dataset.go === "article") openArticle(b.dataset.key);
+      else openAnalysis("indices");
+    });
+    // analysis
+    $("#anRange").addEventListener("click", (e) => {
       const b = e.target.closest("button[data-range]");
       if (!b) return;
-      state.range[state.mode === "total" ? "total" : state.gran] = b.dataset.range;
-      renderMain();
+      state.an.range = b.dataset.range;
+      if (state.an.range === "custom" && !state.an.from) {
+        const to = new Date(), from = new Date(to.getTime() - 365 * DAY_MS);
+        state.an.from = isoDay(from);
+        state.an.to = isoDay(to);
+      }
+      renderAnalysis();
     });
-    $("#recentAll").addEventListener("click", () => showPage("citing"));
-    $("#recentCard").addEventListener("click", (e) => panelActions(e));
+    $("#anFrom").addEventListener("change", (e) => { state.an.from = e.target.value; renderAnalysis(); });
+    $("#anTo").addEventListener("change", (e) => { state.an.to = e.target.value; renderAnalysis(); });
+    $("#anTabs").addEventListener("click", (e) => {
+      const b = e.target.closest(".tab");
+      if (!b) return;
+      state.an.tab = b.dataset.tab;
+      renderAnalysis();
+    });
+    $("#anTabs").addEventListener("keydown", onTabKey);
+    $("#anGran").addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-gran]");
+      if (!b || b.disabled) return;
+      state.an.gran = b.dataset.gran;
+      renderPeriodChart();
+    });
+    $$("#risSeg button").forEach((b) => b.addEventListener("click", () => { state.risDays = Number(b.dataset.days); loadRisers(); renderArticlesTab(); }));
+    $("#fcGoalSave").addEventListener("click", saveGoal);
+    $("#fcGoal").addEventListener("keydown", (e) => { if (e.key === "Enter") saveGoal(); });
+    $("#anReport").addEventListener("click", reportThisPeriod);
+    // calendar
+    $("#calPrev").addEventListener("click", () => { state.cal.year = calYearNow() - 1; renderYearHeat(); loadYear(); });
+    $("#calNext").addEventListener("click", () => { state.cal.year = calYearNow() + 1; renderYearHeat(); loadYear(); });
+    $("#calSource").addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-source]");
+      if (!b) return;
+      state.cal.source = b.dataset.source;
+      renderCalendarTab();
+    });
+    $("#calArticle").addEventListener("change", (e) => { state.cal.article = e.target.value; renderCalendarTab(); });
+    $("#mcPrev").addEventListener("click", () => changeMonth(-1));
+    $("#mcNext").addEventListener("click", () => changeMonth(1));
+    $("#mcMonth").addEventListener("change", (e) => { const y = state.cal.month.slice(0, 4); state.cal.month = `${y}-${pad2(Number(e.target.value))}`; state.cal.year = null; renderCalendarTab(); });
+    $("#mcYear").addEventListener("change", (e) => {
+      const y = Math.max(1990, Math.min(2100, parseInt(e.target.value, 10) || new Date().getFullYear()));
+      state.cal.month = `${y}-${state.cal.month.slice(5, 7)}`;
+      state.cal.year = null;
+      renderCalendarTab();
+    });
+    $("#mcToday").addEventListener("click", () => openCalendarDay(todayIso()));
+    $("#mcWhole").addEventListener("click", selectWholeMonth);
+    $("#mcGrid").addEventListener("click", (e) => {
+      const b = e.target.closest(".mc-day[data-date]");
+      if (b) selectDay(b.dataset.date, e.shiftKey);
+    });
+    $("#mcGrid").addEventListener("keydown", onGridKey);
+    $("#cdCiting").addEventListener("click", openCitingFromDetail);
+    $("#cdMore").addEventListener("click", () => { state.cal.shown += 120; renderDetail(); });
+    $("#calDetail").addEventListener("click", (e) => panelActions(e));
+    $("#calUndatedBtn").addEventListener("click", () => { state.cal.undatedOpen = !state.cal.undatedOpen; renderUndatedList(); if (state.cal.undatedOpen) $("#calUndatedCard").scrollIntoView({ block: "nearest", behavior: "smooth" }); });
+    $("#cuClose").addEventListener("click", () => { state.cal.undatedOpen = false; renderUndatedList(); });
+    $("#recentCal").addEventListener("click", () => openAnalysis("calendar"));
+    clearFilter($("#citingChips"), state.cw, "cw");
+    $("#page-analysis").addEventListener("click", (e) => {
+      const link = e.target.closest("a[data-url]");
+      if (link) { e.preventDefault(); safe(() => invoke("open_url", { url: link.dataset.url })); return; }
+      const art = e.target.closest("a[data-open-article]");
+      if (art) { e.preventDefault(); openArticle(art.dataset.openArticle); }
+    });
+    // scan panel, DOI bar
+    $("#budgetClose").addEventListener("click", () => { if (state.budget) state.budgetDismissed = state.budget.resume_at; renderBudget(); });
+    document.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-budget]");
+      if (b) budgetAction(b.dataset.budget);
+    });
     $("#bfPill").addEventListener("click", async () => { if (!state.scan.running && !state.scan.end) await hydrateScan(); openScan(); });
     $("#scanClose").addEventListener("click", closeScan);
     $("#bfScanBtn").addEventListener("click", async () => { if (!state.scan.running && !state.scan.end) await hydrateScan(); openScan(); });
@@ -1768,7 +2445,7 @@
       const row = e.target.closest("tr.row");
       if (!row) return;
       const k = row.dataset.key;
-      if (state.open.has(k)) state.open.delete(k); else state.open.add(k);
+      if (state.open.has(k)) { state.open.delete(k); } else state.open.add(k);
       renderArticles();
     });
     $("#pickDirBtn").addEventListener("click", async () => {
@@ -1785,7 +2462,7 @@
     $("#checkUpdateBtn").addEventListener("click", checkUpdatesManually);
     $("#uninstallBtn").addEventListener("click", () => safe(() => invoke("open_url", { url: "ms-settings:appsfeatures" })));
     $("#healthOpenLog").addEventListener("click", () => showPage("log"));
-    $$("#risSeg button").forEach((b) => b.addEventListener("click", () => { state.risDays = Number(b.dataset.days); loadRisers(); }));
+    // citing works
     $("#citingSearch").addEventListener("input", (e) => { state.cw.query = e.target.value; state.cw.shown = 200; renderCiting(); });
     $("#citingArticle").addEventListener("change", (e) => { state.cw.article = e.target.value; state.cw.shown = 200; renderCiting(); });
     $("#citingMore").addEventListener("click", () => { state.cw.shown += 300; renderCiting(); });
@@ -1796,8 +2473,12 @@
       e.preventDefault();
       safe(() => invoke("open_url", { url: link.dataset.url }));
     });
+    // report
     $$("#repPresets button").forEach((b) => b.addEventListener("click", () => setReportRange(b.dataset.preset)));
     $("#repCreate").addEventListener("click", createReport);
+    $("#repCharts").addEventListener("change", scheduleReportPreview);
+    $("#repFrom").addEventListener("change", scheduleReportPreview);
+    $("#repTo").addEventListener("change", scheduleReportPreview);
     $("#exportXlsx").addEventListener("click", exportXlsx);
     $("#keyOaSave").addEventListener("click", () => saveKey("openalex"));
     $("#keyOaTest").addEventListener("click", () => testKey("openalex"));
@@ -1810,20 +2491,18 @@
       safe(() => invoke("open_url", { url: link.dataset.url }));
     });
     $$("[data-export]").forEach((b) => b.addEventListener("click", () => exportCsv(b.dataset.export)));
-    let rz;
-    const relayout = () => { clearTimeout(rz); rz = setTimeout(() => { renderMain(); renderForecast(); renderDist(); state.open.forEach(drawDetail); }, 120); };
-    window.addEventListener("resize", relayout);
-    // The content area can change width without a window resize (nav width, scrollbar): redraw the charts.
-    let lastW = 0;
-    new ResizeObserver((entries) => {
-      const w = Math.round(entries[0].contentRect.width);
-      if (w !== lastW) { lastW = w; relayout(); }
-    }).observe($(".content"));
+    // charts follow the colour scheme; their size follows their box (ResizeObserver in charts.js)
+    const dark = window.matchMedia("(prefers-color-scheme: dark)");
+    if (dark.addEventListener) dark.addEventListener("change", redrawCharts);
     $("#articleBody").addEventListener("mouseover", (e) => { if (!e.target.closest("tr.detail")) hideTip(); });
   }
 
-  /** Clicks on the "view on Scholar" buttons and the missing-DOI links inside the panel cards and the scan sheet. */
+  /** Clicks on the "view on Scholar" buttons, article links and the missing-DOI links inside the panel cards and the scan sheet. */
   function panelActions(e) {
+    const dayBtn = e.target.closest("[data-day]");
+    if (dayBtn) { e.preventDefault(); openCalendarDay(dayBtn.dataset.day); return; }
+    const art = e.target.closest("a[data-open-article]");
+    if (art) { e.preventDefault(); openArticle(art.dataset.openArticle); return; }
     const a = e.target.closest("[data-act]");
     if (!a) {
       const link = e.target.closest("a[data-url]");
@@ -1858,6 +2537,7 @@
       if (pct !== null) $("#updateBarFill").style.width = pct + "%";
     });
     await listen("data-updated", refreshAll);
+    await listen("openalex-budget", (e) => { state.budget = e.payload; state.budgetDismissed = ""; renderBudget(); });
     await listen("backfill-progress", (e) => {
       const wasRunning = !!state.bfProgress?.running;
       scanLogEvent(e.payload);
@@ -1865,7 +2545,10 @@
     });
     await listen("backfill-updated", async () => {
       state.bf.clear();
-      await Promise.all([loadBfInfo(), loadHistory(), loadCiting(), loadDist(), loadForecast(), loadRisers(), loadNext(), loadRecent(), loadArticles()]);
+      const jobs = [loadBfInfo(), loadTrend(), loadCiting(), loadDist(), loadNext(), loadRecent(), loadArticles(), loadVisit()];
+      if (state.page === "analysis" || state.page === "report" || state.analysis) jobs.push(loadAnalysis());
+      if (state.page === "analysis") jobs.push(loadRisers());
+      await Promise.all(jobs);
       state.open.forEach(drawDetail);
     });
     await listen("api-key-rejected", (e) => {
@@ -1881,6 +2564,8 @@
     await refreshAll();
     $("#page-panel").hidden = false;
     setInterval(renderHeader, 30000);
+    // when the resume time passes the notice goes away (and the data is asked for again)
+    setInterval(() => { if (state.budget && !activeBudget()) { state.budget = null; renderBudget(); } }, 30000);
     setInterval(renderScanTime, 1000);
   }
   init();

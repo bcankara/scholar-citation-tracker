@@ -16,7 +16,7 @@ mod updater;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use chrono::{Datelike, Local, NaiveDate, Timelike, Utc};
+use chrono::{Datelike, Local, Timelike, Utc};
 use rusqlite::Connection;
 use serde::Serialize;
 use settings::Settings;
@@ -108,8 +108,35 @@ where
     .map_err(|e| format!("{e:#}"))
 }
 
+/// Remembers when the window was last seen: when it is shown (the time it was last hidden becomes the
+/// baseline of the "since your last visit" summary) and when it is hidden.
+fn record_visit(app: &AppHandle, begin: bool) {
+    let Some(state) = app.try_state::<AppState>() else {
+        return;
+    };
+    if lock(&state.settings).profile_id.is_empty() {
+        return;
+    }
+    let path = db::db_path_in(&data_dir(&state));
+    let result = db::open(&path).and_then(|conn| {
+        if begin {
+            insights::begin_visit(&conn, Utc::now())
+        } else {
+            insights::end_visit(&conn, Utc::now())
+        }
+    });
+    if let Err(e) = result {
+        eprintln!("visit record failed: {e:#}");
+    }
+}
+
 fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
+        // a window that is already on screen is not a new visit
+        let seen = w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false);
+        if !seen {
+            record_visit(app, true);
+        }
         let _ = w.unminimize();
         let _ = w.show();
         let _ = w.set_focus();
@@ -282,7 +309,7 @@ async fn backfill_run_now(app: AppHandle, state: State<'_, AppState>, bf: Backfi
     if !has_snapshot {
         return Ok("no_data".into());
     }
-    Ok(start_status(backfill::start(&app, &bf, backfill::Mode::All)).into())
+    Ok(start_status(backfill::start_as(&app, &bf, backfill::Mode::All, true)).into())
 }
 
 #[derive(Serialize)]
@@ -313,7 +340,7 @@ async fn set_backfill_enabled(
         if new.orcid.is_empty() {
             status = "no_orcid";
         } else if has_snapshot {
-            status = start_status(backfill::start(&app, &bf, backfill::Mode::Missing));
+            status = start_status(backfill::start_as(&app, &bf, backfill::Mode::Missing, true));
         }
     }
     Ok(EnabledResult {
@@ -331,25 +358,6 @@ async fn clear_backfill_data(app: AppHandle, state: State<'_, AppState>, bf: Bac
     let _ = app.emit("backfill-updated", ());
     let _ = app.emit("data-updated", ());
     Ok(())
-}
-
-#[derive(Serialize)]
-struct History {
-    day: db::HistorySeries,
-    month: db::HistorySeries,
-    year: db::HistorySeries,
-}
-
-#[tauri::command]
-async fn get_history(state: State<'_, AppState>) -> CmdResult<History> {
-    with_db(&state, |conn| {
-        Ok(History {
-            day: db::history_series(conn, "day")?,
-            month: db::history_series(conn, "month")?,
-            year: db::history_series(conn, "year")?,
-        })
-    })
-    .await
 }
 
 #[tauri::command]
@@ -384,7 +392,7 @@ async fn set_article_doi(
     let k = key.clone();
     with_db(&state, move |conn| db::set_override_doi(conn, &k, Some(&doi), Utc::now())).await?;
     let _ = app.emit("backfill-updated", ());
-    Ok(start_status(backfill::start(&app, &bf, backfill::Mode::Article(key))).into())
+    Ok(start_status(backfill::start_as(&app, &bf, backfill::Mode::Article(key), true)).into())
 }
 
 /// "Not this one": rules the current match out for this article and looks it up again.
@@ -406,7 +414,7 @@ async fn reject_article_match(
     })
     .await?;
     let _ = app.emit("backfill-updated", ());
-    Ok(start_status(backfill::start(&app, &bf, backfill::Mode::Article(key))).into())
+    Ok(start_status(backfill::start_as(&app, &bf, backfill::Mode::Article(key), true)).into())
 }
 
 /// Removes the manual DOI and the rejected matches of one article and matches it automatically again.
@@ -421,7 +429,7 @@ async fn reset_article_override(
     let k = key.clone();
     with_db(&state, move |conn| db::reset_override(conn, &k)).await?;
     let _ = app.emit("backfill-updated", ());
-    Ok(start_status(backfill::start(&app, &bf, backfill::Mode::Article(key))).into())
+    Ok(start_status(backfill::start_as(&app, &bf, backfill::Mode::Article(key), true)).into())
 }
 
 #[tauri::command]
@@ -644,20 +652,57 @@ async fn get_citing_works(state: State<'_, AppState>) -> CmdResult<Vec<db::Citin
     with_db(&state, |conn| db::citing_works(conn)).await
 }
 
-/// Start of a calendar month in local time, as UTC.
-fn month_start(y: i32, m: u32) -> chrono::DateTime<Utc> {
-    match NaiveDate::from_ymd_opt(y, m, 1) {
-        Some(d) => db::local_day_start_utc(d),
-        None => Utc::now(),
-    }
+/// The merged trend line (history scaled to the first snapshot, snapshots, forecast).
+#[tauri::command]
+async fn get_trend(state: State<'_, AppState>) -> CmdResult<insights::Trend> {
+    with_db(&state, |conn| insights::build_trend(conn, Utc::now(), Local::now().date_naive())).await
 }
 
+/// Everything the Analysis page draws, from one place.
 #[tauri::command]
-async fn get_forecast(state: State<'_, AppState>) -> CmdResult<insights::Forecast> {
-    with_db(&state, |conn| {
-        insights::build_forecast(conn, Utc::now(), Local::now().date_naive(), &month_start)
+async fn get_analysis(state: State<'_, AppState>) -> CmdResult<insights::Analysis> {
+    with_db(&state, |conn| insights::build_analysis(conn, Utc::now(), Local::now().date_naive(), None)).await
+}
+
+fn valid_day(s: &str) -> bool {
+    chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").is_ok()
+}
+
+/// Per-day aggregates of both sources for the calendar (`from` .. `to` inclusive, local days).
+#[tauri::command]
+async fn get_calendar_days(state: State<'_, AppState>, from: String, to: String, source: String, article: String) -> CmdResult<insights::CalendarDays> {
+    if !valid_day(&from) || !valid_day(&to) {
+        return Err("invalid date".into());
+    }
+    with_db(&state, move |conn| insights::build_calendar_days(conn, &from, &to, &source, &article)).await
+}
+
+/// Everything of a day or a range: Scholar changes (with probable OpenAlex works) and citing works.
+#[tauri::command]
+async fn get_day_detail(state: State<'_, AppState>, from: String, to: String, source: String, article: String) -> CmdResult<Vec<insights::DayDetail>> {
+    if !valid_day(&from) || !valid_day(&to) {
+        return Err("invalid date".into());
+    }
+    with_db(&state, move |conn| insights::build_day_detail(conn, &from, &to, &source, &article)).await
+}
+
+/// The active OpenAlex daily-budget pause (resume time still ahead), if any; `has_key` follows the key stored now.
+#[tauri::command]
+async fn get_budget_pause(state: State<'_, AppState>) -> CmdResult<Option<backfill::BudgetPause>> {
+    let has_key = tauri::async_runtime::spawn_blocking(secrets::load_keys).await.map(|k| k.openalex.is_some()).unwrap_or(false);
+    with_db(&state, move |conn| {
+        Ok(backfill::pause_active(conn, Utc::now())?.map(|mut p| {
+            p.has_key = has_key;
+            p
+        }))
     })
     .await
+}
+
+/// "Since your last visit": the facts of the one-sentence summary on the Panel.
+#[tauri::command]
+async fn get_visit_summary(state: State<'_, AppState>) -> CmdResult<Option<insights::VisitSummary>> {
+    with_db(&state, |conn| insights::build_visit_summary(conn)).await
 }
 
 /// Stores the citation goal (`None` or a non-positive number removes it).
@@ -770,12 +815,15 @@ async fn save_api_key(state: State<'_, AppState>, which: String, key: String) ->
     if !secrets::plausible_key(&key) {
         return Err(i18n::tr(&lang, "key.err_format").into());
     }
-    tauri::async_runtime::spawn_blocking(move || {
+    let status = tauri::async_runtime::spawn_blocking(move || {
         secrets::store(kind, &key).map_err(|e| i18n::trf(&lang, "key.err_store", &[&e]))?;
-        Ok(secrets::status())
+        Ok::<_, String>(secrets::status())
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())??;
+    // a new key has a budget of its own: a pause caused by the old (keyless) budget ends
+    let _ = with_db(&state, |conn| backfill::clear_pause(conn)).await;
+    Ok(status)
 }
 
 #[tauri::command]
@@ -884,8 +932,17 @@ async fn create_report_pdf(
         Err(report::ReportError::Other(e)) => return Err(e),
     };
     let json = serde_json::to_string(&data).map_err(|e| e.to_string())?;
-    let Some(path) = pick_save_path(&app, ("PDF", &["pdf"]), i18n::tr(&lang, "cmd.pdf_name")).await else {
-        return Ok(None);
+    // Debug builds only (UI tests cannot drive the native save dialog): SCT_TEST_PDF_PATH names the file.
+    #[cfg(debug_assertions)]
+    let forced = std::env::var("SCT_TEST_PDF_PATH").ok().filter(|p| !p.is_empty()).map(PathBuf::from);
+    #[cfg(not(debug_assertions))]
+    let forced: Option<PathBuf> = None;
+    let path = match forced {
+        Some(p) => p,
+        None => match pick_save_path(&app, ("PDF", &["pdf"]), i18n::tr(&lang, "cmd.pdf_name")).await {
+            Some(p) => p,
+            None => return Ok(None),
+        },
     };
     pdf::print_report(&app, job.inner(), json, &path)
         .await
@@ -1073,6 +1130,7 @@ pub fn run() {
             });
             tauri::async_runtime::spawn(updater::run_auto(handle.clone(), state.settings.clone()));
             tauri::async_runtime::spawn(backfill::refresh_loop(handle.clone()));
+            tauri::async_runtime::spawn(backfill::budget_resume_loop(handle.clone()));
             tauri::async_runtime::spawn(weekly_loop(handle.clone(), state.clone()));
             tauri::async_runtime::spawn(scheduler::run(handle, sched));
             Ok(())
@@ -1081,6 +1139,7 @@ pub fn run() {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let _ = window.hide();
+                record_visit(window.app_handle(), false);
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -1103,7 +1162,6 @@ pub fn run() {
             backfill_run_now,
             set_backfill_enabled,
             clear_backfill_data,
-            get_history,
             get_article_backfill,
             pick_folder,
             open_data_folder,
@@ -1114,7 +1172,12 @@ pub fn run() {
             reset_article_override,
             get_health,
             get_citing_works,
-            get_forecast,
+            get_trend,
+            get_analysis,
+            get_visit_summary,
+            get_calendar_days,
+            get_budget_pause,
+            get_day_detail,
             set_goal,
             get_risers,
             get_next_steps,

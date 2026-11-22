@@ -35,67 +35,6 @@
     return new Date(y, m - 1, day, h, mi).toLocaleString(loc, { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
   };
 
-  // ------------------------------------------------------------ charts (inline SVG)
-  /** Round tick values covering [min, max]. */
-  function niceTicks(min, max, count) {
-    if (max === min) { max += 1; min = Math.max(0, min - 1); }
-    const raw = (max - min) / count;
-    const mag = Math.pow(10, Math.floor(Math.log10(raw)));
-    const norm = raw / mag;
-    const step = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10) * mag;
-    const out = [];
-    for (let v = Math.floor(min / step) * step; v <= Math.ceil(max / step) * step + step / 2; v += step) out.push(Math.round(v * 1e6) / 1e6);
-    return out;
-  }
-
-  function lineChart(points) {
-    const W = 680, H = 220, m = { l: 46, r: 14, t: 12, b: 26 };
-    const ts = points.map((p) => new Date(p[0]).getTime());
-    const vs = points.map((p) => p[1]);
-    const vMin = Math.min(...vs), vMax = Math.max(...vs);
-    const ticks = niceTicks(vMin, vMax, 4);
-    const y0 = ticks[0], y1 = ticks[ticks.length - 1];
-    const tMin = Math.min(...ts), tMax = Math.max(...ts);
-    const X = (tv) => m.l + (tMax === tMin ? 0.5 : (tv - tMin) / (tMax - tMin)) * (W - m.l - m.r);
-    const Y = (v) => m.t + (1 - (v - y0) / (y1 - y0 || 1)) * (H - m.t - m.b);
-    let svg = `<svg viewBox="0 0 ${W} ${H}" role="img">`;
-    for (const tv of ticks) {
-      svg += `<line class="grid" x1="${m.l}" x2="${W - m.r}" y1="${Y(tv).toFixed(1)}" y2="${Y(tv).toFixed(1)}"/>`;
-      svg += `<text x="${m.l - 6}" y="${(Y(tv) + 3).toFixed(1)}" text-anchor="end">${nf.format(tv)}</text>`;
-    }
-    const d1 = points.map((p, i) => `${i ? "L" : "M"}${X(ts[i]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join(" ");
-    const base = H - m.b;
-    svg += `<path class="area" d="${d1} L${X(ts[ts.length - 1]).toFixed(1)},${base} L${X(ts[0]).toFixed(1)},${base} Z"/>`;
-    svg += `<path class="line" d="${d1}"/>`;
-    points.forEach((p, i) => { svg += `<circle class="dot" cx="${X(ts[i]).toFixed(1)}" cy="${Y(p[1]).toFixed(1)}" r="2.2"/>`; });
-    const labelFmt = (tv) => new Date(tv).toLocaleDateString(loc, { day: "numeric", month: "short", year: "2-digit" });
-    svg += `<text x="${m.l}" y="${H - 8}" text-anchor="start">${esc(labelFmt(tMin))}</text>`;
-    if (tMax !== tMin) svg += `<text x="${W - m.r}" y="${H - 8}" text-anchor="end">${esc(labelFmt(tMax))}</text>`;
-    return svg + "</svg>";
-  }
-
-  function barChart(data) {
-    const W = 680, H = 210, m = { l: 46, r: 14, t: 22, b: 26 };
-    const ticks = niceTicks(0, Math.max(1, ...data.map((x) => x[1])), 4);
-    const y1 = ticks[ticks.length - 1];
-    const Y = (v) => m.t + (1 - v / (y1 || 1)) * (H - m.t - m.b);
-    const band = (W - m.l - m.r) / data.length;
-    const bw = Math.min(34, band * 0.62);
-    let svg = `<svg viewBox="0 0 ${W} ${H}" role="img">`;
-    for (const tv of ticks) {
-      svg += `<line class="grid" x1="${m.l}" x2="${W - m.r}" y1="${Y(tv).toFixed(1)}" y2="${Y(tv).toFixed(1)}"/>`;
-      svg += `<text x="${m.l - 6}" y="${(Y(tv) + 3).toFixed(1)}" text-anchor="end">${nf.format(tv)}</text>`;
-    }
-    data.forEach(([label, v], i) => {
-      const cx = m.l + band * (i + 0.5);
-      const bh = Math.max(v > 0 ? 1.5 : 0, Y(0) - Y(v));
-      svg += `<rect class="bar" x="${(cx - bw / 2).toFixed(1)}" y="${(Y(0) - bh).toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="2"/>`;
-      svg += `<text class="val" x="${cx.toFixed(1)}" y="${(Y(0) - bh - 4).toFixed(1)}" text-anchor="middle">${nf.format(v)}</text>`;
-      svg += `<text x="${cx.toFixed(1)}" y="${H - 8}" text-anchor="middle">${esc(label)}</text>`;
-    });
-    return svg + "</svg>";
-  }
-
   // ------------------------------------------------------------ sections
   const s = d.summary;
   const range = `${fmtDayLong(d.from)} – ${fmtDayLong(d.to)}`;
@@ -139,14 +78,68 @@
     <tbody>${rows}</tbody></table>
   </section>`;
 
+  // ------------------------------------------------------------ charts (the same builders as the app window)
+  /** Chart boxes to fill after the markup is in the page: [{id, build, height}] (drawn as SVG, vector in the PDF). */
+  const chartJobs = [];
+  const box = (id, height, title) => `<div class="chart"><h3>${esc(title)}</h3><div class="chart-box" id="${id}" style="width:${CHART_W}px;height:${height}px"></div>`;
+  const CHART_W = 670;
+  const now = Date.now();
+  const rng = {
+    from: new Date(d.from + "T00:00:00").getTime(),
+    to: (() => { const e = new Date(d.to + "T23:59:59").getTime(); return e >= now - 86400e3 ? null : e; })(),
+  };
+  const A = d.analysis;
   let charts = "";
-  if (d.include_charts) {
-    const few = `<div class="chart-empty">${esc(t("doc.chart_few"))}</div>`;
-    charts = `<section>
-      <h2>${esc(t("doc.charts"))}</h2>
-      <div class="chart"><h3>${esc(t("doc.chart_time"))}</h3>${d.series.length >= 2 ? lineChart(d.series) : few}</div>
-      <div class="chart"><h3>${esc(t("doc.chart_year"))}</h3>${d.yearly.length ? barChart(d.yearly.map(([y, c]) => [String(y), c])) : few}</div>
-    </section>`;
+  if (d.charts && d.charts.length && A) {
+    const cap = (text) => `<p class="small muted cap">${esc(text)}</p>`;
+    const none = `<div class="chart-empty">${esc(t("doc.chart_few"))}</div>`;
+    let n = 0;
+    const add = (height, title, build, caption) => {
+      const id = "ch" + n++;
+      chartJobs.push({ id, build });
+      return box(id, height, title) + (caption ? cap(caption) : "") + "</div>";
+    };
+    const tr = A.trend;
+    const parts = [];
+    for (const id of d.charts) {
+      if (id === "trend") {
+        let c = t(tr.hist.length ? "trend.cap_hist" : "trend.cap_scholar");
+        if (tr.forecast_hidden) c += " " + t("trend.fc_hidden", { need: tr.forecast_hidden[1], have: tr.forecast_hidden[0], left: Math.max(1, tr.forecast_hidden[1] - tr.forecast_hidden[0]) });
+        else if (tr.forecast) c += " " + t(tr.forecast.thin ? "trend.fc_thin" : "trend.fc_basis");
+        const f = tr.forecast;
+        const stats = `<div class="metrics three">
+          ${metric(t("fc.year_end", { year: tr.year }), f ? `≈ ${nf.format(f.mid)}` : "—", f ? `${nf.format(f.low)}–${nf.format(f.high)}` : "")}
+          ${metric(t("fc.per_month"), tr.monthly_avg === null ? "—" : nf.format(Math.round(tr.monthly_avg * 10) / 10))}
+          ${metric(t("fc.last12"), tr.last12 === null ? "—" : nf.format(tr.last12), tr.last12 !== null && tr.last12_days < 360 ? t("trend.last_days", { n: tr.last12_days }) : "")}</div>`;
+        parts.push(`<h2>${esc(t("an.q_trend"))}</h2>` + add(270, t("doc.ch_trend"), () => Charts.build.trend(A, Charts.ctx({ print: true, range: rng })), c) + stats);
+      } else if (id === "period") {
+        const gran = Charts.util.autoGran(rng.from, rng.to ?? now);
+        parts.push(`<h2>${esc(t("an.q_period"))}</h2>` + add(230, t("main.g_" + gran), () => Charts.build.period(A, Charts.ctx({ print: true, range: rng, gran, oaLatest: tr.oa_latest })), t("an.src_citing") + ". " + (tr.oa_latest ? t("ris.lag", { date: fmtDayLong(tr.oa_latest) }) + " " + t("an.lag_tail_note", { date: fmtDayLong(tr.oa_latest) }) : t("ris.lag_none"))));
+      } else if (id === "article") {
+        let c = t("an.cap_stacked");
+        if (A.stacked.year_only > 0) c += " " + t("an.cap_stacked_year", { n: nf.format(A.stacked.year_only) });
+        parts.push(`<h2>${esc(t("an.q_stacked"))}</h2>` + add(280, t("doc.ch_article"), () => Charts.build.stacked(A, Charts.ctx({ print: true, range: rng })), c));
+      } else if (id === "index") {
+        parts.push(`<h2>${esc(t("an.q_indices"))}</h2>` + add(230, t("doc.ch_index"), () => Charts.build.indices(A, Charts.ctx({ print: true, range: rng })), t("an.cap_index")));
+      } else if (id === "calendar") {
+        const years = A.calendar.years.filter((y) => y >= new Date(rng.from).getFullYear() && y <= new Date(rng.to ?? now).getFullYear());
+        const shown = years.slice(-3);
+        const c = t("an.cap_cal", { n: nf.format(A.calendar.days.filter(([day]) => shown.some((y) => day.startsWith(String(y)))).length) })
+          + (A.calendar.month_only + A.calendar.year_only > 0 ? " " + t("an.cap_cal_undated", { n: nf.format(A.calendar.month_only + A.calendar.year_only) }) : "");
+        parts.push(`<h2>${esc(t("an.q_calendar"))}</h2>` + (shown.length
+          ? shown.map((y, i) => add(190, String(y), () => Charts.build.calendar(A, Charts.ctx({ print: true, range: rng, year: y, oaLatest: tr.oa_latest })), i === shown.length - 1 ? c : "")).join("")
+          : none));
+      } else if (id === "dist") {
+        const lang = window.I18N.lang;
+        const dd = A.dist;
+        const notes = [t("doc.dist_range"), t("dist.distinct")];
+        if (dd.without_country > 0 && dd.with_country > 0) notes.push(t("dist.country_missing", { n: nf.format(dd.without_country), total: nf.format(dd.total) }));
+        parts.push(`<h2>${esc(t("doc.ch_dist"))}</h2>`
+          + add(Math.max(120, dd.countries.length * 24 + 40), t("dist.country"), () => Charts.build.bars(dd.countries, Charts.ctx({ print: true, labelOf: (k) => `${window.COUNTRIES.name(k, lang)} (${k})`, total: dd.with_country, labelWidth: 170 })), "")
+          + add(Math.max(120, dd.venues.length * 24 + 40), t("dist.venue"), () => Charts.build.bars(dd.venues, Charts.ctx({ print: true, labelOf: (k) => k, total: dd.total - dd.without_venue, labelWidth: 250 })), notes.join(" ")));
+      }
+    }
+    charts = `<section class="page-start">${parts.join("")}</section>`;
   }
 
   let citing = "";
@@ -167,6 +160,7 @@
     <p>${esc(t("doc.method_scholar"))}</p>
     <p>${esc(t("doc.method_citing"))}</p>
     <p>${esc(t("doc.method_diff"))}</p>
+    ${d.charts && d.charts.length ? `<p>${esc(t("doc.method_charts"))}</p>` : ""}
   </section>`;
 
   // Own footer (no browser header/footer): custom text left, "Page n/total" right.
@@ -176,6 +170,18 @@
     @bottom-right { content: ${q(t("doc.page") + " ")} counter(page) "/" counter(pages); font: 8pt "Segoe UI", sans-serif; color: #7a7a7a; } }`;
   document.head.appendChild(st);
   document.getElementById("doc").innerHTML = cover + summary + articles + charts + citing + method;
+  for (const job of chartJobs) {
+    const el = document.getElementById(job.id);
+    const built = job.build();
+    if (built) {
+      const chart = Charts.mount(el, built, { renderer: "svg", width: CHART_W, height: parseInt(el.style.height, 10) });
+      try { chart.getZr().refreshImmediately(); } catch { /* painted on the next frame instead */ }
+    } else {
+      el.innerHTML = `<div class="chart-empty">${esc(t("doc.chart_few"))}</div>`;
+      el.style.height = "auto";
+    }
+  }
+  await new Promise((r) => setTimeout(r, 250));
   document.title = `${t("doc.title")} ${d.from} – ${d.to}`;
   if (document.fonts && document.fonts.ready) await document.fonts.ready;
   await invoke("report_ready");

@@ -13,10 +13,11 @@
         <button class="nav-item selected" data-page="panel" data-i18n-title="nav.panel" title=""><span class="nav-pill"></span><span class="icon">&#xE80F;</span><span class="nav-label" data-i18n="nav.panel"></span></button>
         <button class="nav-item" data-page="articles" data-i18n-title="nav.articles" title=""><span class="nav-pill"></span><span class="icon">&#xE8A5;</span><span class="nav-label" data-i18n="nav.articles"></span></button>
         <button class="nav-item" data-page="citing" data-i18n-title="nav.citing" title=""><span class="nav-pill"></span><span class="icon">&#xE716;</span><span class="nav-label" data-i18n="nav.citing"></span></button>
+        <button class="nav-item" data-page="analysis" data-i18n-title="nav.analysis" title=""><span class="nav-pill"></span><span class="icon">&#xE9D2;</span><span class="nav-label" data-i18n="nav.analysis"></span></button>
         <button class="nav-item" data-page="report" data-i18n-title="nav.report" title=""><span class="nav-pill"></span><span class="icon">&#xE9F9;</span><span class="nav-label" data-i18n="nav.report"></span></button>
-        <button class="nav-item" data-page="log" data-i18n-title="nav.log" title=""><span class="nav-pill"></span><span class="icon">&#xE81C;</span><span class="nav-label" data-i18n="nav.log"></span></button>
       </div>
       <div class="nav-items nav-bottom">
+        <button class="nav-item" data-page="log" data-i18n-title="nav.log" title=""><span class="nav-pill"></span><span class="icon">&#xE81C;</span><span class="nav-label" data-i18n="nav.log"></span></button>
         <button class="nav-item" data-page="settings" data-i18n-title="nav.settings" title=""><span class="nav-pill"></span><span class="icon">&#xE713;</span><span class="nav-label" data-i18n="nav.settings"></span></button>
       </div>
     </nav>
@@ -25,6 +26,7 @@
       <header class="header">
         <div class="header-text">
           <h1 id="profileName" class="title" data-i18n="app.name">Scholar Citation Tracker</h1>
+          <p id="visitSummary" class="visit-summary" hidden></p>
           <div class="header-meta caption">
             <span><span data-i18n="header.last_update"></span> <strong id="lastUpdate">—</strong></span>
             <span class="dot"></span>
@@ -49,6 +51,13 @@
           <button id="updateLater" class="btn"><span data-i18n="update.later"></span></button>
           <button id="updateNow" class="btn btn-primary"><span class="icon">&#xE896;</span><span data-i18n="update.now"></span></button>
         </div>
+      </div>
+
+      <div id="budgetBar" class="infobar warn" role="status" hidden>
+        <span class="icon ib-icon">&#xE7BA;</span>
+        <div class="ib-body"><div id="budgetText" class="body"></div><div id="budgetReset" class="caption secondary"></div></div>
+        <div class="sbtns" id="budgetBtns"></div>
+        <button id="budgetClose" class="btn btn-icon" type="button" data-i18n-aria="budget.dismiss" aria-label="Dismiss"><span class="icon">&#xE711;</span></button>
       </div>
 
       <section id="page-panel" class="page">
@@ -92,55 +101,27 @@
         </div>
         <div id="panelData" hidden>
           <div id="kpis" class="kpis"></div>
-          <div class="card chart-card main-card" id="mainCard">
-            <div class="card-head">
-              <div class="body-strong" data-i18n="main.title"></div>
-              <div class="card-tools">
-                <div class="seg" id="modeSeg" role="group" data-i18n-aria="main.mode_label" aria-label="View">
-                  <button data-mode="total" data-i18n="main.m_total"></button>
-                  <button data-mode="period" data-i18n="main.m_period"></button>
-                </div>
-                <div class="seg" id="granSeg" role="group" data-i18n-aria="main.gran_label" aria-label="Granularity">
-                  <button data-gran="day" data-i18n="main.g_day"></button>
-                  <button data-gran="month" data-i18n="main.g_month"></button>
-                  <button data-gran="year" data-i18n="main.g_year"></button>
-                </div>
-                <div class="seg" id="rangeSeg" role="group" data-i18n-aria="main.range_label" aria-label="Range"></div>
-              </div>
-            </div>
-            <div id="mainChart" class="chart-area"></div>
-            <div id="mainLegend" class="legend"></div>
-            <div id="mainCaption" class="caption secondary main-caption"></div>
-          </div>
-          <div class="card chart-card recent-card" id="recentCard">
-            <div class="card-head">
-              <div class="body-strong" data-i18n="recent.title"></div>
-              <button id="recentAll" class="btn btn-link" type="button"><span data-i18n="recent.all"></span></button>
-            </div>
-            <div id="recentList"></div>
-            <div class="caption secondary recent-note" data-i18n="recent.note"></div>
-            <div id="recentDoiHint" class="caption recent-hint" hidden></div>
-          </div>
-          <div class="insights">
-            <div class="card chart-card" id="forecastCard">
+          <div class="panel-row">
+            <div class="card chart-card recent-card" id="recentCard">
               <div class="card-head">
-                <div class="body-strong" data-i18n="fc.title"></div>
-                <span class="badge-est" data-i18n="fc.badge"></span>
-              </div>
-              <div id="fcBody"></div>
-            </div>
-            <div class="card chart-card" id="risersCard">
-              <div class="card-head">
-                <div class="body-strong" data-i18n="ris.title"></div>
-                <div class="seg" id="risSeg" role="group" data-i18n-aria="ris.range_label" aria-label="Window">
-                  <button data-days="30" data-i18n="ris.d30"></button>
-                  <button data-days="90" data-i18n="ris.d90"></button>
+                <div class="body-strong" data-i18n="recent.title"></div>
+                <div class="card-tools">
+                  <button id="recentCal" class="btn btn-link" type="button"><span data-i18n="recent.open_cal"></span></button>
+                  <button id="recentAll" class="btn btn-link" type="button"><span id="recentAllText" data-i18n="recent.all"></span></button>
                 </div>
               </div>
-              <div id="risBody"></div>
-              <div id="hNext" class="hnext"></div>
+              <div id="recentList"></div>
+            </div>
+            <div class="card chart-card mini-card" id="miniCard">
+              <div class="card-head">
+                <div class="body-strong" data-i18n="mini.title"></div>
+                <button id="miniOpen" class="btn btn-link" type="button"><span data-i18n="mini.open"></span></button>
+              </div>
+              <div id="miniChart" class="chart-area mini-area"></div>
+              <div id="miniCaption" class="caption secondary mini-caption"></div>
             </div>
           </div>
+          <div id="recentDoiHint" class="caption recent-hint" hidden></div>
         </div>
       </section>
 
@@ -183,11 +164,12 @@
         </div>
         <div id="citingData" hidden>
           <div class="dist-grid">
-            <div class="card chart-card"><div class="card-head"><div class="body-strong" data-i18n="dist.country"></div></div><div id="distCountry" class="hbars"></div></div>
-            <div class="card chart-card"><div class="card-head"><div class="body-strong" data-i18n="dist.venue"></div></div><div id="distVenue" class="hbars"></div></div>
+            <div class="card chart-card"><div class="card-head"><div class="body-strong" data-i18n="dist.country"></div></div><div id="distCountry" class="chart-area hbars"></div></div>
+            <div class="card chart-card"><div class="card-head"><div class="body-strong" data-i18n="dist.venue"></div></div><div id="distVenue" class="chart-area hbars"></div></div>
           </div>
           <div id="distCaption" class="caption secondary dist-caption"></div>
           <div class="card table-card">
+            <div id="citingChips" class="filter-chips" hidden></div>
             <div class="toolbar">
               <label class="search"><span class="icon">&#xE721;</span><input id="citingSearch" type="search" data-i18n-placeholder="cw.search" autocomplete="off"></label>
               <select id="citingArticle" class="input select citing-select" data-i18n-aria="cw.article_filter" aria-label="Article"></select>
@@ -207,6 +189,184 @@
               </table>
             </div>
             <div class="more-row" id="citingMoreRow" hidden><button id="citingMore" class="btn"><span data-i18n="cw.more"></span></button></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="page-analysis" class="page" hidden>
+        <div id="analysisEmpty" class="card empty" hidden>
+          <div class="empty-icon icon">&#xE9D2;</div>
+          <div class="subtitle" data-i18n="an.empty_title"></div>
+          <p class="secondary" data-i18n="an.empty_text"></p>
+        </div>
+        <div id="analysisData" hidden>
+          <div class="an-head">
+            <div class="seg" id="anRange" role="group" data-i18n-aria="an.range_label" aria-label="Period">
+              <button data-range="30d" data-i18n="an.r_30d"></button>
+              <button data-range="90d" data-i18n="an.r_90d"></button>
+              <button data-range="12m" data-i18n="an.r_12m"></button>
+              <button data-range="all" data-i18n="an.r_all"></button>
+              <button data-range="custom" data-i18n="an.r_custom"></button>
+            </div>
+            <div class="range-inputs an-custom" id="anCustom" hidden>
+              <input id="anFrom" class="input input-date" type="date" data-i18n-aria="rep.from" aria-label="From">
+              <span class="secondary">&ndash;</span>
+              <input id="anTo" class="input input-date" type="date" data-i18n-aria="rep.to" aria-label="To">
+            </div>
+            <span class="an-spacer"></span>
+            <button id="anReport" class="btn" type="button"><span class="icon">&#xE9F9;</span><span data-i18n="an.report"></span></button>
+          </div>
+          <div class="tabs" id="anTabs" role="tablist" data-i18n-aria="an.tabs_label" aria-label="Analysis">
+            <button class="tab" role="tab" data-tab="calendar" id="tab-calendar" aria-controls="anTab-calendar" data-i18n="an.tab_calendar"></button>
+            <button class="tab" role="tab" data-tab="trend" id="tab-trend" aria-controls="anTab-trend" data-i18n="an.tab_trend"></button>
+            <button class="tab" role="tab" data-tab="articles" id="tab-articles" aria-controls="anTab-articles" data-i18n="an.tab_articles"></button>
+            <button class="tab" role="tab" data-tab="indices" id="tab-indices" aria-controls="anTab-indices" data-i18n="an.tab_indices"></button>
+          </div>
+
+          <div class="an-tab" id="anTab-trend" role="tabpanel" aria-labelledby="tab-trend" hidden>
+            <div class="card chart-card">
+              <div class="card-head"><h2 class="body-strong an-q" data-i18n="an.q_trend"></h2></div>
+              <div id="chTrend" class="chart-area an-chart"></div>
+              <div id="trendCaption" class="caption secondary an-caption"></div>
+              <div id="trendStats" class="fc-main"></div>
+              <div class="fc-goal">
+                <label class="caption secondary" for="fcGoal" data-i18n="fc.goal_label"></label>
+                <input id="fcGoal" class="input input-num" type="number" min="1" step="1" inputmode="numeric">
+                <button id="fcGoalSave" class="btn"><span data-i18n="fc.goal_save"></span></button>
+                <div id="fcGoalText" class="fc-goal-text"></div>
+              </div>
+            </div>
+            <div class="card chart-card">
+              <div class="card-head">
+                <h2 class="body-strong an-q" data-i18n="an.q_period"></h2>
+                <div class="group-by">
+                  <span class="caption secondary" data-i18n="main.group_label"></span>
+                  <div class="seg seg-group" id="anGran" role="group" data-i18n-aria="main.group_label" aria-label="Group by">
+                    <button data-gran="day" data-i18n="main.g_day"></button>
+                    <button data-gran="month" data-i18n="main.g_month"></button>
+                    <button data-gran="year" data-i18n="main.g_year"></button>
+                  </div>
+                </div>
+              </div>
+              <div id="chPeriod" class="chart-area an-chart-sm"></div>
+              <div id="periodCaption" class="caption secondary an-caption"></div>
+            </div>
+          </div>
+
+          <div class="an-tab" id="anTab-articles" role="tabpanel" aria-labelledby="tab-articles" hidden>
+            <div class="card chart-card">
+              <div class="card-head">
+                <h2 class="body-strong an-q" data-i18n="an.q_risers"></h2>
+                <div class="seg" id="risSeg" role="group" data-i18n-aria="ris.range_label" aria-label="Window">
+                  <button data-days="30" data-i18n="ris.d30"></button>
+                  <button data-days="90" data-i18n="ris.d90"></button>
+                </div>
+              </div>
+              <div id="risScholarHead" class="ris-head body-strong"></div>
+              <div id="chRisers" class="chart-area an-chart-risers"></div>
+              <div id="risCaption" class="caption secondary an-caption"></div>
+              <div id="risOa" class="ris-oa" hidden>
+                <div id="risOaHead" class="ris-head body-strong"></div>
+                <div id="chRisersOa" class="chart-area an-chart-risers"></div>
+              </div>
+              <div id="risLag" class="caption lag-note" hidden></div>
+              <div id="risEmpty" class="an-note" hidden></div>
+            </div>
+            <div class="card chart-card">
+              <div class="card-head"><h2 class="body-strong an-q" data-i18n="gap.q"></h2></div>
+              <div id="gapList" class="gap-list"></div>
+              <div class="caption secondary an-caption" data-i18n="gap.note"></div>
+            </div>
+            <div class="card chart-card">
+              <div class="card-head"><h2 class="body-strong an-q" data-i18n="an.q_stacked"></h2></div>
+              <div id="chStacked" class="chart-area an-chart"></div>
+              <div id="stackedCaption" class="caption secondary an-caption"></div>
+            </div>
+          </div>
+
+          <div class="an-tab" id="anTab-indices" role="tabpanel" aria-labelledby="tab-indices" hidden>
+            <div class="card chart-card">
+              <div class="card-head"><h2 class="body-strong an-q" data-i18n="an.q_indices"></h2></div>
+              <div id="chIndex" class="chart-area an-chart-sm"></div>
+              <div id="indexCaption" class="caption secondary an-caption"></div>
+            </div>
+            <div class="card chart-card">
+              <div class="card-head"><h2 class="body-strong an-q" data-i18n="an.q_next"></h2></div>
+              <div id="nextLists" class="next-grid"></div>
+            </div>
+          </div>
+
+          <div class="an-tab" id="anTab-calendar" role="tabpanel" aria-labelledby="tab-calendar">
+            <div class="cal-filters">
+              <div class="group-by">
+                <span class="caption secondary" data-i18n="cal.source"></span>
+                <div class="seg seg-group" id="calSource" role="group" data-i18n-aria="cal.source" aria-label="Source">
+                  <button data-source="all" data-i18n="cal.s_all"></button>
+                  <button data-source="scholar" data-i18n="cal.s_scholar"></button>
+                  <button data-source="openalex" data-i18n="cal.s_openalex"></button>
+                </div>
+              </div>
+              <label class="group-by">
+                <span class="caption secondary" data-i18n="cal.article"></span>
+                <select id="calArticle" class="input select cal-article" data-i18n-aria="cal.article" aria-label="Article"></select>
+              </label>
+              <button id="calUndatedBtn" class="btn" type="button" hidden><span id="calUndatedText"></span></button>
+              <span class="cal-legend" aria-hidden="true">
+                <span><i class="dot sc"></i><span data-i18n="cal.lg_scholar"></span></span>
+                <span><i class="dot oa"></i><span data-i18n="cal.lg_openalex"></span></span>
+                <span><i class="dot dn"></i><span data-i18n="cal.lg_down"></span></span>
+                <span><i class="hatch-sw"></i><span data-i18n="cal.lg_lag"></span></span>
+              </span>
+            </div>
+            <div class="cal-layout">
+              <div class="card chart-card cal-card">
+                <div class="cal-nav">
+                  <button id="mcPrev" class="btn btn-icon" type="button" data-i18n-aria="cal.prev_month" aria-label="Previous month"><span class="icon">&#xE76B;</span></button>
+                  <select id="mcMonth" class="input select mc-month" data-i18n-aria="cal.month" aria-label="Month"></select>
+                  <input id="mcYear" class="input input-num mc-year" type="number" min="1990" max="2100" step="1" data-i18n-aria="cal.year" aria-label="Year">
+                  <button id="mcNext" class="btn btn-icon" type="button" data-i18n-aria="cal.next_month" aria-label="Next month"><span class="icon">&#xE76C;</span></button>
+                  <span class="an-spacer"></span>
+                  <button id="mcToday" class="btn" type="button"><span data-i18n="cal.today"></span></button>
+                  <button id="mcWhole" class="btn" type="button"><span data-i18n="cal.whole_month"></span></button>
+                </div>
+                <div id="mcGrid" class="mc" role="grid"></div>
+                <div id="mcLag" class="caption lag-note" hidden></div>
+                <div class="caption secondary mc-hint" data-i18n="cal.hint"></div>
+              </div>
+              <div class="card chart-card cal-detail" id="calDetail" aria-live="polite">
+                <div class="card-head">
+                  <h2 id="cdTitle" class="body-strong an-q"></h2>
+                  <button id="cdCiting" class="btn btn-link" type="button" hidden><span data-i18n="an.open_citing"></span></button>
+                </div>
+                <div id="cdBody"></div>
+                <div class="more-row" id="cdMoreRow" hidden><button id="cdMore" class="btn"><span data-i18n="cw.more"></span></button></div>
+              </div>
+            </div>
+            <div class="card chart-card" id="calUndatedCard" hidden>
+              <div class="card-head">
+                <div id="cuTitle" class="body-strong"></div>
+                <button id="cuClose" class="btn btn-icon" type="button" data-i18n-aria="scan.close" aria-label="Close"><span class="icon">&#xE711;</span></button>
+              </div>
+              <div class="caption secondary" id="cuNote"></div>
+              <div id="cuList" class="tl"></div>
+            </div>
+            <div class="card chart-card">
+              <div class="card-head">
+                <h2 class="body-strong an-q" data-i18n="cal.q_year"></h2>
+                <div class="year-nav">
+                  <button id="calPrev" class="btn btn-icon" type="button" data-i18n-aria="an.year_prev" aria-label="Previous year"><span class="icon">&#xE76B;</span></button>
+                  <span id="calYear" class="body-strong year-label"></span>
+                  <button id="calNext" class="btn btn-icon" type="button" data-i18n-aria="an.year_next" aria-label="Next year"><span class="icon">&#xE76C;</span></button>
+                </div>
+              </div>
+              <div id="chCalendar" class="chart-area an-chart-cal"></div>
+              <div id="calCaption" class="caption secondary an-caption"></div>
+            </div>
+            <div class="card chart-card">
+              <div class="card-head"><h2 class="body-strong an-q" data-i18n="cal.q_history"></h2></div>
+              <div id="chCalTrend" class="chart-area an-chart-sm"></div>
+              <div id="calTrendCaption" class="caption secondary an-caption"></div>
+            </div>
           </div>
         </div>
       </section>
@@ -247,10 +407,25 @@
             <div class="stext"><div class="body" data-i18n="rep.citing_title"></div><div class="caption secondary" data-i18n="rep.citing_sub"></div></div>
             <label class="switch"><input type="checkbox" id="repCiting" checked><span class="switch-track"><span class="switch-thumb"></span></span><span class="switch-label" data-i18n-on="settings.on" data-i18n-off="settings.off"></span></label>
           </div>
-          <div class="scard">
+          <div class="scard rep-charts-card">
             <span class="icon sicon">&#xE9D9;</span>
-            <div class="stext"><div class="body" data-i18n="rep.charts_title"></div><div class="caption secondary" data-i18n="rep.charts_sub"></div></div>
-            <label class="switch"><input type="checkbox" id="repCharts" checked><span class="switch-track"><span class="switch-thumb"></span></span><span class="switch-label" data-i18n-on="settings.on" data-i18n-off="settings.off"></span></label>
+            <div class="stext">
+              <div class="body" data-i18n="rep.charts_title"></div>
+              <div class="caption secondary" data-i18n="rep.charts_sub"></div>
+              <div class="rep-checks" id="repCharts" role="group" data-i18n-aria="rep.charts_title" aria-label="Charts">
+                <label class="check"><input type="checkbox" data-chart="trend" checked><span class="check-box"></span><span data-i18n="rep.c_trend"></span></label>
+                <label class="check"><input type="checkbox" data-chart="period" checked><span class="check-box"></span><span data-i18n="rep.c_period"></span></label>
+                <label class="check"><input type="checkbox" data-chart="article" checked><span class="check-box"></span><span data-i18n="rep.c_article"></span></label>
+                <label class="check"><input type="checkbox" data-chart="index" checked><span class="check-box"></span><span data-i18n="rep.c_index"></span></label>
+                <label class="check"><input type="checkbox" data-chart="calendar"><span class="check-box"></span><span data-i18n="rep.c_calendar"></span></label>
+                <label class="check"><input type="checkbox" data-chart="dist"><span class="check-box"></span><span data-i18n="rep.c_dist"></span></label>
+              </div>
+            </div>
+          </div>
+          <div class="sgroup-title body-strong" data-i18n="rep.group_preview"></div>
+          <div class="card chart-card rep-preview">
+            <div id="repPreviewSummary" class="caption secondary"></div>
+            <div id="repPreviewGrid" class="prev-grid"></div>
           </div>
           <div class="sactions"><button id="repCreate" class="btn btn-primary"><span class="icon">&#xE8A5;</span><span id="repCreateText" data-i18n="rep.create"></span></button></div>
           <div class="caption secondary hint" data-i18n="rep.hint"></div>
@@ -402,6 +577,7 @@
               </div>
               <div class="caption secondary" data-i18n="keys.email_note"></div>
               <div id="keyOaStatus" class="caption key-status"></div>
+              <div id="keyBudget" class="caption key-status warn" hidden></div>
             </div>
           </div>
           <div class="caption secondary hint" data-i18n="keys.storage_note"></div>
@@ -469,6 +645,7 @@
         <div id="scanNow" class="scan-now"></div>
       </section>
       <section id="scanSummary" class="scan-summary" hidden></section>
+      <section id="scanBudget" class="scan-summary budget-note" hidden></section>
       <ul id="scanList" class="scan-list"></ul>
       <details id="scanDetails" class="scan-details">
         <summary class="caption secondary" data-i18n="scan.details"></summary>
@@ -483,6 +660,8 @@
   <div id="tooltip" class="tooltip" hidden></div>
   <script src="i18n.js"></script>
   <script src="countries.js"></script>
+  <script src="vendor/echarts.min.js"></script>
+  <script src="charts.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

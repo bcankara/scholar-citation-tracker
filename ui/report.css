@@ -10,6 +10,24 @@
   --accent-soft: #e6f0fa;
   --pos: #0f7b0f;
   --neg: #c42b1c;
+  /* tokens read by charts.js (the same chart builders as the app window) */
+  --font-text: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --text: #1a1a1a;
+  --text-2: #4d4d4d;
+  --text-3: #7a7a7a;
+  --grid: rgba(0, 0, 0, 0.1);
+  --pop-bg: #ffffff;
+  --layer-stroke: rgba(0, 0, 0, 0.12);
+  --chart-hist: #6a9fd0;
+  --chart-fc: #8764b8;
+  --chart-surface: #ffffff;
+  --chart-cell: #ececec;
+  --chart-c1: #0067c0;
+  --chart-c2: #038387;
+  --chart-c3: #8764b8;
+  --chart-c4: #ca5010;
+  --chart-c5: #107c10;
+  --chart-c6: #8a8886;
 }
 * { box-sizing: border-box; }
 html, body { background: #fff; margin: 0; }
@@ -78,3 +96,13 @@ td.date { white-space: nowrap; color: var(--ink-2); }
 .method p { color: var(--ink-2); }
 
 @page { size: A4; margin: 0.7in 0.6in; }
+
+/* ECharts charts (SVG) */
+.chart-box { display: block; max-width: 100%; }
+.chart-box svg { display: block; }
+.chart p.cap, p.cap { margin: 4pt 0 0; }
+.metrics.three { grid-template-columns: repeat(3, 1fr); margin: 6pt 0 0; }
+section h2 + .chart { margin-top: 4pt; }
+.chart + h2 { margin-top: 14pt; }
+
+h2, h3 { break-after: avoid; page-break-after: avoid; }

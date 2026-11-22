@@ -13,6 +13,18 @@ use crate::backfill::USER_AGENT;
 
 const SERVICE: &str = "scholar-citation-tracker";
 
+/// Credential Manager service name. Debug builds honour `SCT_KEYRING_SERVICE`, so a test instance with its
+/// own identity can use its own entries and never read or delete the keys of an installed app.
+fn service() -> String {
+    #[cfg(debug_assertions)]
+    if let Ok(s) = std::env::var("SCT_KEYRING_SERVICE") {
+        if !s.trim().is_empty() {
+            return s.trim().to_string();
+        }
+    }
+    SERVICE.to_string()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeyKind {
     OpenAlex,
@@ -131,7 +143,7 @@ pub fn redact(text: &str, extra: &[&str]) -> String {
 // ------------------------------------------------------------------ storage
 
 fn entry(kind: KeyKind) -> Result<keyring::Entry, String> {
-    keyring::Entry::new(SERVICE, kind.account()).map_err(|e| redact(&e.to_string(), &[]))
+    keyring::Entry::new(&service(), kind.account()).map_err(|e| redact(&e.to_string(), &[]))
 }
 
 /// The stored key, or `None` when there is none (or the store cannot be read).
@@ -164,7 +176,7 @@ pub fn delete(kind: KeyKind) -> Result<(), String> {
 /// One-time clean-up: versions before 1.1.1 could keep a key for a service that is no longer
 /// used. Removes that Credential Manager entry; a missing entry or an unreadable store is ignored.
 pub fn delete_legacy_semantic_key() {
-    if let Ok(e) = keyring::Entry::new(SERVICE, "semantic-scholar-api-key") {
+    if let Ok(e) = keyring::Entry::new(&service(), "semantic-scholar-api-key") {
         let _ = e.delete_credential();
     }
 }

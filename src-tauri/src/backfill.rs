@@ -773,6 +773,8 @@ pub enum ApiError {
     Parse(String),
     /// The user stopped the run.
     Cancelled,
+    /// OpenAlex's daily budget is spent (HTTP 429, reason `daily_budget`).
+    DailyBudget,
 }
 
 impl ApiError {
@@ -783,6 +785,7 @@ impl ApiError {
             ApiError::Network(m) => m.clone(),
             ApiError::Parse(m) => i18n::trf(lang, "bf.err_parse", &[m]),
             ApiError::Cancelled => i18n::tr(lang, "bf.err_cancelled").to_string(),
+            ApiError::DailyBudget => i18n::tr(lang, "bf.err_budget").to_string(),
         };
         secrets::redact(&text, &[])
     }
@@ -841,6 +844,8 @@ pub struct Http {
     rejected: Mutex<Vec<KeyKind>>,
     /// Set by the user's "Stop": requests end as soon as they notice it.
     cancel: Arc<AtomicBool>,
+    /// OpenAlex said the daily budget is spent: no further request is made in this run.
+    budget_hit: AtomicBool,
 }
 
 impl Http {
@@ -856,7 +861,13 @@ impl Http {
             keys: Mutex::new(keys),
             rejected: Mutex::new(Vec::new()),
             cancel: Arc::new(AtomicBool::new(false)),
+            budget_hit: AtomicBool::new(false),
         })
+    }
+
+    /// True once OpenAlex has said the daily budget is spent.
+    pub fn budget_hit(&self) -> bool {
+        self.budget_hit.load(Ordering::SeqCst)
     }
 
     /// Uses `flag` as the stop signal of this client.
@@ -914,6 +925,9 @@ impl Http {
             if self.is_cancelled() {
                 return Err(ApiError::Cancelled);
             }
+            if self.budget_hit() {
+                return Err(ApiError::DailyBudget);
+            }
             (req_info.say)(Step::Request {
                 source: OPENALEX_LABEL,
                 what: req_info.what,
@@ -945,10 +959,25 @@ impl Http {
                 continue;
             }
             if code == 429 || code == 503 {
+                let retry_after = resp
+                    .headers()
+                    .get("retry-after")
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|v| v.trim().parse::<u64>().ok());
+                if code == 429 {
+                    let body = resp.text().await.unwrap_or_default();
+                    if parse_429_reason(&body) == Limit::DailyBudget {
+                        // nothing helps until the budget resets: stop cleanly instead of waiting in vain
+                        self.budget_hit.store(true, Ordering::SeqCst);
+                        return Err(ApiError::DailyBudget);
+                    }
+                }
                 match backoff.get(attempt) {
                     Some(secs) => {
                         attempt += 1;
-                        self.wait_out(*secs, attempt, req_info.say).await?;
+                        // a per-second limit: wait for Retry-After when the server names it (at most two minutes)
+                        let wait = (*secs).max(retry_after.unwrap_or(0).min(120));
+                        self.wait_out(wait, attempt, req_info.say).await?;
                         continue;
                     }
                     None => return Err(ApiError::RateLimited),
@@ -1376,6 +1405,8 @@ pub struct RunSummary {
     pub new_citing: Vec<NewCiting>,
     /// The user stopped the run before it was complete.
     pub cancelled: bool,
+    /// OpenAlex's daily budget ran out: the run stopped cleanly and goes on after the reset.
+    pub paused_budget: bool,
 }
 
 /// A newly found citing work, as the notification needs it.
@@ -1441,6 +1472,7 @@ pub async fn run_articles(
     let mut first_error: Option<String> = None;
     let mut notes: Vec<String> = Vec::new();
     let mut cancelled = false;
+    let mut paused = false;
 
     let overrides = db::all_overrides(&conn)?;
     // The author set is only needed for articles that are matched automatically.
@@ -1491,6 +1523,10 @@ pub async fn run_articles(
             cancelled = true;
             break;
         }
+        if http.budget_hit() {
+            paused = true;
+            break;
+        }
         let k = i + 1;
         let (key, title) = (target.key.clone(), target.title.clone());
         let say = |step: Step<'_>| scan.step(step, &key, &title);
@@ -1514,6 +1550,11 @@ pub async fn run_articles(
         if http.is_cancelled() {
             // The article in progress is dropped: a half-read citing list must not be stored.
             cancelled = true;
+            break;
+        }
+        if http.budget_hit() {
+            // Same for a spent daily budget: no partial article; what is stored stays, the rest waits.
+            paused = true;
             break;
         }
         match decide(&target.key, oa) {
@@ -1578,8 +1619,11 @@ pub async fn run_articles(
         notes.push(i18n::tr(lang, key_rejected_msg(kind)).to_string());
     }
     sum.cancelled = cancelled;
+    sum.paused_budget = paused;
     let status = if cancelled {
         "cancelled"
+    } else if paused {
+        "paused_budget"
     } else if sum.failed == 0 {
         "ok"
     } else if sum.failed == n {
@@ -1589,6 +1633,8 @@ pub async fn run_articles(
     };
     let mut message = if cancelled {
         i18n::trf(lang, "bf.msg_cancelled", &[&scan.done.load(Ordering::SeqCst).to_string(), &n.to_string()])
+    } else if paused {
+        i18n::trf(lang, "bf.msg_paused_budget", &[&sum.matched.to_string(), &n.to_string()])
     } else {
         i18n::trf(
             lang,
@@ -1641,9 +1687,14 @@ async fn refresh_articles(
     };
     let mut first_error: Option<String> = None;
     let mut cancelled = false;
+    let mut paused = false;
     for (i, target) in targets.iter().enumerate() {
         if http.is_cancelled() {
             cancelled = true;
+            break;
+        }
+        if http.budget_hit() {
+            paused = true;
             break;
         }
         let k = i + 1;
@@ -1653,6 +1704,10 @@ async fn refresh_articles(
         let fetched = oa_citing(http, &target.external_id, &say, lang).await;
         if http.is_cancelled() {
             cancelled = true;
+            break;
+        }
+        if http.budget_hit() {
+            paused = true;
             break;
         }
         match fetched {
@@ -1682,8 +1737,11 @@ async fn refresh_articles(
         }
     }
     sum.cancelled = cancelled;
+    sum.paused_budget = paused;
     let status = if cancelled {
         "cancelled"
+    } else if paused {
+        "paused_budget"
     } else if sum.failed == 0 {
         "ok"
     } else if sum.failed == n {
@@ -1693,6 +1751,8 @@ async fn refresh_articles(
     };
     let mut message = if cancelled {
         i18n::trf(lang, "bf.msg_cancelled", &[&scan.done.load(Ordering::SeqCst).to_string(), &n.to_string()])
+    } else if paused {
+        i18n::trf(lang, "bf.msg_paused_budget", &[&sum.matched.to_string(), &n.to_string()])
     } else {
         i18n::trf(
             lang,
@@ -1715,6 +1775,157 @@ async fn refresh_articles(
     let message = secrets::redact(&message, &[]);
     db::finish_run(&conn, run_id, Utc::now(), status, (sum.matched, sum.records), &message)?;
     Ok(Some(sum))
+}
+
+// ------------------------------------------------------------ OpenAlex daily budget
+
+/// Why OpenAlex answered HTTP 429 (the `reason` of its error body).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Limit {
+    /// The free daily budget (counted per IP address without a key) is spent: nothing helps until it resets.
+    DailyBudget,
+    /// Too many requests per second: wait for `Retry-After` and go on.
+    PerSecond,
+    /// Anything else (a too broad query ...): handled like a short rate limit.
+    Other,
+}
+
+pub fn parse_429_reason(body: &str) -> Limit {
+    let reason = serde_json::from_str::<serde_json::Value>(body).ok().and_then(|v| {
+        v.get("reason")
+            .or_else(|| v.get("error").and_then(|e| e.get("reason")))
+            .and_then(|r| r.as_str())
+            .map(str::to_string)
+    });
+    match reason.as_deref() {
+        Some("daily_budget") => Limit::DailyBudget,
+        Some("requests_per_second") => Limit::PerSecond,
+        Some(_) => Limit::Other,
+        None if body.contains("daily_budget") => Limit::DailyBudget,
+        None => Limit::Other,
+    }
+}
+
+/// The budget resets at midnight UTC: the next midnight strictly after `now`.
+pub fn next_budget_reset(now: chrono::DateTime<Utc>) -> chrono::DateTime<Utc> {
+    let day = now.date_naive().succ_opt().unwrap_or(now.date_naive());
+    day.and_hms_opt(0, 0, 0).map(|n| n.and_utc()).unwrap_or(now + chrono::Duration::days(1))
+}
+
+/// A paused run starts again this long after the reset (not at the very second).
+pub const RESUME_DELAY_MIN: i64 = 5;
+
+pub const STATE_BUDGET: &str = "openalex_budget_pause";
+const STATE_BUDGET_NOTIFIED: &str = "openalex_budget_notified_day";
+
+/// A run that stopped because the daily budget was spent, and when it goes on.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BudgetPause {
+    /// When the budget resets (midnight UTC) and when the run resumes (a few minutes later).
+    pub resets_at: String,
+    pub resume_at: String,
+    /// "missing" | "refresh": what to run again.
+    pub mode: String,
+    /// An API key was in use (the notice differs: the key's own budget is spent).
+    pub has_key: bool,
+}
+
+pub fn make_pause(now: chrono::DateTime<Utc>, mode: &str, has_key: bool) -> BudgetPause {
+    let reset = next_budget_reset(now);
+    BudgetPause {
+        resets_at: db::ts(reset),
+        resume_at: db::ts(reset + chrono::Duration::minutes(RESUME_DELAY_MIN)),
+        mode: if mode == "refresh" { "refresh" } else { "missing" }.to_string(),
+        has_key,
+    }
+}
+
+pub fn save_pause(conn: &rusqlite::Connection, p: &BudgetPause) -> Result<()> {
+    db::set_state(conn, STATE_BUDGET, &serde_json::to_string(p)?)
+}
+
+pub fn load_pause(conn: &rusqlite::Connection) -> Result<Option<BudgetPause>> {
+    Ok(db::get_state(conn, STATE_BUDGET)?.and_then(|s| serde_json::from_str(&s).ok()))
+}
+
+pub fn clear_pause(conn: &rusqlite::Connection) -> Result<()> {
+    db::delete_state(conn, STATE_BUDGET)
+}
+
+/// The pause while its resume time is still ahead: nothing automatic may ask OpenAlex before.
+pub fn pause_active(conn: &rusqlite::Connection, now: chrono::DateTime<Utc>) -> Result<Option<BudgetPause>> {
+    Ok(load_pause(conn)?.filter(|p| db::parse_ts(&p.resume_at).is_some_and(|t| t > now)))
+}
+
+/// The pause once its resume time has come (it is then due to run again).
+pub fn pause_due(conn: &rusqlite::Connection, now: chrono::DateTime<Utc>) -> Result<Option<BudgetPause>> {
+    Ok(load_pause(conn)?.filter(|p| db::parse_ts(&p.resume_at).is_none_or(|t| t <= now)))
+}
+
+/// Records the pause, tells the window, and (user-started scans only, once per day) shows a notification.
+fn on_budget_pause(app: &AppHandle, path: &Path, mode_name: &str, has_key: bool, user: bool, notify: bool, lang: &str) {
+    use tauri_plugin_notification::NotificationExt;
+    let now = Utc::now();
+    let pause = make_pause(now, mode_name, has_key);
+    let conn = match db::open(path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("budget pause not stored: {e:#}");
+            return;
+        }
+    };
+    if let Err(e) = save_pause(&conn, &pause) {
+        eprintln!("budget pause not stored: {e:#}");
+    }
+    let _ = app.emit("openalex-budget", &pause);
+    if user && notify {
+        let today = now.format("%Y-%m-%d").to_string();
+        if db::get_state(&conn, STATE_BUDGET_NOTIFIED).ok().flatten().as_deref() != Some(today.as_str()) {
+            let _ = db::set_state(&conn, STATE_BUDGET_NOTIFIED, &today);
+            let body = i18n::tr(lang, if has_key { "notif.budget_body_key" } else { "notif.budget_body" });
+            if let Err(e) = app.notification().builder().title(i18n::tr(lang, "notif.budget_title")).body(body).show() {
+                eprintln!("notification failed: {e}");
+            }
+        }
+    }
+}
+
+/// Background loop: once a minute, runs a paused scan again when its resume time has come.
+pub async fn budget_resume_loop(app: AppHandle) {
+    tokio::time::sleep(Duration::from_secs(30)).await;
+    loop {
+        resume_if_due(&app).await;
+        tokio::time::sleep(Duration::from_secs(60)).await;
+    }
+}
+
+async fn resume_if_due(app: &AppHandle) {
+    let Some(state) = app.try_state::<Arc<Shared>>() else {
+        return;
+    };
+    let sh = state.inner().clone();
+    let (enabled, path) = {
+        let s = lock(&sh.settings);
+        (s.backfill_enabled && !s.profile_id.is_empty() && !s.orcid.is_empty(), db::db_path_in(&s.data_path()))
+    };
+    if !enabled || sh.is_running() || !path.exists() {
+        return;
+    }
+    let due = tauri::async_runtime::spawn_blocking(move || -> anyhow::Result<Option<BudgetPause>> {
+        let conn = db::open(&path)?;
+        let p = pause_due(&conn, Utc::now())?;
+        if p.is_some() {
+            clear_pause(&conn)?;
+        }
+        Ok(p)
+    })
+    .await
+    .ok()
+    .and_then(|r| r.ok())
+    .flatten();
+    if let Some(p) = due {
+        start_as(app, &sh, if p.mode == "refresh" { Mode::Refresh } else { Mode::Missing }, false);
+    }
 }
 
 /// Minimum time between two daily refreshes.
@@ -1757,6 +1968,9 @@ async fn refresh_if_due(app: &AppHandle) {
     }
     let due = tauri::async_runtime::spawn_blocking(move || -> anyhow::Result<bool> {
         let conn = db::open(&path)?;
+        if pause_active(&conn, Utc::now())?.is_some() {
+            return Ok(false);
+        }
         let last = db::get_state(&conn, db::STATE_REFRESH)?.and_then(|s| db::parse_ts(&s));
         Ok(refresh_due(true, last, Utc::now(), db::has_refresh_targets(&conn)?))
     })
@@ -1903,6 +2117,11 @@ pub enum Start {
 
 /// Starts a background run unless one is already active or the ORCID iD is missing.
 pub fn start(app: &AppHandle, sh: &Arc<Shared>, mode: Mode) -> Start {
+    start_as(app, sh, mode, false)
+}
+
+/// Starts a run; `user` tells whether the person asked for it (only then a spent budget is also shown as a notification).
+pub fn start_as(app: &AppHandle, sh: &Arc<Shared>, mode: Mode, user: bool) -> Start {
     if lock(&sh.settings).orcid.is_empty() {
         return Start::NoOrcid;
     }
@@ -1923,6 +2142,7 @@ pub fn start(app: &AppHandle, sh: &Arc<Shared>, mode: Mode) -> Start {
         let lang = settings.language.clone();
         let path = db::db_path_in(&settings.data_path());
         let keys = tauri::async_runtime::spawn_blocking(secrets::load_keys).await.unwrap_or_default();
+        let has_key = keys.openalex.is_some();
         let http = match Http::new(keys) {
             Ok(h) => h.with_cancel(sh.cancel.clone()),
             Err(e) => {
@@ -1957,15 +2177,25 @@ pub fn start(app: &AppHandle, sh: &Arc<Shared>, mode: Mode) -> Start {
                 let _ = app.emit("api-key-rejected", kind.as_str());
             }
         }
+        match &result {
+            Ok(Some(sum)) if sum.paused_budget => on_budget_pause(&app, &path, mode_name, has_key, user, settings.notify, &lang),
+            Ok(_) => {
+                // a run that went through means the budget is back
+                if let Ok(c) = db::open(&path) {
+                    let _ = clear_pause(&c);
+                }
+            }
+            Err(_) => {}
+        }
         if let Ok(Some(sum)) = &result {
-            if stores_citing && !sum.cancelled && sum.failed < sum.total {
+            if stores_citing && !sum.cancelled && !sum.paused_budget && sum.failed < sum.total {
                 let p = path.clone();
                 let _ = tauri::async_runtime::spawn_blocking(move || {
                     db::open(&p).and_then(|c| db::set_state(&c, db::STATE_REFRESH, &db::ts(Utc::now())))
                 })
                 .await;
             }
-            if settings.notify && !sum.cancelled {
+            if settings.notify && !sum.cancelled && !sum.paused_budget {
                 notify_new_citing(&app, &lang, sum);
             }
         }
@@ -2113,11 +2343,13 @@ pub fn kick_after_snapshot(app: &AppHandle) {
         return;
     };
     let sh = state.inner().clone();
-    let enabled = {
+    let (enabled, path) = {
         let s = lock(&sh.settings);
-        s.backfill_enabled && !s.profile_id.is_empty()
+        (s.backfill_enabled && !s.profile_id.is_empty(), db::db_path_in(&s.data_path()))
     };
-    if enabled {
+    // a spent daily budget is not asked again before the reset
+    let paused = path.exists() && db::open(&path).and_then(|c| pause_active(&c, Utc::now())).ok().flatten().is_some();
+    if enabled && !paused {
         start(app, &sh, Mode::Missing);
     }
 }
@@ -2992,5 +3224,163 @@ mod tests {
         assert_eq!(before, after);
         drop(conn);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ------------------------------------------------ OpenAlex daily budget
+
+    #[test]
+    fn the_429_reason_is_read_from_the_body() {
+        assert_eq!(parse_429_reason(r#"{"error":"Rate limit exceeded","reason":"daily_budget","message":"x"}"#), Limit::DailyBudget);
+        assert_eq!(parse_429_reason(r#"{"reason":"requests_per_second"}"#), Limit::PerSecond);
+        assert_eq!(parse_429_reason(r#"{"reason":"broad_boolean_query"}"#), Limit::Other);
+        assert_eq!(parse_429_reason(r#"{"reason":"wide_or_filter"}"#), Limit::Other);
+        assert_eq!(parse_429_reason(r#"{"reason":"semantic_search"}"#), Limit::Other);
+        assert_eq!(parse_429_reason(r#"{"error":{"reason":"daily_budget"}}"#), Limit::DailyBudget);
+        assert_eq!(parse_429_reason("<html>429 daily_budget</html>"), Limit::DailyBudget);
+        assert_eq!(parse_429_reason("Too many requests"), Limit::Other);
+        assert_eq!(parse_429_reason(""), Limit::Other);
+    }
+
+    fn utc(s: &str) -> chrono::DateTime<Utc> {
+        db::parse_ts(s).expect("ts")
+    }
+
+    #[test]
+    fn the_budget_resets_at_the_next_utc_midnight_in_any_timezone_and_dst() {
+        use chrono::{FixedOffset, Timelike};
+        assert_eq!(next_budget_reset(utc("2026-11-22T14:30:00Z")), utc("2026-11-23T00:00:00Z"));
+        // at midnight exactly the next reset is a day later, never "now"
+        assert_eq!(next_budget_reset(utc("2026-11-23T00:00:00Z")), utc("2026-11-24T00:00:00Z"));
+        assert_eq!(next_budget_reset(utc("2026-12-31T23:59:59Z")), utc("2027-01-01T00:00:00Z"));
+        assert_eq!(next_budget_reset(utc("2028-02-28T10:00:00Z")), utc("2028-02-29T00:00:00Z"));
+        // the same instant reads differently on a clock: Turkey (UTC+3 all year) 03:00; UTC+2 / UTC+1 around DST
+        let reset = next_budget_reset(utc("2026-07-10T09:00:00Z"));
+        let at = |h: i32| reset.with_timezone(&FixedOffset::east_opt(h * 3600).expect("offset"));
+        assert_eq!((at(3).hour(), at(3).minute()), (3, 0));
+        assert_eq!(at(2).hour(), 2); // Europe, summer time
+        assert_eq!(at(1).hour(), 1); // Europe, winter time
+        assert_eq!((at(-4).hour(), at(-4).date_naive().to_string()), (20, "2026-07-10".to_string())); // US east, summer time: the evening before
+        assert_eq!((at(-5).hour(), at(-5).date_naive().to_string()), (19, "2026-07-10".to_string())); // US east, winter time
+        // whatever the zone, the reset instant is the same
+        assert_eq!(at(3).with_timezone(&Utc), at(-5).with_timezone(&Utc));
+    }
+
+    #[test]
+    fn a_pause_resumes_a_few_minutes_after_the_reset_and_not_before() {
+        let now = utc("2026-11-22T21:10:00Z");
+        let p = make_pause(now, "missing", false);
+        assert_eq!(p.resets_at, "2026-11-23T00:00:00Z");
+        assert_eq!(p.resume_at, "2026-11-23T00:05:00Z");
+        assert_eq!(make_pause(now, "refresh", true).mode, "refresh");
+        assert_eq!(make_pause(now, "article", true).mode, "missing");
+        let dir = std::env::temp_dir().join(format!("sct-budget-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("dir");
+        let conn = db::open(&dir.join("b.db")).expect("db");
+        assert!(load_pause(&conn).expect("load").is_none());
+        save_pause(&conn, &p).expect("save");
+        assert_eq!(load_pause(&conn).expect("load"), Some(p.clone()));
+        // before the resume time nothing automatic may go: the pause is active, not due
+        for early in ["2026-11-22T21:10:00Z", "2026-11-23T00:00:00Z", "2026-11-23T00:04:59Z"] {
+            assert!(pause_active(&conn, utc(early)).expect("a").is_some(), "{early}");
+            assert!(pause_due(&conn, utc(early)).expect("d").is_none(), "{early}");
+        }
+        // from the resume time it is due (also after an app restart: the pause lives in the database)
+        for late in ["2026-11-23T00:05:00Z", "2026-11-24T08:00:00Z"] {
+            assert!(pause_active(&conn, utc(late)).expect("a").is_none(), "{late}");
+            assert_eq!(pause_due(&conn, utc(late)).expect("d"), Some(p.clone()), "{late}");
+        }
+        clear_pause(&conn).expect("clear");
+        assert!(pause_due(&conn, utc("2026-11-25T00:00:00Z")).expect("d").is_none());
+        drop(conn);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn article(i: usize) -> crate::scholar::Article {
+        crate::scholar::Article {
+            key: format!("k{i}"),
+            title: format!("Invented article {i}"),
+            authors: String::new(),
+            venue: String::new(),
+            year: Some(2020),
+            citations: 5,
+            url: String::new(),
+            cites_ids: String::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_spent_daily_budget_pauses_the_run_and_keeps_what_was_stored() {
+        let dir = std::env::temp_dir().join(format!("scholartakip_budget_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = db::db_path_in(&dir);
+        {
+            let mut conn = db::open(&path).expect("open");
+            let data = crate::scholar::ProfileData {
+                name: "N".into(),
+                stats: crate::scholar::Stats { since_year: 2021, ..crate::scholar::Stats::default() },
+                articles: (0..3).map(article).collect(),
+                yearly: vec![],
+            };
+            db::insert_snapshot(&mut conn, "P", Utc::now(), &data).expect("snapshot");
+            // article k0 was completed by an earlier run
+            let rec = db::MatchRecord {
+                article_key: "k0".into(),
+                source: Some("openalex".into()),
+                external_id: Some("W1".into()),
+                openalex_id: Some("W1".into()),
+                openalex_count: Some(1),
+                match_method: Some("orcid".into()),
+                ..db::MatchRecord::default()
+            };
+            let citing = db::CitingRecord { citing_id: "W100".into(), citing_title: "Kept".into(), citing_date: "2026-01-02".into(), date_precision: "day".into(), ..db::CitingRecord::default() };
+            db::store_backfill_article(&mut conn, &rec, Utc::now(), &[citing]).expect("stored");
+        }
+        // the budget is spent: the client knows it and refuses to ask again
+        let http = Http::new(Keys::default()).expect("http");
+        http.budget_hit.store(true, Ordering::SeqCst);
+        let seen: Mutex<Vec<Progress>> = Mutex::new(Vec::new());
+        let on = |p: Progress| lock(&seen).push(p);
+        let sum = run_articles(&path, Mode::All, &http, "en", "", &on).await.expect("run").expect("some");
+        assert!(sum.paused_budget && !sum.cancelled);
+        assert_eq!((sum.failed, sum.matched), (0, 0), "a pause is no failure and no partial article");
+        let conn = db::open(&path).expect("open");
+        let run = db::backfill_summary(&conn).expect("summary").last_run.expect("run row");
+        assert_eq!(run.status, "paused_budget");
+        // what an earlier run stored is still there; the paused run added nothing
+        let kept: i64 = conn.query_row("SELECT COUNT(*) FROM backfill_citations WHERE citing_id='W100'", [], |r| r.get(0)).expect("count");
+        assert_eq!(kept, 1);
+        let all: i64 = conn.query_row("SELECT COUNT(*) FROM backfill_citations", [], |r| r.get(0)).expect("count");
+        assert_eq!(all, 1);
+        assert!(lock(&seen).iter().all(|p| p.event != "article_done" && p.event != "error"));
+        drop(conn);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_429_with_the_daily_budget_reason_stops_requests_at_once() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("addr").port();
+        let hits = Arc::new(AtomicUsize::new(0));
+        let h = hits.clone();
+        std::thread::spawn(move || {
+            while let Ok((mut s, _)) = listener.accept() {
+                h.fetch_add(1, Ordering::SeqCst);
+                let mut buf = [0u8; 2048];
+                let _ = s.read(&mut buf);
+                let body = r#"{"error":"Rate limit exceeded","reason":"daily_budget"}"#;
+                let _ = write!(s, "HTTP/1.1 429 Too Many Requests\r\nContent-Type: application/json\r\nRetry-After: 3600\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
+            }
+        });
+        let http = Http::new(Keys::default()).expect("http");
+        let say = |_: Step<'_>| {};
+        let url = format!("http://127.0.0.1:{port}/works");
+        let r = http.get(&url, &[], Req { say: &say, what: What::Citing, page: 1, records: 0 }).await;
+        assert_eq!(r, Err(ApiError::DailyBudget));
+        assert!(http.budget_hit());
+        // no waiting, no second request
+        let again = http.get(&url, &[], Req { say: &say, what: What::Citing, page: 1, records: 0 }).await;
+        assert_eq!(again, Err(ApiError::DailyBudget));
+        assert_eq!(hits.load(Ordering::SeqCst), 1);
     }
 }

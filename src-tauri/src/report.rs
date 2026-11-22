@@ -17,8 +17,13 @@ pub struct ReportOptions {
     pub to: String,
     pub lang: String,
     pub include_citing: bool,
-    pub include_charts: bool,
+    /// Charts to print: "trend", "period", "article", "index", "calendar", "dist".
+    #[serde(default)]
+    pub charts: Vec<String>,
 }
+
+/// Chart ids the report knows.
+pub const CHART_IDS: [&str; 6] = ["trend", "period", "article", "index", "calendar", "dist"];
 
 #[derive(Debug)]
 pub enum ReportError {
@@ -80,7 +85,8 @@ pub struct ReportData {
     pub to: String,
     pub generated: String,
     pub include_citing: bool,
-    pub include_charts: bool,
+    /// The charts that were asked for, in the order of [`CHART_IDS`].
+    pub charts: Vec<String>,
     pub summary: Summary,
     pub articles: Vec<ReportArticle>,
     /// (timestamp, total citations) of the snapshots inside the range, baseline first.
@@ -88,6 +94,8 @@ pub struct ReportData {
     pub yearly: Vec<(i32, i64)>,
     pub citing: Vec<ReportCiting>,
     pub citing_total: usize,
+    /// The data of the Analysis page (same builders), only when charts were asked for.
+    pub analysis: Option<crate::insights::Analysis>,
 }
 
 pub fn parse_day(s: &str) -> Option<NaiveDate> {
@@ -187,6 +195,13 @@ pub fn build(
             }
         }
     }
+    let charts: Vec<String> =
+        CHART_IDS.iter().filter(|id| opts.charts.iter().any(|c| c == **id)).map(|id| id.to_string()).collect();
+    let analysis = if charts.is_empty() {
+        None
+    } else {
+        Some(crate::insights::build_analysis(conn, chrono::Utc::now(), chrono::Local::now().date_naive(), Some((from, to)))?)
+    };
     Ok(ReportData {
         lang: opts.lang.clone(),
         profile_name: end_snap.name.clone(),
@@ -195,13 +210,14 @@ pub fn build(
         to: opts.to.trim().to_string(),
         generated: generated.to_string(),
         include_citing: opts.include_citing,
-        include_charts: opts.include_charts,
+        charts,
         summary,
         articles: report_articles,
         series,
         yearly: db::yearly_for(conn, end_snap.id)?,
         citing,
         citing_total,
+        analysis,
     })
 }
 
@@ -276,7 +292,7 @@ mod tests {
             to: "2026-06-30".into(),
             lang: "en".into(),
             include_citing: true,
-            include_charts: true,
+            charts: vec!["trend".into(), "bogus".into(), "dist".into()],
         };
         let r = build(&conn, &opts, "0000-0002-1825-0097", "2026-11-22 10:00").expect("report");
         // the range ends before snapshot 4; the baseline is snapshot 1 (before the range)
@@ -289,10 +305,14 @@ mod tests {
         // baseline + the two snapshots inside the range
         assert_eq!(r.series.len(), 3);
         assert_eq!(r.series[0].1, 15);
+        // only known charts are kept, in the order of the report; the analysis data comes with them
+        assert_eq!(r.charts, vec!["trend".to_string(), "dist".to_string()]);
+        assert!(r.analysis.as_ref().is_some_and(|a| a.trend.has_data));
 
         // a range that starts before every snapshot: the first snapshot is the baseline
-        let early = ReportOptions { from: "2025-01-01".into(), to: "2026-04-01".into(), ..opts.clone() };
+        let early = ReportOptions { from: "2025-01-01".into(), to: "2026-04-01".into(), charts: Vec::new(), ..opts.clone() };
         let r2 = build(&conn, &early, "", "x").expect("report");
+        assert!(r2.analysis.is_none() && r2.charts.is_empty());
         assert!(r2.summary.baseline_is_first);
         assert_eq!(r2.summary.cit_all, 20);
         assert_eq!(r2.summary.change_all, 20 - 15);

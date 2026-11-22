@@ -165,6 +165,23 @@ pub const TABLE: &[(&str, &str, &str)] = &[
     ("bf.err_running", "Geçmiş veri araştırması sürüyor.", "A historical data lookup is already in progress."),
     ("bf.err_rate", "istek sınırı aşıldı (HTTP 429)", "rate limit reached (HTTP 429)"),
     ("bf.err_http", "HTTP {0}", "HTTP {0}"),
+    ("bf.err_budget", "OpenAlex günlük kullanım sınırı doldu", "OpenAlex daily usage limit reached"),
+    (
+        "bf.msg_paused_budget",
+        "OpenAlex günlük kullanım sınırı doldu; tarama duraklatıldı ({0}/{1} makale tamamlandı) ve sınır sıfırlanınca kendiliğinden devam edecek.",
+        "The OpenAlex daily usage limit is spent; the scan is paused ({0} of {1} articles completed) and continues by itself after the reset.",
+    ),
+    ("notif.budget_title", "OpenAlex günlük sınırı doldu", "OpenAlex daily limit reached"),
+    (
+        "notif.budget_body",
+        "Tarama duraklatıldı ve sınır sıfırlanınca devam edecek. Ücretsiz bir OpenAlex anahtarı sınırı 10 kat artırır.",
+        "The scan is paused and continues after the reset. A free OpenAlex key raises the limit tenfold.",
+    ),
+    (
+        "notif.budget_body_key",
+        "OpenAlex anahtarınızın bugünkü bütçesi doldu; tarama sınır sıfırlanınca devam edecek.",
+        "Your OpenAlex key's budget for today is spent; the scan continues after the reset.",
+    ),
     ("bf.err_parse", "yanıt çözümlenemedi: {0}", "response could not be parsed: {0}"),
     ("bf.err_cancelled", "durduruldu", "stopped"),
     (

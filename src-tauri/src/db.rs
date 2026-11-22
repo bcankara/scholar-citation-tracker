@@ -445,6 +445,8 @@ pub struct ArticleRow {
     pub doi: Option<String>,
     /// Comma-separated `cites=` ids of the Scholar profile page (for the "view on Scholar" link).
     pub cites_ids: String,
+    /// Citing works identified for the article (OpenAlex); Scholar usually counts more and earlier.
+    pub identified: i64,
 }
 
 /// Articles of the latest snapshot with deltas and the "new" flag.
@@ -470,7 +472,8 @@ pub fn articles_overview(
                 (SELECT citations FROM article_citations WHERE snapshot_id=?4 AND article_key=a.article_key),
                 COALESCE(NULLIF((SELECT doi FROM article_overrides WHERE article_key=a.article_key),''),
                          NULLIF((SELECT doi FROM article_matches WHERE article_key=a.article_key),'')),
-                a.cites_ids
+                a.cites_ids,
+                (SELECT COUNT(DISTINCT citing_id) FROM backfill_citations b WHERE b.article_key=a.article_key)
          FROM article_citations c JOIN articles a ON a.article_key=c.article_key
          WHERE c.snapshot_id=?1
          ORDER BY c.citations DESC, a.title ASC",
@@ -496,6 +499,7 @@ pub fn articles_overview(
             is_new,
             doi: r.get(11)?,
             cites_ids: r.get(12)?,
+            identified: r.get(13)?,
         })
     })?;
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
@@ -1544,6 +1548,12 @@ pub fn backfill_counts_since(conn: &Connection, since: chrono::NaiveDate) -> Res
     )?;
     let rows = st.query_map(params![day, month], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?;
     Ok(rows.collect::<rusqlite::Result<std::collections::HashMap<_, _>>>()?)
+}
+
+/// Newest citing work dated to the day (`YYYY-MM-DD`). OpenAlex adds new papers with a lag of weeks, so
+/// this is where its data really ends.
+pub fn latest_citing_day(conn: &Connection) -> Result<Option<String>> {
+    Ok(conn.query_row("SELECT MAX(citing_date) FROM backfill_citations WHERE date_precision='day'", [], |r| r.get(0))?)
 }
 
 /// One distinct citing work (a work that cites several articles counts once).
