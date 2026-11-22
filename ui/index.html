@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scholar Citation Tracker</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <div class="app">
+    <nav class="nav" data-i18n-aria="nav.label" aria-label="Navigation">
+      <div class="nav-items">
+        <button class="nav-item selected" data-page="panel" data-i18n-title="nav.panel" title=""><span class="nav-pill"></span><span class="icon">&#xE80F;</span><span class="nav-label" data-i18n="nav.panel"></span></button>
+        <button class="nav-item" data-page="articles" data-i18n-title="nav.articles" title=""><span class="nav-pill"></span><span class="icon">&#xE8A5;</span><span class="nav-label" data-i18n="nav.articles"></span></button>
+        <button class="nav-item" data-page="citing" data-i18n-title="nav.citing" title=""><span class="nav-pill"></span><span class="icon">&#xE716;</span><span class="nav-label" data-i18n="nav.citing"></span></button>
+        <button class="nav-item" data-page="report" data-i18n-title="nav.report" title=""><span class="nav-pill"></span><span class="icon">&#xE9F9;</span><span class="nav-label" data-i18n="nav.report"></span></button>
+        <button class="nav-item" data-page="log" data-i18n-title="nav.log" title=""><span class="nav-pill"></span><span class="icon">&#xE81C;</span><span class="nav-label" data-i18n="nav.log"></span></button>
+      </div>
+      <div class="nav-items nav-bottom">
+        <button class="nav-item" data-page="settings" data-i18n-title="nav.settings" title=""><span class="nav-pill"></span><span class="icon">&#xE713;</span><span class="nav-label" data-i18n="nav.settings"></span></button>
+      </div>
+    </nav>
+
+    <main class="content">
+      <header class="header">
+        <div class="header-text">
+          <h1 id="profileName" class="title" data-i18n="app.name">Scholar Citation Tracker</h1>
+          <div class="header-meta caption">
+            <span><span data-i18n="header.last_update"></span> <strong id="lastUpdate">—</strong></span>
+            <span class="dot"></span>
+            <span><span data-i18n="header.next_run"></span> <strong id="nextRun">—</strong></span>
+          </div>
+        </div>
+        <div class="header-actions">
+          <span id="bfPill" class="pill pill-running" hidden><span class="pill-dot"></span><span id="bfPillText"></span></span>
+          <span id="statusPill" class="pill"><span class="pill-dot"></span><span id="statusText"></span></span>
+          <button id="refreshBtn" class="btn btn-primary"><span class="icon">&#xE72C;</span><span data-i18n="header.refresh"></span></button>
+        </div>
+      </header>
+
+      <div id="updateBar" class="infobar info" role="status" hidden>
+        <span class="icon ib-icon">&#xE895;</span>
+        <div class="ib-body">
+          <div id="updateText" class="body-strong"></div>
+          <details id="updateNotesWrap" class="update-notes" hidden><summary class="caption secondary" data-i18n="update.notes"></summary><div id="updateNotes" class="caption"></div></details>
+          <div id="updateProgress" class="bf-progress" hidden><div class="bar-track"><div class="bar-fill" id="updateBarFill"></div></div></div>
+        </div>
+        <div class="sbtns">
+          <button id="updateLater" class="btn"><span data-i18n="update.later"></span></button>
+          <button id="updateNow" class="btn btn-primary"><span class="icon">&#xE896;</span><span data-i18n="update.now"></span></button>
+        </div>
+      </div>
+
+      <section id="page-panel" class="page">
+        <div id="healthBar" class="infobar warn" role="alert" hidden>
+          <span class="icon ib-icon">&#xE7BA;</span>
+          <div class="ib-body"><div id="healthText" class="body"></div></div>
+          <button id="healthOpenLog" class="btn"><span data-i18n="health.open_log"></span></button>
+        </div>
+        <div id="setupCard" class="card empty setup" hidden>
+          <div class="empty-icon icon">&#xE77B;</div>
+          <div id="setupTitle" class="subtitle"></div>
+          <p id="setupIntro" class="secondary"></p>
+          <form id="setupForm" class="setup-form" autocomplete="off">
+            <label class="field" id="setupProfileField">
+              <span class="body-strong" data-i18n="setup.profile_label"></span>
+              <input id="setupProfile" class="input" type="text" spellcheck="false" data-i18n-placeholder="setup.profile_placeholder">
+              <span class="caption secondary" data-i18n="setup.profile_hint"></span>
+            </label>
+            <label class="field" id="setupOrcidField">
+              <span class="body-strong" data-i18n="setup.orcid_label"></span>
+              <input id="setupOrcid" class="input" type="text" spellcheck="false" data-i18n-placeholder="setup.orcid_placeholder">
+              <span class="caption secondary" data-i18n="setup.orcid_hint"></span>
+              <span id="setupOrcidError" class="caption field-error" role="alert" hidden></span>
+            </label>
+            <label class="field" id="setupLangField">
+              <span class="body-strong" data-i18n="setup.language_label"></span>
+              <select id="setupLang" class="input select">
+                <option value="tr">Türkçe</option>
+                <option value="en">English</option>
+              </select>
+            </label>
+            <div id="setupError" class="caption field-error" role="alert" hidden></div>
+            <button id="startBtn" type="submit" class="btn btn-primary"><span class="icon">&#xE768;</span><span data-i18n="setup.start"></span></button>
+          </form>
+        </div>
+        <div id="emptyState" class="card empty" hidden>
+          <div class="empty-icon icon">&#xE9D9;</div>
+          <div class="subtitle" data-i18n="empty.title"></div>
+          <p class="secondary" data-i18n="empty.text"></p>
+          <button id="emptyRefresh" class="btn btn-primary"><span class="icon">&#xE72C;</span><span data-i18n="header.refresh"></span></button>
+        </div>
+        <div id="panelData" hidden>
+          <div id="kpis" class="kpis"></div>
+          <div class="insights">
+            <div class="card chart-card" id="forecastCard">
+              <div class="card-head">
+                <div class="body-strong" data-i18n="fc.title"></div>
+                <span class="badge-est" data-i18n="fc.badge"></span>
+              </div>
+              <div id="fcBody"></div>
+            </div>
+            <div class="card chart-card" id="risersCard">
+              <div class="card-head">
+                <div class="body-strong" data-i18n="ris.title"></div>
+                <div class="seg" id="risSeg" role="group" data-i18n-aria="ris.range_label" aria-label="Window">
+                  <button data-days="30" data-i18n="ris.d30"></button>
+                  <button data-days="90" data-i18n="ris.d90"></button>
+                </div>
+              </div>
+              <div id="risBody"></div>
+              <div id="hNext" class="hnext"></div>
+            </div>
+          </div>
+          <div class="charts">
+            <div class="card chart-card">
+              <div class="card-head">
+                <div class="body-strong" data-i18n="chart.total_title"></div>
+                <div class="card-tools">
+                  <div class="seg" id="rangeSeg" role="group" data-i18n-aria="chart.range_label" aria-label="Range">
+                    <button data-range="7" data-i18n="chart.r7"></button>
+                    <button data-range="30" data-i18n="chart.r30"></button>
+                    <button data-range="90" data-i18n="chart.r90"></button>
+                    <button data-range="all" data-i18n="chart.rall"></button>
+                  </div>
+                  <label class="check"><input type="checkbox" id="sinceToggle"><span class="check-box"></span><span id="sinceToggleLabel" data-i18n="chart.since_toggle_default"></span></label>
+                </div>
+              </div>
+              <div id="lineChart" class="chart-area"></div>
+            </div>
+            <div class="card chart-card">
+              <div class="card-head"><div class="body-strong" data-i18n="chart.yearly_title"></div></div>
+              <div id="barChart" class="chart-area"></div>
+            </div>
+          </div>
+          <div class="card chart-card hist-card" id="histCard">
+            <div class="card-head">
+              <div class="body-strong" data-i18n="hist.title"></div>
+              <div class="card-tools">
+                <div class="seg" id="histGran" role="group" data-i18n-aria="hist.gran_label" aria-label="Granularity">
+                  <button data-gran="day" data-i18n="hist.g_day"></button>
+                  <button data-gran="month" data-i18n="hist.g_month"></button>
+                  <button data-gran="year" data-i18n="hist.g_year"></button>
+                </div>
+                <div class="seg" id="histRange" role="group" data-i18n-aria="hist.range_label" aria-label="Range"></div>
+                <label class="check" id="histYearSrcWrap"><input type="checkbox" id="histYearSrc"><span class="check-box"></span><span data-i18n="hist.year_src_bf"></span></label>
+              </div>
+            </div>
+            <div id="histChart" class="chart-area"></div>
+            <div class="legend">
+              <span class="lg"><i class="sw sw-bar"></i><span data-i18n="hist.legend_new"></span></span>
+              <span class="lg" id="histLegendCum"><i class="sw sw-line"></i><span data-i18n="hist.legend_cum"></span></span>
+            </div>
+            <div id="histCaption" class="caption secondary hist-caption"></div>
+            <div id="histNote" class="caption secondary" hidden></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="page-articles" class="page" hidden>
+        <div class="card table-card">
+          <div class="toolbar">
+            <label class="search"><span class="icon">&#xE721;</span><input id="searchBox" type="search" data-i18n-placeholder="articles.search" autocomplete="off"></label>
+            <span id="articleCount" class="caption secondary"></span>
+          </div>
+          <div class="table-wrap">
+            <table class="table" id="articleTable">
+              <thead>
+                <tr>
+                  <th data-sort="title" class="col-title" data-i18n="articles.col_title"></th>
+                  <th data-sort="year" class="num" data-i18n="articles.col_year"></th>
+                  <th data-sort="citations" class="num" data-i18n="articles.col_cites"></th>
+                  <th data-sort="today" class="num" data-i18n="articles.col_today"></th>
+                  <th data-sort="d7" class="num" data-i18n="articles.col_d7"></th>
+                </tr>
+              </thead>
+              <tbody id="articleBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="page-citing" class="page" hidden>
+        <div id="citingEmpty" class="card empty" hidden>
+          <div class="empty-icon icon">&#xE716;</div>
+          <div class="subtitle" data-i18n="cw.empty_title"></div>
+          <p class="secondary" data-i18n="cw.empty_text"></p>
+        </div>
+        <div id="citingData" hidden>
+          <div class="dist-grid">
+            <div class="card chart-card"><div class="card-head"><div class="body-strong" data-i18n="dist.country"></div></div><div id="distCountry" class="hbars"></div></div>
+            <div class="card chart-card"><div class="card-head"><div class="body-strong" data-i18n="dist.venue"></div></div><div id="distVenue" class="hbars"></div></div>
+            <div class="card chart-card"><div class="card-head"><div class="body-strong" data-i18n="dist.year"></div></div><div id="distYear" class="chart-area dist-year"></div></div>
+          </div>
+          <div id="distCaption" class="caption secondary dist-caption"></div>
+          <div class="card table-card">
+            <div class="toolbar">
+              <label class="search"><span class="icon">&#xE721;</span><input id="citingSearch" type="search" data-i18n-placeholder="cw.search" autocomplete="off"></label>
+              <select id="citingArticle" class="input select citing-select" data-i18n-aria="cw.article_filter" aria-label="Article"></select>
+              <span id="citingCount" class="caption secondary"></span>
+            </div>
+            <div class="table-wrap">
+              <table class="table" id="citingTable">
+                <thead>
+                  <tr>
+                    <th data-csort="date" class="col-date" data-i18n="cw.col_date"></th>
+                    <th class="col-title" data-i18n="cw.col_title"></th>
+                    <th data-i18n="cw.col_venue"></th>
+                    <th data-i18n="cw.col_cites"></th>
+                    <th data-i18n="cw.col_source"></th>
+                  </tr>
+                </thead>
+                <tbody id="citingBody"></tbody>
+              </table>
+            </div>
+            <div class="more-row" id="citingMoreRow" hidden><button id="citingMore" class="btn"><span data-i18n="cw.more"></span></button></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="page-report" class="page" hidden>
+        <div class="settings">
+          <div id="reportInfo" class="infobar" hidden></div>
+          <div class="sgroup-title body-strong" data-i18n="rep.group_range"></div>
+          <div class="scard">
+            <span class="icon sicon">&#xE787;</span>
+            <div class="stext"><div class="body" data-i18n="rep.range_title"></div><div class="caption secondary" data-i18n="rep.range_sub"></div></div>
+            <div class="range-inputs">
+              <input id="repFrom" class="input input-date" type="date" data-i18n-aria="rep.from" aria-label="From">
+              <span class="secondary">&ndash;</span>
+              <input id="repTo" class="input input-date" type="date" data-i18n-aria="rep.to" aria-label="To">
+            </div>
+          </div>
+          <div class="scard">
+            <span class="icon sicon">&#xE916;</span>
+            <div class="stext"><div class="body" data-i18n="rep.presets_title"></div></div>
+            <div class="seg" id="repPresets" role="group">
+              <button data-preset="12m" data-i18n="rep.p12m"></button>
+              <button data-preset="year" data-i18n="rep.pyear"></button>
+              <button data-preset="all" data-i18n="rep.pall"></button>
+            </div>
+          </div>
+          <div class="sgroup-title body-strong" data-i18n="rep.group_options"></div>
+          <div class="scard">
+            <span class="icon sicon">&#xE774;</span>
+            <div class="stext"><div class="body" data-i18n="rep.lang_title"></div><div class="caption secondary" data-i18n="rep.lang_sub"></div></div>
+            <select id="repLang" class="input select">
+              <option value="tr">Türkçe</option>
+              <option value="en">English</option>
+            </select>
+          </div>
+          <div class="scard">
+            <span class="icon sicon">&#xE716;</span>
+            <div class="stext"><div class="body" data-i18n="rep.citing_title"></div><div class="caption secondary" data-i18n="rep.citing_sub"></div></div>
+            <label class="switch"><input type="checkbox" id="repCiting" checked><span class="switch-track"><span class="switch-thumb"></span></span><span class="switch-label" data-i18n-on="settings.on" data-i18n-off="settings.off"></span></label>
+          </div>
+          <div class="scard">
+            <span class="icon sicon">&#xE9D9;</span>
+            <div class="stext"><div class="body" data-i18n="rep.charts_title"></div><div class="caption secondary" data-i18n="rep.charts_sub"></div></div>
+            <label class="switch"><input type="checkbox" id="repCharts" checked><span class="switch-track"><span class="switch-thumb"></span></span><span class="switch-label" data-i18n-on="settings.on" data-i18n-off="settings.off"></span></label>
+          </div>
+          <div class="sactions"><button id="repCreate" class="btn btn-primary"><span class="icon">&#xE8A5;</span><span id="repCreateText" data-i18n="rep.create"></span></button></div>
+          <div class="caption secondary hint" data-i18n="rep.hint"></div>
+        </div>
+      </section>
+
+      <section id="page-log" class="page" hidden>
+        <div class="card table-card">
+          <div class="table-wrap">
+            <table class="table">
+              <thead><tr><th data-i18n="log.col_time"></th><th class="num" data-i18n="log.col_attempt"></th><th data-i18n="log.col_status"></th><th data-i18n="log.col_message"></th></tr></thead>
+              <tbody id="logBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="page-settings" class="page" hidden>
+        <div class="settings">
+          <div id="infoBar" class="infobar" hidden></div>
+
+          <div class="sgroup-title body-strong" data-i18n="settings.group_profile"></div>
+          <div class="scard">
+            <span class="icon sicon">&#xE77B;</span>
+            <div class="stext"><div class="body" data-i18n="settings.profile_title"></div><div class="caption secondary" data-i18n="settings.profile_sub"></div></div>
+            <input id="setProfile" class="input" type="text" spellcheck="false">
+          </div>
+          <div class="scard">
+            <span class="icon sicon">&#xE716;</span>
+            <div class="stext"><div class="body" data-i18n="settings.orcid_title"></div><div class="caption secondary" data-i18n="settings.orcid_sub"></div></div>
+            <input id="setOrcid" class="input" type="text" spellcheck="false" placeholder="0000-0000-0000-0000">
+          </div>
+          <div class="scard">
+            <span class="icon sicon">&#xE916;</span>
+            <div class="stext"><div class="body" data-i18n="settings.interval_title"></div><div class="caption secondary" data-i18n="settings.interval_sub"></div></div>
+            <input id="setInterval" class="input input-num" type="number" min="1" max="24" step="1">
+          </div>
+
+          <div class="sgroup-title body-strong" data-i18n="settings.group_language"></div>
+          <div class="scard">
+            <span class="icon sicon">&#xE774;</span>
+            <div class="stext"><div class="body" data-i18n="settings.language_title"></div><div class="caption secondary" data-i18n="settings.language_sub"></div></div>
+            <select id="setLang" class="input select">
+              <option value="tr">Türkçe</option>
+              <option value="en">English</option>
+            </select>
+          </div>
+
+          <div class="sgroup-title body-strong" data-i18n="settings.group_data"></div>
+          <div class="scard">
+            <span class="icon sicon">&#xE8B7;</span>
+            <div class="stext"><div class="body" data-i18n="settings.dir_title"></div><div class="caption secondary path" id="setDirText"></div></div>
+            <div class="sbtns">
+              <button id="pickDirBtn" class="btn"><span data-i18n="settings.dir_change"></span></button>
+              <button id="openDirBtn" class="btn"><span class="icon">&#xE8A7;</span><span data-i18n="settings.dir_open"></span></button>
+            </div>
+          </div>
+          <div class="caption secondary hint" data-i18n="settings.dir_hint"></div>
+
+          <div class="sgroup-title body-strong" data-i18n="settings.group_behavior"></div>
+          <div class="scard">
+            <span class="icon sicon">&#xE7E8;</span>
+            <div class="stext"><div class="body" data-i18n="settings.autostart_title"></div><div class="caption secondary" data-i18n="settings.autostart_sub"></div></div>
+            <label class="switch"><input type="checkbox" id="setAutostart"><span class="switch-track"><span class="switch-thumb"></span></span><span class="switch-label" data-i18n-on="settings.on" data-i18n-off="settings.off"></span></label>
+          </div>
+          <div class="scard">
+            <span class="icon sicon">&#xEA8F;</span>
+            <div class="stext"><div class="body" data-i18n="settings.notify_title"></div><div class="caption secondary" data-i18n="settings.notify_sub"></div></div>
+            <label class="switch"><input type="checkbox" id="setNotify"><span class="switch-track"><span class="switch-thumb"></span></span><span class="switch-label" data-i18n-on="settings.on" data-i18n-off="settings.off"></span></label>
+          </div>
+
+          <div class="scard">
+            <span class="icon sicon">&#xE787;</span>
+            <div class="stext"><div class="body" data-i18n="settings.weekly_title"></div><div class="caption secondary" data-i18n="settings.weekly_sub"></div></div>
+            <label class="switch"><input type="checkbox" id="setWeekly"><span class="switch-track"><span class="switch-thumb"></span></span><span class="switch-label" data-i18n-on="settings.on" data-i18n-off="settings.off"></span></label>
+          </div>
+
+          <div class="scard">
+            <span class="icon sicon">&#xE895;</span>
+            <div class="stext"><div class="body" data-i18n="settings.autoupdate_title"></div><div class="caption secondary" data-i18n="settings.autoupdate_sub"></div></div>
+            <label class="switch"><input type="checkbox" id="setAutoUpdate"><span class="switch-track"><span class="switch-thumb"></span></span><span class="switch-label" data-i18n-on="settings.on" data-i18n-off="settings.off"></span></label>
+          </div>
+
+          <div class="sactions"><button id="saveBtn" class="btn btn-primary"><span class="icon">&#xE74E;</span><span data-i18n="settings.save"></span></button></div>
+
+          <div class="sgroup-title body-strong" data-i18n="settings.group_history"></div>
+          <div class="scard">
+            <span class="icon sicon">&#xE81C;</span>
+            <div class="stext"><div class="body" data-i18n="settings.bf_title"></div><div class="caption secondary" data-i18n="settings.bf_sub"></div></div>
+            <label class="switch"><input type="checkbox" id="setBackfill"><span class="switch-track"><span class="switch-thumb"></span></span><span class="switch-label" data-i18n-on="settings.on" data-i18n-off="settings.off"></span></label>
+          </div>
+          <div class="scard bf-card">
+            <span class="icon sicon">&#xE9D9;</span>
+            <div class="stext">
+              <div class="body" id="bfStatusLine"></div>
+              <div class="caption secondary" id="bfStatusExtra"></div>
+              <div class="caption secondary bf-msg" id="bfStatusMsg"></div>
+              <div id="bfProgress" class="bf-progress" hidden>
+                <div class="bar-track"><div class="bar-fill" id="bfBarFill"></div></div>
+                <div class="caption" id="bfProgressText"></div>
+                <div class="caption secondary" data-i18n="bf.progress_slow"></div>
+              </div>
+            </div>
+            <div class="sbtns">
+              <button id="bfRunBtn" class="btn"><span class="icon">&#xE768;</span><span data-i18n="settings.bf_run"></span></button>
+              <button id="bfClearBtn" class="btn"><span class="icon">&#xE74D;</span><span data-i18n="settings.bf_clear"></span></button>
+            </div>
+          </div>
+          <div class="caption secondary hint" data-i18n="settings.bf_hint"></div>
+
+          <div class="sgroup-title body-strong" data-i18n="settings.group_export"></div>
+          <div class="scard">
+            <span class="icon sicon">&#xE72D;</span>
+            <div class="stext"><div class="body" data-i18n="settings.export_snapshots_title"></div><div class="caption secondary" data-i18n="settings.export_snapshots_sub"></div></div>
+            <button class="btn" data-export="snapshots"><span data-i18n="settings.export_button"></span></button>
+          </div>
+          <div class="scard">
+            <span class="icon sicon">&#xE72D;</span>
+            <div class="stext"><div class="body" data-i18n="settings.export_articles_title"></div><div class="caption secondary" data-i18n="settings.export_articles_sub"></div></div>
+            <button class="btn" data-export="articles"><span data-i18n="settings.export_button"></span></button>
+          </div>
+
+          <div class="scard">
+            <span class="icon sicon">&#xE72D;</span>
+            <div class="stext"><div class="body" data-i18n="settings.export_xlsx_title"></div><div class="caption secondary" data-i18n="settings.export_xlsx_sub"></div></div>
+            <button class="btn" id="exportXlsx"><span data-i18n="settings.export_xlsx_button"></span></button>
+          </div>
+
+          <div class="sgroup-title body-strong" data-i18n="keys.group"></div>
+          <div class="scard key-card">
+            <span class="icon sicon">&#xE192;</span>
+            <div class="stext">
+              <div class="body" data-i18n="keys.oa_title"></div>
+              <div class="caption secondary" data-i18n="keys.oa_sub"></div>
+              <div class="caption key-links">
+                <a href="#" class="ext-link" data-url="https://openalex.org/" data-i18n="keys.oa_get"></a>
+                <a href="#" class="ext-link" data-url="https://docs.openalex.org/how-to-use-the-api/rate-limits-and-authentication" data-i18n="keys.oa_docs"></a>
+              </div>
+              <div class="key-row">
+                <input id="keyOa" class="input key-input" type="password" autocomplete="off" spellcheck="false" data-i18n-placeholder="keys.placeholder">
+                <button id="keyOaSave" class="btn"><span data-i18n="keys.save"></span></button>
+                <button id="keyOaTest" class="btn"><span data-i18n="keys.test"></span></button>
+                <button id="keyOaDel" class="btn"><span data-i18n="keys.remove"></span></button>
+              </div>
+              <div class="key-row">
+                <input id="keyOaEmail" class="input key-input" type="email" autocomplete="off" spellcheck="false" data-i18n-placeholder="keys.email_placeholder">
+                <button id="keyOaRequest" class="btn"><span data-i18n="keys.request"></span></button>
+              </div>
+              <div class="caption secondary" data-i18n="keys.email_note"></div>
+              <div id="keyOaStatus" class="caption key-status"></div>
+            </div>
+          </div>
+          <div class="scard key-card">
+            <span class="icon sicon">&#xE192;</span>
+            <div class="stext">
+              <div class="body" data-i18n="keys.s2_title"></div>
+              <div class="caption secondary" data-i18n="keys.s2_sub"></div>
+              <div class="caption key-links">
+                <a href="#" class="ext-link" data-url="https://www.semanticscholar.org/product/api" data-i18n="keys.s2_get"></a>
+              </div>
+              <div class="key-row">
+                <input id="keyS2" class="input key-input" type="password" autocomplete="off" spellcheck="false" data-i18n-placeholder="keys.placeholder">
+                <button id="keyS2Save" class="btn"><span data-i18n="keys.save"></span></button>
+                <button id="keyS2Test" class="btn"><span data-i18n="keys.test"></span></button>
+                <button id="keyS2Del" class="btn"><span data-i18n="keys.remove"></span></button>
+              </div>
+              <div id="keyS2Status" class="caption key-status"></div>
+            </div>
+          </div>
+          <div class="caption secondary hint" data-i18n="keys.storage_note"></div>
+
+          <div class="sgroup-title body-strong" data-i18n="settings.group_about"></div>
+          <div class="scard">
+            <span class="icon sicon">&#xE946;</span>
+            <div class="stext">
+              <div class="body" id="aboutTitle"></div>
+              <div class="caption secondary" data-i18n="about.sub"></div>
+              <div class="caption about-links"><a href="#" class="ext-link" data-url="https://github.com/bcankara/scholar-citation-tracker" data-i18n="about.github"></a><span class="secondary" data-i18n="about.license"></span></div>
+            </div>
+            <button id="checkUpdateBtn" class="btn"><span class="icon">&#xE72C;</span><span id="checkUpdateText" data-i18n="about.check"></span></button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div id="bfDialog" class="modal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="bfDlgTitle">
+      <div class="modal-icon icon">&#xE81C;</div>
+      <div id="bfDlgTitle" class="subtitle" data-i18n="bf.dialog_title"></div>
+      <p data-i18n="bf.dialog_text"></p>
+      <p class="caption secondary" data-i18n="bf.dialog_note"></p>
+      <div class="modal-actions">
+        <button id="bfDlgNo" class="btn"><span data-i18n="bf.dialog_no"></span></button>
+        <button id="bfDlgYes" class="btn btn-primary"><span data-i18n="bf.dialog_yes"></span></button>
+      </div>
+    </div>
+  </div>
+  <div id="doiDialog" class="modal" hidden>
+    <form class="modal-card" id="doiForm" role="dialog" aria-modal="true" aria-labelledby="doiDlgTitle" autocomplete="off">
+      <div class="modal-icon icon">&#xE71B;</div>
+      <div id="doiDlgTitle" class="subtitle" data-i18n="art.doi_title"></div>
+      <p id="doiDlgArticle" class="caption secondary doi-article"></p>
+      <p data-i18n="art.doi_text"></p>
+      <label class="field">
+        <input id="doiInput" class="input" type="text" spellcheck="false" data-i18n-placeholder="art.doi_placeholder">
+        <span class="caption secondary" data-i18n="art.doi_hint"></span>
+        <span id="doiError" class="caption field-error" role="alert" hidden></span>
+      </label>
+      <div class="modal-actions">
+        <button id="doiCancel" type="button" class="btn"><span data-i18n="dialog.cancel"></span></button>
+        <button id="doiSave" type="submit" class="btn btn-primary"><span data-i18n="art.doi_save"></span></button>
+      </div>
+    </form>
+  </div>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <div id="tooltip" class="tooltip" hidden></div>
+  <script src="i18n.js"></script>
+  <script src="countries.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
