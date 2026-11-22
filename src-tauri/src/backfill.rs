@@ -14,7 +14,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -346,6 +346,9 @@ struct OaLocation {
 #[derive(Deserialize, Default)]
 struct OaSource {
     display_name: Option<String>,
+    issn_l: Option<String>,
+    #[serde(default)]
+    issn: Option<Vec<String>>,
 }
 
 #[derive(Deserialize, Default)]
@@ -363,6 +366,26 @@ struct OaAuthorRef {
 #[derive(Deserialize, Default)]
 struct OaInstitution {
     country_code: Option<String>,
+}
+
+/// ISSN as 8 characters without a hyphen, `X` upper case; `None` when it is not an ISSN.
+pub fn normalize_issn(s: &str) -> Option<String> {
+    let c: String = s.chars().filter(|c| !matches!(c, '-' | ' ' | '\u{a0}')).collect::<String>().to_ascii_uppercase();
+    let ok = c.len() == 8
+        && c.bytes().take(7).all(|b| b.is_ascii_digit())
+        && c.as_bytes().get(7).is_some_and(|b| b.is_ascii_digit() || *b == b'X');
+    ok.then_some(c)
+}
+
+/// Normalized, de-duplicated ISSNs (first occurrence order), comma-separated.
+pub fn join_issns<I: IntoIterator<Item = String>>(items: I) -> String {
+    let mut seen = HashSet::new();
+    items
+        .into_iter()
+        .filter_map(|i| normalize_issn(&i))
+        .filter(|i| seen.insert(i.clone()))
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 /// How many author names are kept in the authors string.
@@ -587,7 +610,9 @@ pub fn parse_oa_citing(json: &str) -> Result<(Vec<CitingRecord>, Option<String>)
             let id = short_id(&w.id?, "https://openalex.org/");
             let (date, precision) = dated(w.publication_date.as_deref(), w.publication_year)?;
             let loc = w.primary_location.unwrap_or_default();
-            let venue = loc.source.and_then(|s| s.display_name).unwrap_or_default().trim().to_string();
+            let src = loc.source.unwrap_or_default();
+            let venue = src.display_name.clone().unwrap_or_default().trim().to_string();
+            let issn_list = join_issns(src.issn_l.into_iter().chain(src.issn.into_iter().flatten()));
             let doi = w
                 .doi
                 .map(|d| short_id(&d, "https://doi.org/").to_ascii_lowercase())
@@ -613,6 +638,7 @@ pub fn parse_oa_citing(json: &str) -> Result<(Vec<CitingRecord>, Option<String>)
                 url,
                 authors,
                 countries,
+                issn_list,
             })
         })
         .collect();
@@ -636,8 +662,15 @@ struct S2Paper {
     #[serde(rename = "externalIds")]
     external_ids: Option<HashMap<String, serde_json::Value>>,
     venue: Option<String>,
+    #[serde(rename = "publicationVenue")]
+    publication_venue: Option<S2Venue>,
     #[serde(default)]
     authors: Option<Vec<S2Author>>,
+}
+
+#[derive(Deserialize)]
+struct S2Venue {
+    issn: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -740,6 +773,7 @@ pub fn parse_s2_citations(json: &str) -> Result<(Vec<CitingRecord>, Option<i64>)
                 doi,
                 authors,
                 countries: String::new(),
+                issn_list: join_issns(p.publication_venue.and_then(|v| v.issn)),
             })
         })
         .collect();
@@ -920,6 +954,8 @@ pub enum ApiError {
     Status(u16),
     Network(String),
     Parse(String),
+    /// The user stopped the run.
+    Cancelled,
 }
 
 impl ApiError {
@@ -929,6 +965,7 @@ impl ApiError {
             ApiError::Status(c) => i18n::trf(lang, "bf.err_http", &[&c.to_string()]),
             ApiError::Network(m) => m.clone(),
             ApiError::Parse(m) => i18n::trf(lang, "bf.err_parse", &[m]),
+            ApiError::Cancelled => i18n::tr(lang, "bf.err_cancelled").to_string(),
         };
         secrets::redact(&text, &[])
     }
@@ -940,6 +977,59 @@ enum Host {
     Semantic,
 }
 
+impl Host {
+    fn label(self) -> &'static str {
+        match self {
+            Host::OpenAlex => OPENALEX_LABEL,
+            Host::Semantic => S2_LABEL,
+        }
+    }
+}
+
+/// What a request is for (the scan panel words it differently).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum What {
+    /// Resolving the ORCID iD to an OpenAlex author.
+    Author,
+    /// The author's list of works.
+    Works,
+    /// Looking an article up (by DOI or by title).
+    Lookup,
+    /// The works that cite an article.
+    Citing,
+}
+
+impl What {
+    fn as_str(self) -> &'static str {
+        match self {
+            What::Author => "author",
+            What::Works => "works",
+            What::Lookup => "lookup",
+            What::Citing => "citing",
+        }
+    }
+}
+
+/// A fine-grained step of a run, reported to the scan panel.
+#[derive(Debug, Clone, Copy)]
+pub enum Step<'a> {
+    /// A request is about to be sent: page `page` of `what`, `records` collected so far.
+    Request { source: &'a str, what: What, page: usize, records: usize },
+    /// Waiting after HTTP 429 / 503: `secs` seconds left, retry number `attempt`.
+    Wait { source: &'a str, secs: u64, attempt: usize },
+}
+
+type Say<'a> = &'a (dyn Fn(Step<'_>) + Sync);
+
+/// What `Http::get` reports about one request.
+#[derive(Clone, Copy)]
+struct Req<'a> {
+    say: Say<'a>,
+    what: What,
+    page: usize,
+    records: usize,
+}
+
 /// HTTP client plus one pacer per host, and the optional API keys.
 pub struct Http {
     client: reqwest::Client,
@@ -948,6 +1038,8 @@ pub struct Http {
     keys: Mutex<Keys>,
     /// Keys the server refused (401 / 403); the host then continues without a key.
     rejected: Mutex<Vec<KeyKind>>,
+    /// Set by the user's "Stop": requests end as soon as they notice it.
+    cancel: Arc<AtomicBool>,
 }
 
 impl Http {
@@ -963,7 +1055,18 @@ impl Http {
             s2: Pacer::new(secrets::s2_gap(keys.semantic.is_some())),
             keys: Mutex::new(keys),
             rejected: Mutex::new(Vec::new()),
+            cancel: Arc::new(AtomicBool::new(false)),
         })
+    }
+
+    /// Uses `flag` as the stop signal of this client.
+    pub fn with_cancel(mut self, flag: Arc<AtomicBool>) -> Self {
+        self.cancel = flag;
+        self
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.cancel.load(Ordering::SeqCst)
     }
 
     /// Keys the servers refused during this run.
@@ -999,16 +1102,45 @@ impl Http {
         }
     }
 
+    /// Sleeps `secs` seconds one second at a time, reporting the countdown and honouring "Stop".
+    async fn wait_out(&self, host: Host, secs: u64, attempt: usize, say: Say<'_>) -> Result<(), ApiError> {
+        let mut left = secs;
+        while left > 0 {
+            if self.is_cancelled() {
+                return Err(ApiError::Cancelled);
+            }
+            say(Step::Wait { source: host.label(), secs: left, attempt });
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            left -= 1;
+        }
+        if self.is_cancelled() {
+            return Err(ApiError::Cancelled);
+        }
+        Ok(())
+    }
+
     /// GET with pacing and 429/503 backoff. `Ok(None)` for HTTP 404. The key (if any) travels in
     /// a header, never in the URL; a 401 / 403 with a key retries once without it.
-    async fn get(&self, host: Host, url: &str, query: &[(&str, &str)]) -> Result<Option<String>, ApiError> {
+    async fn get(&self, host: Host, url: &str, query: &[(&str, &str)], req_info: Req<'_>) -> Result<Option<String>, ApiError> {
         let (pacer, backoff) = match host {
             Host::OpenAlex => (&self.oa, OA_BACKOFF),
             Host::Semantic => (&self.s2, S2_BACKOFF),
         };
         let mut attempt = 0usize;
         loop {
+            if self.is_cancelled() {
+                return Err(ApiError::Cancelled);
+            }
+            (req_info.say)(Step::Request {
+                source: host.label(),
+                what: req_info.what,
+                page: req_info.page,
+                records: req_info.records,
+            });
             pacer.wait().await;
+            if self.is_cancelled() {
+                return Err(ApiError::Cancelled);
+            }
             let key = self.key_for(host);
             let mut req = self.client.get(url).query(query);
             if let Some(k) = &key {
@@ -1037,7 +1169,7 @@ impl Http {
                 match backoff.get(attempt) {
                     Some(secs) => {
                         attempt += 1;
-                        tokio::time::sleep(Duration::from_secs(*secs)).await;
+                        self.wait_out(host, *secs, attempt, req_info.say).await?;
                         continue;
                     }
                     None => return Err(ApiError::RateLimited),
@@ -1054,8 +1186,6 @@ impl Http {
         }
     }
 }
-
-type Say<'a> = &'a (dyn Fn(&str) + Sync);
 
 /// Percent-encodes everything but unreserved characters and `/ : ( )` (enough for DOIs).
 fn encode_path(s: &str) -> String {
@@ -1074,8 +1204,7 @@ fn encode_path(s: &str) -> String {
 async fn oa_works_pages(http: &Http, filter: &str, say: Say<'_>, lang: &str) -> Result<Vec<Candidate>, String> {
     let mut all: Vec<Candidate> = Vec::new();
     let mut cursor = "*".to_string();
-    for _ in 0..MAX_PAGES {
-        say(OPENALEX_LABEL);
+    for page in 1..=MAX_PAGES {
         let body = match http
             .get(
                 Host::OpenAlex,
@@ -1086,6 +1215,7 @@ async fn oa_works_pages(http: &Http, filter: &str, say: Say<'_>, lang: &str) -> 
                     ("select", "id,doi,title,publication_year,cited_by_count"),
                     ("cursor", cursor.as_str()),
                 ],
+                Req { say, what: What::Works, page, records: all.len() },
             )
             .await
         {
@@ -1108,10 +1238,14 @@ async fn oa_works_pages(http: &Http, filter: &str, say: Say<'_>, lang: &str) -> 
 /// `author.orcid:<orcid>` and `authorships.author.id:<author id>` (OpenAlex often attaches the
 /// ORCID to fewer works than the author record has).
 async fn load_author_set(http: &Http, orcid: &str, say: Say<'_>, lang: &str) -> Result<AuthorSet, String> {
-    say(OPENALEX_LABEL);
     let url = format!("{OPENALEX_AUTHORS}/orcid:{orcid}");
     let body = http
-        .get(Host::OpenAlex, &url, &[("select", "id,works_count")])
+        .get(
+            Host::OpenAlex,
+            &url,
+            &[("select", "id,works_count")],
+            Req { say, what: What::Author, page: 1, records: 0 },
+        )
         .await
         .map_err(|e| e.describe(lang))?;
     let mut set = AuthorSet::default();
@@ -1133,8 +1267,7 @@ async fn oa_citing(http: &Http, work_id: &str, say: Say<'_>, lang: &str) -> Resu
     let filter = format!("cites:{work_id}");
     let mut all: Vec<CitingRecord> = Vec::new();
     let mut cursor = "*".to_string();
-    for _ in 0..MAX_PAGES {
-        say(OPENALEX_LABEL);
+    for page in 1..=MAX_PAGES {
         let body = match http
             .get(
                 Host::OpenAlex,
@@ -1145,6 +1278,7 @@ async fn oa_citing(http: &Http, work_id: &str, say: Say<'_>, lang: &str) -> Resu
                     ("select", "id,doi,title,publication_date,publication_year,primary_location,authorships"),
                     ("cursor", cursor.as_str()),
                 ],
+                Req { say, what: What::Citing, page, records: all.len() },
             )
             .await
         {
@@ -1182,10 +1316,14 @@ struct Lookup<'a> {
 /// OpenAlex side for a manual DOI: the work is resolved by `works/doi:<doi>`, then its citing works.
 async fn openalex_manual_flow(http: &Http, doi: &str, say: Say<'_>, lang: &str) -> SourceOutcome {
     let mut out = SourceOutcome::default();
-    say(OPENALEX_LABEL);
     let url = format!("{OPENALEX_WORKS}/doi:{}", encode_path(doi));
     let body = match http
-        .get(Host::OpenAlex, &url, &[("select", "id,doi,title,publication_year")])
+        .get(
+            Host::OpenAlex,
+            &url,
+            &[("select", "id,doi,title,publication_year")],
+            Req { say, what: What::Lookup, page: 1, records: 0 },
+        )
         .await
     {
         Ok(Some(b)) => b,
@@ -1236,7 +1374,6 @@ async fn openalex_flow(
             method: MatchMethod::Orcid,
         },
         None => {
-            say(OPENALEX_LABEL);
             let body = match http
                 .get(
                     Host::OpenAlex,
@@ -1246,6 +1383,7 @@ async fn openalex_flow(
                         ("per-page", "5"),
                         ("select", "id,doi,title,publication_year,cited_by_count"),
                     ],
+                    Req { say, what: What::Lookup, page: 1, records: 0 },
                 )
                 .await
             {
@@ -1297,10 +1435,14 @@ async fn s2_flow(
     // A manual DOI is final: when Semantic Scholar does not know it, there is no title fallback.
     let manual = matches!(doi_hint, Some((_, _, MatchMethod::ManualDoi)));
     if let Some((doi, score, method)) = doi_hint {
-        say(S2_LABEL);
         let url = format!("{S2_BASE}/paper/DOI:{}", encode_path(doi));
         match http
-            .get(Host::Semantic, &url, &[("fields", "title,year,externalIds")])
+            .get(
+                Host::Semantic,
+                &url,
+                &[("fields", "title,year,externalIds")],
+                Req { say, what: What::Lookup, page: 1, records: 0 },
+            )
             .await
         {
             Ok(Some(body)) => match parse_s2_paper(&body) {
@@ -1327,13 +1469,13 @@ async fn s2_flow(
         }
     }
     if out.work.is_none() && !manual {
-        say(S2_LABEL);
         let url = format!("{S2_BASE}/paper/search/match");
         let body = match http
             .get(
                 Host::Semantic,
                 &url,
                 &[("query", title), ("fields", "title,year,externalIds")],
+                Req { say, what: What::Lookup, page: 1, records: 0 },
             )
             .await
         {
@@ -1376,18 +1518,18 @@ async fn s2_citing(http: &Http, paper_id: &str, say: Say<'_>, lang: &str) -> Res
     let url = format!("{S2_BASE}/paper/{paper_id}/citations");
     let mut all: Vec<CitingRecord> = Vec::new();
     let mut offset = 0i64;
-    for _ in 0..MAX_PAGES {
-        say(S2_LABEL);
+    for page in 1..=MAX_PAGES {
         let off = offset.to_string();
         let body = match http
             .get(
                 Host::Semantic,
                 &url,
                 &[
-                    ("fields", "title,publicationDate,year,venue,externalIds,authors"),
+                    ("fields", "title,publicationDate,year,venue,publicationVenue,externalIds,authors"),
                     ("limit", "100"),
                     ("offset", off.as_str()),
                 ],
+                Req { say, what: What::Citing, page, records: all.len() },
             )
             .await
         {
@@ -1421,6 +1563,40 @@ pub enum Mode {
     Refresh,
 }
 
+impl Mode {
+    /// Name used in the progress events ("missing", "all", "article", "refresh").
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Mode::Missing => "missing",
+            Mode::All => "all",
+            Mode::Article(_) => "article",
+            Mode::Refresh => "refresh",
+        }
+    }
+}
+
+/// One article of a run, as the scan panel lists it.
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
+pub struct ScanTarget {
+    pub key: String,
+    pub title: String,
+}
+
+/// A progress event. The same struct is the "current state" kept for the header pill and the
+/// payload of the `backfill-progress` event. `event` says which fields are filled:
+///
+/// - `preparing`: the run was accepted, nothing is known yet.
+/// - `start`: `targets` lists every article of the run.
+/// - `request`: a request is being sent (`source`, `what`, `page`, `records`; `k`/`key` during
+///   an article, `k == 0` while the author set is loaded).
+/// - `backoff`: waiting after HTTP 429 / 503 (`source`, `wait_secs` left, `attempt`).
+/// - `works`: the author's works were collected (`works`); `matching`: they were assigned to
+///   articles (`works`, `records` = assigned).
+/// - `article_start`, `article_done` (`oa_count`, `s2_count`, `chosen`, `method`, `records`),
+///   `unmatched`, `error` (`message`).
+/// - `finished`, `cancelled`, `failed`: the run ended (`running == false`, `summary`).
+///
+/// Every event also carries `done` (articles finished), `elapsed_secs` and `eta_secs`.
 #[derive(Debug, Clone, Default, Serialize, PartialEq)]
 pub struct Progress {
     pub running: bool,
@@ -1428,6 +1604,116 @@ pub struct Progress {
     pub n: usize,
     pub source: String,
     pub title: String,
+    pub event: String,
+    pub mode: String,
+    pub key: String,
+    pub what: String,
+    pub page: usize,
+    pub records: usize,
+    pub wait_secs: u64,
+    pub attempt: usize,
+    pub works: usize,
+    pub oa_count: Option<i64>,
+    pub s2_count: Option<i64>,
+    pub chosen: String,
+    pub method: String,
+    pub message: String,
+    pub done: usize,
+    pub elapsed_secs: u64,
+    pub eta_secs: Option<u64>,
+    pub targets: Vec<ScanTarget>,
+    pub summary: Option<RunSummary>,
+}
+
+/// Remaining seconds, extrapolated from the average time per finished article. `None` until
+/// the first article is done.
+pub fn eta_secs(done: usize, total: usize, elapsed_secs: u64) -> Option<u64> {
+    if total > 0 && done >= total {
+        return Some(0);
+    }
+    if done == 0 {
+        return None;
+    }
+    Some(elapsed_secs * (total - done) as u64 / done as u64)
+}
+
+/// Builds the events of one run: fills in the mode, the counters, the elapsed time and the ETA.
+struct Scan<'a> {
+    on: &'a (dyn Fn(Progress) + Sync),
+    mode: &'static str,
+    started: Instant,
+    n: usize,
+    done: AtomicUsize,
+    k: AtomicUsize,
+}
+
+impl<'a> Scan<'a> {
+    fn new(on: &'a (dyn Fn(Progress) + Sync), mode: &'static str, n: usize) -> Self {
+        Scan { on, mode, started: Instant::now(), n, done: AtomicUsize::new(0), k: AtomicUsize::new(0) }
+    }
+
+    fn emit(&self, event: &str, fill: impl FnOnce(&mut Progress)) {
+        let elapsed = self.started.elapsed().as_secs();
+        let done = self.done.load(Ordering::SeqCst);
+        let mut p = Progress {
+            running: true,
+            k: self.k.load(Ordering::SeqCst),
+            n: self.n,
+            event: event.to_string(),
+            mode: self.mode.to_string(),
+            done,
+            elapsed_secs: elapsed,
+            eta_secs: eta_secs(done, self.n, elapsed),
+            ..Progress::default()
+        };
+        fill(&mut p);
+        (self.on)(p);
+    }
+
+    /// Translates a request / wait step of the HTTP layer into an event.
+    fn step(&self, step: Step<'_>, key: &str, title: &str) {
+        match step {
+            Step::Request { source, what, page, records } => self.emit("request", |p| {
+                p.source = source.to_string();
+                p.what = what.as_str().to_string();
+                p.page = page;
+                p.records = records;
+                p.key = key.to_string();
+                p.title = title.to_string();
+            }),
+            Step::Wait { source, secs, attempt } => self.emit("backoff", |p| {
+                p.source = source.to_string();
+                p.wait_secs = secs;
+                p.attempt = attempt;
+                p.key = key.to_string();
+                p.title = title.to_string();
+            }),
+        }
+    }
+
+    fn start(&self, targets: &[(String, String)]) {
+        self.emit("start", |p| {
+            p.targets = targets.iter().map(|(k, t)| ScanTarget { key: k.clone(), title: t.clone() }).collect();
+        });
+    }
+
+    fn article_start(&self, k: usize, key: &str, title: &str) {
+        self.k.store(k, Ordering::SeqCst);
+        self.emit("article_start", |p| {
+            p.key = key.to_string();
+            p.title = title.to_string();
+        });
+    }
+
+    /// Marks the article finished and reports how it ended (`event` is the terminal event).
+    fn article_end(&self, event: &str, key: &str, title: &str, fill: impl FnOnce(&mut Progress)) {
+        self.done.fetch_add(1, Ordering::SeqCst);
+        self.emit(event, |p| {
+            p.key = key.to_string();
+            p.title = title.to_string();
+            fill(p);
+        });
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, PartialEq)]
@@ -1443,6 +1729,8 @@ pub struct RunSummary {
     pub new_total: usize,
     /// The newest few of them, for the notification.
     pub new_citing: Vec<NewCiting>,
+    /// The user stopped the run before it was complete.
+    pub cancelled: bool,
 }
 
 /// A newly found citing work, as the notification needs it.
@@ -1474,7 +1762,9 @@ fn note_new(sum: &mut RunSummary, article: &str, fresh: Vec<CitingRecord>) {
 
 /// Looks up every target article in both sources, stores the result, and records the run.
 /// The ORCID author set is loaded once per run; articles outside it fall back to title search.
-/// `None` when there was nothing to do (no run row is written then).
+/// `None` when there was nothing to do (no run row is written then). When the user stops the
+/// run (`http.is_cancelled()`), the article in progress is dropped, the rest is skipped and the
+/// run is recorded as `cancelled`.
 pub async fn run_articles(
     db_path: &Path,
     mode: Mode,
@@ -1497,6 +1787,8 @@ pub async fn run_articles(
     let started = Utc::now();
     let run_id = db::start_run(&conn, started, targets.len())?;
     let n = targets.len();
+    let scan = Scan::new(on_progress, mode.as_str(), n);
+    scan.start(&targets.iter().map(|t| (t.key.clone(), t.title.clone())).collect::<Vec<_>>());
     let mut sum = RunSummary {
         total: n,
         ..RunSummary::default()
@@ -1504,6 +1796,7 @@ pub async fn run_articles(
     let mut gaps = 0usize;
     let mut first_error: Option<String> = None;
     let mut notes: Vec<String> = Vec::new();
+    let mut cancelled = false;
 
     let overrides = db::all_overrides(&conn)?;
     // The author set is only needed for articles that are matched automatically.
@@ -1514,18 +1807,14 @@ pub async fn run_articles(
     // Step 1-2: the author's works, then one-to-one assignment of articles to them.
     let mut set = AuthorSet::default();
     if !orcid.is_empty() && needs_set {
-        let say_set = |source: &str| {
-            on_progress(Progress {
-                running: true,
-                k: 0,
-                n,
-                source: source.to_string(),
-                title: String::new(),
-            })
-        };
+        let say_set = |step: Step<'_>| scan.step(step, "", "");
         match load_author_set(http, orcid, &say_set, lang).await {
             Ok(s) => set = s,
             Err(e) => notes.push(i18n::trf(lang, "bf.msg_orcid_failed", &[&e])),
+        }
+        cancelled = http.is_cancelled();
+        if !cancelled {
+            scan.emit("works", |p| p.works = set.works.len());
         }
     }
     // In "missing" mode, works already taken by earlier matches stay taken.
@@ -1536,6 +1825,12 @@ pub async fn run_articles(
     };
     let assignments = plan_assignments(&targets, &overrides, &set.works, &excluded);
     sum.by_orcid = assignments.iter().flatten().count();
+    if !cancelled {
+        scan.emit("matching", |p| {
+            p.works = set.works.len();
+            p.records = sum.by_orcid;
+        });
+    }
     if needs_set && set.author_id.is_none() && set.works.is_empty() && !orcid.is_empty() && notes.is_empty() {
         notes.push(i18n::tr(lang, "bf.msg_orcid_none").to_string());
     } else if !set.works.is_empty() {
@@ -1548,18 +1843,14 @@ pub async fn run_articles(
 
     // Step 3-6: both sources for each article.
     for (i, target) in targets.iter().enumerate() {
+        if cancelled || http.is_cancelled() {
+            cancelled = true;
+            break;
+        }
         let k = i + 1;
-        let title = target.title.clone();
-        let say = |source: &str| {
-            on_progress(Progress {
-                running: true,
-                k,
-                n,
-                source: source.to_string(),
-                title: title.clone(),
-            })
-        };
-        say("");
+        let (key, title) = (target.key.clone(), target.title.clone());
+        let say = |step: Step<'_>| scan.step(step, &key, &title);
+        scan.article_start(k, &key, &title);
         let assigned = assignments[i].map(|a| Assigned {
             cand: &set.works[a.cand],
             score: a.score,
@@ -1586,6 +1877,11 @@ pub async fn run_articles(
                 )
             }
         };
+        if http.is_cancelled() {
+            // The article in progress is dropped: a half-read citing list must not be stored.
+            cancelled = true;
+            break;
+        }
         match decide(&target.key, oa, s2) {
             Decision::Matched {
                 rec,
@@ -1602,10 +1898,20 @@ pub async fn run_articles(
                     if other_error.is_some() {
                         gaps += 1;
                     }
+                    scan.article_end("article_done", &key, &title, |p| {
+                        p.oa_count = rec.openalex_count;
+                        p.s2_count = rec.s2_count;
+                        p.chosen = rec.source.clone().unwrap_or_default();
+                        p.method = rec.match_method.clone().unwrap_or_default();
+                        p.records = citing.len();
+                        p.message = other_error.clone().unwrap_or_default();
+                    });
                 }
                 Err(e) => {
                     sum.failed += 1;
-                    first_error.get_or_insert_with(|| format!("{e:#}"));
+                    let msg = format!("{e:#}");
+                    first_error.get_or_insert_with(|| msg.clone());
+                    scan.article_end("error", &key, &title, |p| p.message = secrets::redact(&msg, &[]));
                 }
             },
             Decision::Unmatched => {
@@ -1624,16 +1930,22 @@ pub async fn run_articles(
                     },
                 };
                 match db::store_backfill_article(&mut conn, &rec, Utc::now(), &[]) {
-                    Ok(_) => sum.unmatched += 1,
+                    Ok(_) => {
+                        sum.unmatched += 1;
+                        scan.article_end("unmatched", &key, &title, |_| {});
+                    }
                     Err(e) => {
                         sum.failed += 1;
-                        first_error.get_or_insert_with(|| format!("{e:#}"));
+                        let msg = format!("{e:#}");
+                        first_error.get_or_insert_with(|| msg.clone());
+                        scan.article_end("error", &key, &title, |p| p.message = secrets::redact(&msg, &[]));
                     }
                 }
             }
             Decision::Failed(msg) => {
                 sum.failed += 1;
-                first_error.get_or_insert(msg);
+                first_error.get_or_insert_with(|| msg.clone());
+                scan.article_end("error", &key, &title, |p| p.message = secrets::redact(&msg, &[]));
             }
         }
     }
@@ -1641,18 +1953,25 @@ pub async fn run_articles(
     for kind in http.rejected_keys() {
         notes.push(i18n::tr(lang, key_rejected_msg(kind)).to_string());
     }
-    let status = if sum.failed == 0 {
+    sum.cancelled = cancelled;
+    let status = if cancelled {
+        "cancelled"
+    } else if sum.failed == 0 {
         "ok"
     } else if sum.failed == n {
         "error"
     } else {
         "partial"
     };
-    let mut message = i18n::trf(
-        lang,
-        "bf.msg_done",
-        &[&sum.matched.to_string(), &n.to_string(), &sum.records.to_string()],
-    );
+    let mut message = if cancelled {
+        i18n::trf(lang, "bf.msg_cancelled", &[&scan.done.load(Ordering::SeqCst).to_string(), &n.to_string()])
+    } else {
+        i18n::trf(
+            lang,
+            "bf.msg_done",
+            &[&sum.matched.to_string(), &n.to_string(), &sum.records.to_string()],
+        )
+    };
     for note in notes {
         message.push(' ');
         message.push_str(&note);
@@ -1695,59 +2014,83 @@ async fn refresh_articles(
     }
     let n = targets.len();
     let run_id = db::start_run(&conn, Utc::now(), n)?;
+    let scan = Scan::new(on_progress, Mode::Refresh.as_str(), n);
+    scan.start(&targets.iter().map(|t| (t.key.clone(), t.title.clone())).collect::<Vec<_>>());
     let mut sum = RunSummary {
         total: n,
         ..RunSummary::default()
     };
     let mut first_error: Option<String> = None;
+    let mut cancelled = false;
     for (i, target) in targets.iter().enumerate() {
+        if http.is_cancelled() {
+            cancelled = true;
+            break;
+        }
         let k = i + 1;
-        let title = target.title.clone();
-        let say = |source: &str| {
-            on_progress(Progress {
-                running: true,
-                k,
-                n,
-                source: source.to_string(),
-                title: title.clone(),
-            })
-        };
-        say("");
+        let (key, title) = (target.key.clone(), target.title.clone());
+        let say = |step: Step<'_>| scan.step(step, &key, &title);
+        scan.article_start(k, &key, &title);
         let fetched = match target.source.as_str() {
             "openalex" => oa_citing(http, &target.external_id, &say, lang).await,
             "semanticscholar" => s2_citing(http, &target.external_id, &say, lang).await,
             _ => continue,
         };
+        if http.is_cancelled() {
+            cancelled = true;
+            break;
+        }
         match fetched {
             Ok(citing) => match db::refresh_citing(&mut conn, &target.key, &target.source, &citing) {
                 Ok(fresh) => {
                     sum.matched += 1;
                     sum.records += citing.len();
                     note_new(&mut sum, &target.title, fresh);
+                    scan.article_end("article_done", &key, &title, |p| {
+                        let c = Some(citing.len() as i64);
+                        if target.source == "openalex" {
+                            p.oa_count = c;
+                        } else {
+                            p.s2_count = c;
+                        }
+                        p.chosen = target.source.clone();
+                        p.method = "refresh".to_string();
+                        p.records = citing.len();
+                    });
                 }
                 Err(e) => {
                     sum.failed += 1;
-                    first_error.get_or_insert_with(|| format!("{e:#}"));
+                    let msg = format!("{e:#}");
+                    first_error.get_or_insert_with(|| msg.clone());
+                    scan.article_end("error", &key, &title, |p| p.message = secrets::redact(&msg, &[]));
                 }
             },
             Err(msg) => {
                 sum.failed += 1;
-                first_error.get_or_insert(msg);
+                first_error.get_or_insert_with(|| msg.clone());
+                scan.article_end("error", &key, &title, |p| p.message = secrets::redact(&msg, &[]));
             }
         }
     }
-    let status = if sum.failed == 0 {
+    sum.cancelled = cancelled;
+    let status = if cancelled {
+        "cancelled"
+    } else if sum.failed == 0 {
         "ok"
     } else if sum.failed == n {
         "error"
     } else {
         "partial"
     };
-    let mut message = i18n::trf(
-        lang,
-        "bf.msg_refresh",
-        &[&sum.matched.to_string(), &n.to_string(), &sum.records.to_string(), &sum.new_total.to_string()],
-    );
+    let mut message = if cancelled {
+        i18n::trf(lang, "bf.msg_cancelled", &[&scan.done.load(Ordering::SeqCst).to_string(), &n.to_string()])
+    } else {
+        i18n::trf(
+            lang,
+            "bf.msg_refresh",
+            &[&sum.matched.to_string(), &n.to_string(), &sum.records.to_string(), &sum.new_total.to_string()],
+        )
+    };
     for kind in http.rejected_keys() {
         message.push(' ');
         message.push_str(i18n::tr(lang, key_rejected_msg(kind)));
@@ -1850,10 +2193,50 @@ fn shorten_title(s: &str, max: usize) -> String {
 
 // ------------------------------------------------------- app integration
 
+/// What the scan panel needs to rebuild itself after a reload: every event since the run
+/// started (the high-volume `request` / `backoff` ones are collapsed into `live`, the newest
+/// per source).
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
+pub struct ScanState {
+    pub events: Vec<Progress>,
+    pub live: Vec<Progress>,
+}
+
+/// Longest event history kept (the oldest events after the first are dropped).
+const MAX_EVENTS: usize = 2000;
+
+impl ScanState {
+    /// Folds one event into the state.
+    pub fn record(&mut self, p: &Progress) {
+        match p.event.as_str() {
+            "request" | "backoff" => {
+                match self.live.iter_mut().find(|l| l.source == p.source) {
+                    Some(l) => *l = p.clone(),
+                    None => self.live.push(p.clone()),
+                }
+            }
+            "start" | "preparing" => {
+                self.events.clear();
+                self.live.clear();
+                self.events.push(p.clone());
+            }
+            _ => {
+                self.live.clear();
+                self.events.push(p.clone());
+                if self.events.len() > MAX_EVENTS {
+                    self.events.drain(1..self.events.len() - MAX_EVENTS + 1);
+                }
+            }
+        }
+    }
+}
+
 /// State shared between the commands, the scheduler hook and the background task.
 pub struct Shared {
     running: AtomicBool,
+    cancel: Arc<AtomicBool>,
     progress: Mutex<Progress>,
+    scan: Mutex<ScanState>,
     settings: Arc<Mutex<Settings>>,
 }
 
@@ -1861,7 +2244,9 @@ impl Shared {
     pub fn new(settings: Arc<Mutex<Settings>>) -> Arc<Self> {
         Arc::new(Shared {
             running: AtomicBool::new(false),
+            cancel: Arc::new(AtomicBool::new(false)),
             progress: Mutex::new(Progress::default()),
+            scan: Mutex::new(ScanState::default()),
             settings,
         })
     }
@@ -1870,8 +2255,22 @@ impl Shared {
         lock(&self.progress).clone()
     }
 
+    pub fn scan_state(&self) -> ScanState {
+        lock(&self.scan).clone()
+    }
+
     pub fn is_running(&self) -> bool {
         self.running.load(Ordering::SeqCst)
+    }
+
+    /// Asks the running scan to stop after the current request. False when nothing is running.
+    pub fn cancel(&self) -> bool {
+        if self.is_running() {
+            self.cancel.store(true, Ordering::SeqCst);
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -1905,6 +2304,7 @@ pub fn start(app: &AppHandle, sh: &Arc<Shared>, mode: Mode) -> Start {
     {
         return Start::AlreadyRunning;
     }
+    sh.cancel.store(false, Ordering::SeqCst);
     let guard = RunGuard(sh.clone());
     let app = app.clone();
     let sh = sh.clone();
@@ -1915,7 +2315,7 @@ pub fn start(app: &AppHandle, sh: &Arc<Shared>, mode: Mode) -> Start {
         let path = db::db_path_in(&settings.data_path());
         let keys = tauri::async_runtime::spawn_blocking(secrets::load_keys).await.unwrap_or_default();
         let http = match Http::new(keys) {
-            Ok(h) => h,
+            Ok(h) => h.with_cancel(sh.cancel.clone()),
             Err(e) => {
                 eprintln!("backfill: HTTP client failed: {e:#}");
                 return;
@@ -1925,12 +2325,17 @@ pub fn start(app: &AppHandle, sh: &Arc<Shared>, mode: Mode) -> Start {
         let progress_sh = sh.clone();
         let on_progress = move |p: Progress| {
             *lock(&progress_sh.progress) = p.clone();
+            lock(&progress_sh.scan).record(&p);
             if let Err(e) = emitter.emit("backfill-progress", &p) {
                 eprintln!("backfill-progress event failed: {e}");
             }
         };
+        let mode_name = mode.as_str();
+        let began = Instant::now();
         on_progress(Progress {
             running: true,
+            event: "preparing".into(),
+            mode: mode_name.into(),
             ..Progress::default()
         });
         let stores_citing = !matches!(mode, Mode::Article(_));
@@ -1944,23 +2349,156 @@ pub fn start(app: &AppHandle, sh: &Arc<Shared>, mode: Mode) -> Start {
             }
         }
         if let Ok(Some(sum)) = &result {
-            if stores_citing && sum.failed < sum.total {
+            if stores_citing && !sum.cancelled && sum.failed < sum.total {
                 let p = path.clone();
                 let _ = tauri::async_runtime::spawn_blocking(move || {
                     db::open(&p).and_then(|c| db::set_state(&c, db::STATE_REFRESH, &db::ts(Utc::now())))
                 })
                 .await;
             }
-            if settings.notify {
+            if settings.notify && !sum.cancelled {
                 notify_new_citing(&app, &lang, sum);
             }
         }
-        *lock(&sh.progress) = Progress::default();
-        let _ = app.emit("backfill-progress", Progress::default());
+        // The last event: the run is over. The panel keeps its summary until the user closes it.
+        let (event, summary, message) = match &result {
+            Ok(Some(sum)) => (if sum.cancelled { "cancelled" } else { "finished" }, Some(sum.clone()), String::new()),
+            Ok(None) => ("finished", None, String::new()),
+            Err(e) => ("failed", None, secrets::redact(&format!("{e:#}"), &[])),
+        };
+        on_progress(Progress {
+            running: false,
+            event: event.into(),
+            mode: mode_name.into(),
+            n: summary.as_ref().map(|s| s.total).unwrap_or(0),
+            done: summary.as_ref().map(|s| s.total).unwrap_or(0),
+            elapsed_secs: began.elapsed().as_secs(),
+            summary,
+            message,
+            ..Progress::default()
+        });
         let _ = app.emit("backfill-updated", result.ok().flatten());
         let _ = app.emit("data-updated", ());
     });
     Start::Started
+}
+
+/// Debug aid (the `debug_scan_demo` command, debug builds only): plays a scripted scan with
+/// invented articles through the real event path, so the scan panel can be tried without network.
+pub fn demo(app: AppHandle, sh: Arc<Shared>) -> bool {
+    if !cfg!(debug_assertions) {
+        return false;
+    }
+    if sh.running.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+        return false;
+    }
+    sh.cancel.store(false, Ordering::SeqCst);
+    let guard = RunGuard(sh.clone());
+    tauri::async_runtime::spawn(async move {
+        let _guard = guard;
+        let (emitter, psh) = (app.clone(), sh.clone());
+        let on = move |p: Progress| {
+            *lock(&psh.progress) = p.clone();
+            lock(&psh.scan).record(&p);
+            let _ = emitter.emit("backfill-progress", &p);
+        };
+        let names = [
+            "Sample paper on invented networks",
+            "A study of fictional rivers and their names in a very long title that must be cut off by the panel",
+            "Notes on imaginary measurement",
+            "Synthetic benchmarks for sample data",
+            "Example methods for placeholder corpora",
+            "Unmatched sample letter",
+            "Demonstration of toy models",
+            "Another invented article",
+            "Placeholder proceedings paper",
+            "Sample review of imaginary methods",
+            "Short invented note",
+        ];
+        let targets: Vec<(String, String)> = names.iter().enumerate().map(|(i, t)| (format!("demo{i}"), t.to_string())).collect();
+        let scan = Scan::new(&on, "all", targets.len());
+        on(Progress { running: true, event: "preparing".into(), mode: "all".into(), ..Progress::default() });
+        scan.start(&targets);
+        let pause = |ms: u64| tokio::time::sleep(Duration::from_millis(ms));
+        scan.step(Step::Request { source: OPENALEX_LABEL, what: What::Author, page: 1, records: 0 }, "", "");
+        pause(700).await;
+        scan.step(Step::Request { source: OPENALEX_LABEL, what: What::Works, page: 1, records: 0 }, "", "");
+        pause(700).await;
+        scan.emit("works", |p| p.works = 14);
+        scan.emit("matching", |p| {
+            p.works = 14;
+            p.records = 9;
+        });
+        let (mut matched, mut unmatched, mut failed, mut records) = (0usize, 0usize, 0usize, 0usize);
+        let mut cancelled = false;
+        for (i, (key, title)) in targets.iter().enumerate() {
+            if sh.cancel.load(Ordering::SeqCst) {
+                cancelled = true;
+                break;
+            }
+            scan.article_start(i + 1, key, title);
+            for page in 1..=2usize {
+                scan.step(Step::Request { source: OPENALEX_LABEL, what: What::Citing, page, records: (page - 1) * 40 }, key, title);
+                scan.step(Step::Request { source: S2_LABEL, what: What::Citing, page, records: (page - 1) * 36 }, key, title);
+                pause(450).await;
+            }
+            if i == 3 {
+                for left in (1..=5u64).rev() {
+                    if sh.cancel.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    scan.step(Step::Wait { source: S2_LABEL, secs: left, attempt: 1 }, key, title);
+                    pause(1000).await;
+                }
+            }
+            if sh.cancel.load(Ordering::SeqCst) {
+                cancelled = true;
+                break;
+            }
+            match i {
+                5 => {
+                    unmatched += 1;
+                    scan.article_end("unmatched", key, title, |_| {});
+                }
+                7 => {
+                    failed += 1;
+                    scan.article_end("error", key, title, |p| p.message = "HTTP 500".into());
+                }
+                _ => {
+                    matched += 1;
+                    records += 40 - i * 2;
+                    scan.article_end("article_done", key, title, |p| {
+                        p.oa_count = Some((40 - i * 2) as i64);
+                        p.s2_count = Some((36 - i * 2) as i64);
+                        p.chosen = "openalex".into();
+                        p.method = if i % 2 == 0 { "orcid" } else { "title_search" }.into();
+                        p.records = 40 - i * 2;
+                    });
+                }
+            }
+        }
+        let summary = RunSummary {
+            total: targets.len(),
+            matched,
+            unmatched,
+            failed,
+            records,
+            new_total: 3,
+            cancelled,
+            ..RunSummary::default()
+        };
+        on(Progress {
+            running: false,
+            event: if cancelled { "cancelled" } else { "finished" }.into(),
+            mode: "all".into(),
+            n: targets.len(),
+            done: scan.done.load(Ordering::SeqCst),
+            elapsed_secs: scan.started.elapsed().as_secs(),
+            summary: Some(summary),
+            ..Progress::default()
+        });
+    });
+    true
 }
 
 /// Called by the scheduler after a successful snapshot: backfills new articles when enabled.
@@ -2743,6 +3281,163 @@ mod tests {
         assert!(start.elapsed() >= Duration::from_secs(6));
     }
 
+    // ------------------------------------------------------- scan progress and cancelling
+
+    #[test]
+    fn eta_is_extrapolated_from_finished_articles() {
+        assert_eq!(eta_secs(0, 11, 30), None, "nothing finished yet");
+        assert_eq!(eta_secs(1, 11, 10), Some(100));
+        assert_eq!(eta_secs(5, 10, 50), Some(50));
+        assert_eq!(eta_secs(10, 10, 99), Some(0));
+        assert_eq!(eta_secs(12, 10, 99), Some(0), "never negative");
+    }
+
+    #[test]
+    fn scan_events_carry_counters_elapsed_and_eta() {
+        let seen: Mutex<Vec<Progress>> = Mutex::new(Vec::new());
+        let on = |p: Progress| lock(&seen).push(p);
+        let scan = Scan::new(&on, "all", 3);
+        scan.start(&[("a".into(), "A".into()), ("b".into(), "B".into()), ("c".into(), "C".into())]);
+        scan.article_start(1, "a", "A");
+        scan.step(Step::Request { source: "OpenAlex", what: What::Citing, page: 2, records: 200 }, "a", "A");
+        scan.step(Step::Wait { source: "Semantic Scholar", secs: 12, attempt: 1 }, "a", "A");
+        scan.article_end("article_done", "a", "A", |p| p.records = 7);
+        scan.article_start(2, "b", "B");
+        scan.article_end("unmatched", "b", "B", |_| {});
+        let ev = lock(&seen).clone();
+        let names: Vec<&str> = ev.iter().map(|p| p.event.as_str()).collect();
+        assert_eq!(names, ["start", "article_start", "request", "backoff", "article_done", "article_start", "unmatched"]);
+        assert_eq!(ev[0].targets.len(), 3);
+        assert!(ev.iter().all(|p| p.running && p.mode == "all" && p.n == 3));
+        assert_eq!((ev[2].what.as_str(), ev[2].page, ev[2].records, ev[2].k), ("citing", 2, 200, 1));
+        assert_eq!((ev[3].wait_secs, ev[3].source.as_str()), (12, "Semantic Scholar"));
+        assert_eq!((ev[1].done, ev[4].done, ev[6].done), (0, 1, 2), "done counts finished articles");
+        assert_eq!(ev[1].eta_secs, None, "no ETA before the first article is done");
+        assert!(ev[6].eta_secs.is_some());
+    }
+
+    #[test]
+    fn scan_state_collapses_transient_events_and_resets_on_start() {
+        let mut st = ScanState::default();
+        let ev = |event: &str, source: &str| Progress { event: event.into(), source: source.into(), ..Progress::default() };
+        st.record(&ev("start", ""));
+        st.record(&ev("article_start", ""));
+        for _ in 0..50 {
+            st.record(&ev("request", "OpenAlex"));
+        }
+        st.record(&ev("backoff", "Semantic Scholar"));
+        assert_eq!(st.events.len(), 2, "requests are not kept in the history");
+        assert_eq!(st.live.len(), 2, "newest per source");
+        st.record(&ev("article_done", ""));
+        assert!(st.live.is_empty() && st.events.len() == 3);
+        st.record(&ev("start", ""));
+        assert_eq!(st.events.len(), 1, "a new run starts clean");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_backoff_countdown_stops_when_cancelled() {
+        let http = Http::new(Keys::default()).expect("http");
+        let flag = Arc::new(AtomicBool::new(false));
+        let http = Arc::new(http.with_cancel(flag.clone()));
+        let seen: Arc<Mutex<Vec<u64>>> = Arc::new(Mutex::new(Vec::new()));
+        let (h2, s2) = (http.clone(), seen.clone());
+        let task = tokio::spawn(async move {
+            let say = |step: Step<'_>| {
+                if let Step::Wait { secs, .. } = step {
+                    lock(&s2).push(secs);
+                }
+            };
+            h2.wait_out(Host::Semantic, 60, 1, &say).await
+        });
+        tokio::time::sleep(Duration::from_millis(3500)).await;
+        flag.store(true, Ordering::SeqCst);
+        let r = task.await.expect("join");
+        assert_eq!(r, Err(ApiError::Cancelled));
+        let secs = lock(&seen).clone();
+        assert_eq!(&secs[..3], &[60, 59, 58], "counts down once per second");
+        assert!(secs.len() <= 5, "stopped long before the 60 s were over: {secs:?}");
+    }
+
+    #[tokio::test]
+    async fn a_cancelled_client_sends_no_request() {
+        let http = Http::new(Keys::default()).expect("http").with_cancel(Arc::new(AtomicBool::new(true)));
+        let say = |_: Step<'_>| panic!("no request may be announced");
+        let r = http
+            .get(Host::OpenAlex, "http://127.0.0.1:9/never", &[], Req { say: &say, what: What::Citing, page: 1, records: 0 })
+            .await;
+        assert_eq!(r, Err(ApiError::Cancelled));
+    }
+
+    #[tokio::test]
+    async fn a_cancelled_run_is_recorded_and_stores_nothing() {
+        let dir = std::env::temp_dir().join(format!("scholartakip_cancel_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = db::db_path_in(&dir);
+        {
+            let mut conn = db::open(&path).expect("open");
+            let art = |i: usize| crate::scholar::Article {
+                key: format!("k{i}"),
+                title: format!("Invented article {i}"),
+                authors: String::new(),
+                venue: String::new(),
+                year: Some(2020),
+                citations: 5,
+                url: String::new(),
+                cites_ids: String::new(),
+            };
+            let data = crate::scholar::ProfileData {
+                name: "N".into(),
+                stats: crate::scholar::Stats { since_year: 2021, ..crate::scholar::Stats::default() },
+                articles: (0..3).map(art).collect(),
+                yearly: vec![],
+            };
+            db::insert_snapshot(&mut conn, "P", Utc::now(), &data).expect("snapshot");
+        }
+        let http = Http::new(Keys::default()).expect("http").with_cancel(Arc::new(AtomicBool::new(true)));
+        let seen: Mutex<Vec<Progress>> = Mutex::new(Vec::new());
+        let on = |p: Progress| lock(&seen).push(p);
+        let sum = run_articles(&path, Mode::All, &http, "en", "", &on).await.expect("run").expect("some");
+        assert!(sum.cancelled);
+        assert_eq!((sum.matched, sum.unmatched, sum.failed, sum.total), (0, 0, 0, 3));
+        let conn = db::open(&path).expect("open");
+        let run = db::backfill_summary(&conn).expect("summary").last_run.expect("run row");
+        assert_eq!(run.status, "cancelled");
+        assert!(run.message.contains("0 of 3"), "{}", run.message);
+        let ev = lock(&seen).clone();
+        assert_eq!(ev[0].event, "start");
+        assert_eq!(ev[0].targets.len(), 3);
+        assert!(ev.iter().all(|p| p.event != "article_done" && p.event != "error"));
+        drop(conn);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn issn_normalization() {
+        assert_eq!(normalize_issn("1569-8432").as_deref(), Some("15698432"));
+        assert_eq!(normalize_issn("1872826x").as_deref(), Some("1872826X"));
+        assert_eq!(normalize_issn(" 0011 2233 ").as_deref(), Some("00112233"));
+        assert_eq!(normalize_issn("1234567"), None);
+        assert_eq!(normalize_issn("12345678X"), None);
+        assert_eq!(normalize_issn("ABCD-EFGH"), None);
+        assert_eq!(join_issns(["1569-8432".to_string(), "15698432".into(), "bad".into(), "1872-826x".into()]), "15698432,1872826X");
+    }
+
+    #[test]
+    fn issns_are_read_from_both_sources() {
+        let oa = r#"{"results":[{"id":"https://openalex.org/W1","title":"T","publication_date":"2024-05-06","publication_year":2024,
+            "primary_location":{"landing_page_url":"https://x","source":{"display_name":"Journal X","issn_l":"1569-8432","issn":["1569-8432","1872-826x"]}},"authorships":[]},
+            {"id":"https://openalex.org/W2","title":"U","publication_date":"2024-05-07","publication_year":2024,
+            "primary_location":{"source":{"display_name":"No ISSN"}},"authorships":[]}],"meta":{"next_cursor":null}}"#;
+        let (recs, _) = parse_oa_citing(oa).expect("oa");
+        assert_eq!(recs[0].issn_list, "15698432,1872826X");
+        assert_eq!(recs[1].issn_list, "");
+        let s2 = r#"{"next":null,"data":[{"citingPaper":{"paperId":"abc123","title":"T","year":2024,"publicationDate":"2024-05-06",
+            "publicationVenue":{"issn":"1234-5678"}}},{"citingPaper":{"paperId":"def456","title":"U","year":2024,"publicationVenue":null}}]}"#;
+        let (recs, _) = parse_s2_citations(s2).expect("s2");
+        assert_eq!(recs[0].issn_list, "12345678");
+        assert_eq!(recs[1].issn_list, "");
+    }
+
     /// Live check against OpenAlex and Semantic Scholar (never Google):
     /// `BACKFILL_ORCID=... BACKFILL_TITLES="Title one|Title two" cargo test live_backfill -- --ignored --nocapture`
     /// Takes a few minutes (Semantic Scholar is paced at about 3 s per call).
@@ -2769,6 +3464,7 @@ mod tests {
                     year: None,
                     citations: 10 - i as i64,
                     url: String::new(),
+                    cites_ids: String::new(),
                 })
                 .collect();
             let data = crate::scholar::ProfileData {

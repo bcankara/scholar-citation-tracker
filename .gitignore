@@ -11,3 +11,6 @@ src-tauri/tests/fixtures/
 *.db
 *.db-wal
 *.db-shm
+
+# Local release notes (pasted into the GitHub release by hand)
+RELEASE_NOTES_*.md

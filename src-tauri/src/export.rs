@@ -138,8 +138,8 @@ pub fn write_xlsx(conn: &Connection, path: &Path, lang: &str) -> Result<()> {
     {
         let ws = wb.add_worksheet();
         ws.set_name(tr("xl.sheet.citing"))?;
-        let headers: Vec<&str> = (0..11).map(|i| tr(&format!("xl.c.{i}"))).collect();
         let rows = db::citing_works(conn)?;
+        let headers: Vec<&str> = (0..11).map(|i| tr(&format!("xl.c.{i}"))).collect();
         for (i, c) in rows.iter().enumerate() {
             let n = i as u32 + 1;
             match citing_excel(&c.date, &c.precision) {

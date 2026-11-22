@@ -460,7 +460,6 @@ pub struct Distribution {
     pub without_country: usize,
     pub venues: Vec<(String, i64)>,
     pub without_venue: usize,
-    pub years: Vec<(String, i64)>,
 }
 
 fn top(counts: HashMap<String, (String, i64)>, n: usize) -> Vec<(String, i64)> {
@@ -471,11 +470,10 @@ fn top(counts: HashMap<String, (String, i64)>, n: usize) -> Vec<(String, i64)> {
 }
 
 /// Counts distinct citing works by author country (a work counts once per country), by venue
-/// (case-insensitive) and by year of the citing work. Top 10 for country and venue.
+/// (case-insensitive). Top 10 for country and venue.
 pub fn distribution(rows: &[db::DistRow]) -> Distribution {
     let mut countries: HashMap<String, (String, i64)> = HashMap::new();
     let mut venues: HashMap<String, (String, i64)> = HashMap::new();
-    let mut years: std::collections::BTreeMap<String, i64> = std::collections::BTreeMap::new();
     let mut d = Distribution { total: rows.len(), ..Distribution::default() };
     for r in rows {
         let codes: std::collections::BTreeSet<&str> = r.countries.split(',').map(str::trim).filter(|c| c.len() == 2).collect();
@@ -493,18 +491,102 @@ pub fn distribution(rows: &[db::DistRow]) -> Distribution {
         } else {
             venues.entry(venue.to_lowercase()).or_insert_with(|| (venue.to_string(), 0)).1 += 1;
         }
-        if r.date.len() >= 4 {
-            *years.entry(r.date[..4].to_string()).or_insert(0) += 1;
-        }
     }
     d.countries = top(countries, 10);
     d.venues = top(venues, 10);
-    d.years = years.into_iter().collect();
     d
 }
 
 pub fn build_distribution(conn: &Connection) -> Result<Distribution> {
     Ok(distribution(&db::distinct_citing_works(conn)?))
+}
+
+// ------------------------------------------------------------ recent citations
+
+/// One row of the "Recent citations" card: a change Scholar showed, or a citing work found
+/// through OpenAlex / Semantic Scholar.
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
+pub struct RecentItem {
+    /// "scholar_up" | "scholar_down" | "citing"
+    pub kind: String,
+    /// Timestamp (Scholar changes) or `YYYY-MM-DD` / `YYYY-MM` (citing works).
+    pub date: String,
+    pub precision: String,
+    pub article_key: String,
+    pub article_title: String,
+    pub cites_ids: String,
+    /// Signed change for Scholar rows, 0 for citing works.
+    pub delta: i64,
+    pub old: i64,
+    pub new: i64,
+    pub citing_title: String,
+    pub venue: String,
+    pub source: String,
+    pub doi: String,
+    pub url: String,
+    pub citing_id: String,
+}
+
+/// Day a row is filed under, for ordering: the first ten characters of a timestamp, a month
+/// becomes its first day.
+fn day_key(date: &str) -> String {
+    match date.len() {
+        0..=4 => format!("{date:0<4}-01-01"),
+        5..=7 => format!("{date}-01"),
+        _ => date[..10.min(date.len())].to_string(),
+    }
+}
+
+/// Newest `limit` rows of both kinds, newest first. Citing works dated by year only are left
+/// out (they cannot be called recent); Scholar rows sort before citing works of the same day.
+pub fn merge_recent(changes: Vec<db::ScholarChange>, citing: Vec<db::CitingRow>, limit: usize) -> Vec<RecentItem> {
+    let mut rows: Vec<(String, u8, String, RecentItem)> = Vec::new();
+    for c in changes {
+        rows.push((
+            day_key(&c.at),
+            0,
+            c.at.clone(),
+            RecentItem {
+                kind: if c.delta > 0 { "scholar_up" } else { "scholar_down" }.into(),
+                date: c.at,
+                article_key: c.article_key,
+                article_title: c.title,
+                cites_ids: c.cites_ids,
+                delta: c.delta,
+                old: c.old,
+                new: c.new,
+                source: "scholar".into(),
+                ..RecentItem::default()
+            },
+        ));
+    }
+    for c in citing.into_iter().filter(|c| c.precision != "year") {
+        rows.push((
+            day_key(&c.date),
+            1,
+            c.citing_id.clone(),
+            RecentItem {
+                kind: "citing".into(),
+                date: c.date,
+                precision: c.precision,
+                article_key: c.article_key,
+                article_title: c.article_title,
+                citing_title: c.title,
+                venue: c.venue,
+                source: c.source,
+                doi: c.doi,
+                url: c.url,
+                citing_id: c.citing_id,
+                ..RecentItem::default()
+            },
+        ));
+    }
+    rows.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)).then(b.2.cmp(&a.2)));
+    rows.into_iter().take(limit).map(|r| r.3).collect()
+}
+
+pub fn build_recent(conn: &Connection, limit: usize) -> Result<Vec<RecentItem>> {
+    Ok(merge_recent(db::scholar_changes(conn)?, db::citing_works(conn)?, limit))
 }
 
 // ----------------------------------------------------------- weekly summary
@@ -820,7 +902,63 @@ mod tests {
         assert_eq!((d.with_country, d.without_country), (3, 1));
         assert_eq!(d.venues, vec![("Journal A".to_string(), 2), ("Journal B".to_string(), 1)]);
         assert_eq!(d.without_venue, 1);
-        assert_eq!(d.years, vec![("2024".to_string(), 2), ("2025".to_string(), 2)]);
+    }
+
+    fn sc(key: &str, at: &str, old: i64, new: i64) -> db::ScholarChange {
+        db::ScholarChange {
+            article_key: key.into(),
+            title: format!("Article {key}"),
+            cites_ids: "1".into(),
+            at: at.into(),
+            old,
+            new,
+            delta: new - old,
+        }
+    }
+
+    fn cr(id: &str, date: &str, precision: &str) -> db::CitingRow {
+        db::CitingRow {
+            article_key: "k1".into(),
+            article_title: "Article k1".into(),
+            source: "openalex".into(),
+            citing_id: id.into(),
+            title: format!("Citing {id}"),
+            date: date.into(),
+            precision: precision.into(),
+            venue: "V".into(),
+            doi: String::new(),
+            url: String::new(),
+            authors: String::new(),
+            countries: String::new(),
+            issn_list: String::new(),
+        }
+    }
+
+    #[test]
+    fn recent_merges_both_sources_in_time_order_with_both_directions() {
+        let changes = vec![
+            sc("a", "2026-11-21T09:00:00Z", 3, 5),
+            sc("b", "2026-11-18T09:00:00Z", 7, 6),
+            sc("c", "2026-10-01T09:00:00Z", 1, 2),
+        ];
+        let citing = vec![cr("W1", "2026-11-20", "day"), cr("W2", "2026-11", "month"), cr("W3", "2025", "year")];
+        let r = merge_recent(changes, citing, 10);
+        let kinds: Vec<(&str, i64)> = r.iter().map(|i| (i.kind.as_str(), i.delta)).collect();
+        assert_eq!(
+            kinds,
+            vec![("scholar_up", 2), ("citing", 0), ("scholar_down", -1), ("citing", 0), ("scholar_up", 1)],
+            "year-only citing works are left out; the month-dated one files under the 1st"
+        );
+        assert_eq!(r[1].citing_id, "W1");
+        assert_eq!(r[3].citing_id, "W2");
+    }
+
+    #[test]
+    fn recent_is_capped() {
+        let changes: Vec<db::ScholarChange> = (1..=12).map(|d| sc("a", &format!("2026-11-{d:02}T09:00:00Z"), d, d + 1)).collect();
+        let r = merge_recent(changes, Vec::new(), 10);
+        assert_eq!(r.len(), 10);
+        assert!(r[0].date.starts_with("2026-11-12"));
     }
 
     #[test]

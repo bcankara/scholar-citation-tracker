@@ -247,6 +247,7 @@ mod tests {
             year: Some(2020),
             citations: c,
             url: String::new(),
+            cites_ids: String::new(),
         }
     }
 

@@ -166,6 +166,12 @@ pub const TABLE: &[(&str, &str, &str)] = &[
     ("bf.err_rate", "istek sınırı aşıldı (HTTP 429)", "rate limit reached (HTTP 429)"),
     ("bf.err_http", "HTTP {0}", "HTTP {0}"),
     ("bf.err_parse", "yanıt çözümlenemedi: {0}", "response could not be parsed: {0}"),
+    ("bf.err_cancelled", "durduruldu", "stopped"),
+    (
+        "bf.msg_cancelled",
+        "Tarama durduruldu: {0}/{1} makale tamamlandı.",
+        "Scan stopped: {0} of {1} articles completed.",
+    ),
     (
         "bf.msg_done",
         "{0} / {1} makale eşleşti, {2} atıf kaydı.",

@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS articles(
     year INTEGER,
     url TEXT NOT NULL DEFAULT '',
     first_seen TEXT NOT NULL,
-    last_seen TEXT NOT NULL
+    last_seen TEXT NOT NULL,
+    cites_ids TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS article_citations(
     snapshot_id INTEGER NOT NULL,
@@ -83,6 +84,7 @@ CREATE TABLE IF NOT EXISTS backfill_citations(
     url TEXT NOT NULL DEFAULT '',
     authors TEXT NOT NULL DEFAULT '',
     countries TEXT NOT NULL DEFAULT '',
+    issn_list TEXT NOT NULL DEFAULT '',
     PRIMARY KEY(article_key, citing_id)
 );
 CREATE INDEX IF NOT EXISTS idx_backfill_date ON backfill_citations(citing_date);
@@ -158,20 +160,29 @@ pub fn open(path: &Path) -> Result<Connection> {
     Ok(conn)
 }
 
-/// Columns added to `backfill_citations` after the table first existed. Databases created
+/// Columns added after a table first existed: (table, column, definition). Databases created
 /// with the older column set get them here (idempotent: a column is only added when missing).
-const CITING_EXTRA_COLUMNS: [&str; 5] = ["venue", "doi", "url", "authors", "countries"];
+const EXTRA_COLUMNS: [(&str, &str, &str); 7] = [
+    ("backfill_citations", "venue", "TEXT NOT NULL DEFAULT ''"),
+    ("backfill_citations", "doi", "TEXT NOT NULL DEFAULT ''"),
+    ("backfill_citations", "url", "TEXT NOT NULL DEFAULT ''"),
+    ("backfill_citations", "authors", "TEXT NOT NULL DEFAULT ''"),
+    ("backfill_citations", "countries", "TEXT NOT NULL DEFAULT ''"),
+    ("backfill_citations", "issn_list", "TEXT NOT NULL DEFAULT ''"),
+    ("articles", "cites_ids", "TEXT NOT NULL DEFAULT ''"),
+];
 
 pub fn migrate(conn: &Connection) -> Result<()> {
-    let mut st = conn.prepare("PRAGMA table_info(backfill_citations)")?;
-    let have: Vec<String> = st
-        .query_map([], |r| r.get::<_, String>(1))?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    for col in CITING_EXTRA_COLUMNS {
+    for (table, col, def) in EXTRA_COLUMNS {
+        let mut st = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+        let have: Vec<String> = st
+            .query_map([], |r| r.get::<_, String>(1))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        if have.is_empty() {
+            continue; // the table does not exist (yet)
+        }
         if !have.iter().any(|c| c == col) {
-            conn.execute_batch(&format!(
-                "ALTER TABLE backfill_citations ADD COLUMN {col} TEXT NOT NULL DEFAULT ''"
-            ))?;
+            conn.execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {col} {def}"))?;
         }
     }
     Ok(())
@@ -269,17 +280,18 @@ pub fn insert_snapshot(
     let sid = tx.last_insert_rowid();
     {
         let mut upsert = tx.prepare(
-            "INSERT INTO articles(article_key, title, authors, venue, year, url, first_seen, last_seen)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?7)
+            "INSERT INTO articles(article_key, title, authors, venue, year, url, first_seen, last_seen, cites_ids)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?7,?8)
              ON CONFLICT(article_key) DO UPDATE SET
                title=excluded.title, authors=excluded.authors, venue=excluded.venue,
-               year=excluded.year, url=excluded.url, last_seen=excluded.last_seen",
+               year=excluded.year, url=excluded.url, last_seen=excluded.last_seen,
+               cites_ids=CASE WHEN excluded.cites_ids<>'' THEN excluded.cites_ids ELSE articles.cites_ids END",
         )?;
         let mut cit = tx.prepare(
             "INSERT OR REPLACE INTO article_citations(snapshot_id, article_key, citations) VALUES (?1,?2,?3)",
         )?;
         for a in &data.articles {
-            upsert.execute(params![a.key, a.title, a.authors, a.venue, a.year, a.url, when])?;
+            upsert.execute(params![a.key, a.title, a.authors, a.venue, a.year, a.url, when, a.cites_ids])?;
             cit.execute(params![sid, a.key, a.citations])?;
         }
         let mut yr = tx.prepare(
@@ -429,6 +441,10 @@ pub struct ArticleRow {
     pub d7: i64,
     pub d30: i64,
     pub is_new: bool,
+    /// DOI of the article: manual override, else the matched work's DOI; `None` when unknown.
+    pub doi: Option<String>,
+    /// Comma-separated `cites=` ids of the Scholar profile page (for the "view on Scholar" link).
+    pub cites_ids: String,
 }
 
 /// Articles of the latest snapshot with deltas and the "new" flag.
@@ -451,7 +467,10 @@ pub fn articles_overview(
         "SELECT a.article_key, a.title, a.authors, a.venue, a.year, a.url, a.first_seen, c.citations,
                 (SELECT citations FROM article_citations WHERE snapshot_id=?2 AND article_key=a.article_key),
                 (SELECT citations FROM article_citations WHERE snapshot_id=?3 AND article_key=a.article_key),
-                (SELECT citations FROM article_citations WHERE snapshot_id=?4 AND article_key=a.article_key)
+                (SELECT citations FROM article_citations WHERE snapshot_id=?4 AND article_key=a.article_key),
+                COALESCE(NULLIF((SELECT doi FROM article_overrides WHERE article_key=a.article_key),''),
+                         NULLIF((SELECT doi FROM article_matches WHERE article_key=a.article_key),'')),
+                a.cites_ids
          FROM article_citations c JOIN articles a ON a.article_key=c.article_key
          WHERE c.snapshot_id=?1
          ORDER BY c.citations DESC, a.title ASC",
@@ -475,6 +494,8 @@ pub fn articles_overview(
             d7: citations - prev_7.unwrap_or(0),
             d30: citations - prev_30.unwrap_or(0),
             is_new,
+            doi: r.get(11)?,
+            cites_ids: r.get(12)?,
         })
     })?;
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
@@ -488,6 +509,126 @@ pub fn article_history(conn: &Connection, key: &str) -> Result<Vec<(String, i64)
     )?;
     let rows = st.query_map(params![key], |r| Ok((r.get(0)?, r.get(1)?)))?;
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+// ------------------------------------------------- Scholar-detected changes
+
+/// One snapshot at which an article's Scholar count differed from the snapshot before it.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct CitationChange {
+    pub at: String,
+    pub old: i64,
+    pub new: i64,
+    pub delta: i64,
+}
+
+/// Changes between consecutive points of one article's history (ascending by time). The first
+/// point has nothing before it, so it never counts. Result: newest first.
+pub fn extract_changes(history: &[(String, i64)]) -> Vec<CitationChange> {
+    let mut out: Vec<CitationChange> = history
+        .windows(2)
+        .filter(|w| w[0].1 != w[1].1)
+        .map(|w| CitationChange {
+            at: w[1].0.clone(),
+            old: w[0].1,
+            new: w[1].1,
+            delta: w[1].1 - w[0].1,
+        })
+        .collect();
+    out.reverse();
+    out
+}
+
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
+pub struct ChangeSummary {
+    /// Sum of the increases (positive).
+    pub up: i64,
+    /// Sum of the decreases (positive magnitude).
+    pub down: i64,
+    pub net: i64,
+}
+
+/// Increases, decreases and net change of the changes at or after `since` (timestamp string).
+pub fn summarize_changes(changes: &[CitationChange], since: &str) -> ChangeSummary {
+    let mut s = ChangeSummary::default();
+    for c in changes.iter().filter(|c| c.at.as_str() >= since) {
+        if c.delta > 0 {
+            s.up += c.delta;
+        } else {
+            s.down += -c.delta;
+        }
+    }
+    s.net = s.up - s.down;
+    s
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ArticleChanges {
+    pub items: Vec<CitationChange>,
+    pub last30: ChangeSummary,
+}
+
+pub fn article_changes(conn: &Connection, key: &str, now: DateTime<Utc>) -> Result<ArticleChanges> {
+    let items = extract_changes(&article_history(conn, key)?);
+    let last30 = summarize_changes(&items, &ts(now - Duration::days(30)));
+    Ok(ArticleChanges { items, last30 })
+}
+
+/// A change of one article, with what the UI needs to show and link it.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ScholarChange {
+    pub article_key: String,
+    pub title: String,
+    pub cites_ids: String,
+    pub at: String,
+    pub old: i64,
+    pub new: i64,
+    pub delta: i64,
+}
+
+/// Every Scholar-detected change of every article, newest first.
+pub fn scholar_changes(conn: &Connection) -> Result<Vec<ScholarChange>> {
+    let mut st = conn.prepare(
+        "SELECT c.article_key, a.title, a.cites_ids, s.fetched_at, c.citations
+         FROM article_citations c
+         JOIN snapshots s ON s.id=c.snapshot_id
+         JOIN articles a ON a.article_key=c.article_key
+         ORDER BY c.article_key ASC, s.fetched_at ASC, s.id ASC",
+    )?;
+    let rows = st
+        .query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, i64>(4)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < rows.len() {
+        let mut j = i;
+        while j < rows.len() && rows[j].0 == rows[i].0 {
+            j += 1;
+        }
+        let hist: Vec<(String, i64)> = rows[i..j].iter().map(|r| (r.3.clone(), r.4)).collect();
+        for c in extract_changes(&hist) {
+            out.push(ScholarChange {
+                article_key: rows[i].0.clone(),
+                title: rows[i].1.clone(),
+                cites_ids: rows[i].2.clone(),
+                at: c.at,
+                old: c.old,
+                new: c.new,
+                delta: c.delta,
+            });
+        }
+        i = j;
+    }
+    out.sort_by(|a, b| b.at.cmp(&a.at).then(a.title.cmp(&b.title)));
+    Ok(out)
 }
 
 // ---------------------------------------------------------------- fetch log
@@ -552,6 +693,8 @@ pub struct Change {
     pub total_delta: i64,
     /// (title, increase) for articles whose count went up, largest first.
     pub increases: Vec<(String, i64)>,
+    /// (title, decrease as a positive number) for articles whose count went down. Never notified.
+    pub decreases: Vec<(String, i64)>,
     /// Titles of articles first seen in this snapshot.
     pub new_articles: Vec<String>,
 }
@@ -602,10 +745,12 @@ pub fn change_since_previous(conn: &Connection, snapshot_id: i64) -> Result<Opti
                 }
             }
             Some(b) if now > b => change.increases.push((title, now - b)),
+            Some(b) if now < b => change.decreases.push((title, b - now)),
             _ => {}
         }
     }
     change.increases.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    change.decreases.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
     change.new_articles.sort();
     Ok(Some(change))
 }
@@ -685,6 +830,8 @@ pub struct CitingRecord {
     pub authors: String,
     /// ISO country codes of the authors' institutions, sorted, comma-separated. Only OpenAlex has them.
     pub countries: String,
+    /// Normalized ISSNs of the venue (8 characters, no hyphen), comma-separated.
+    pub issn_list: String,
 }
 
 /// Inserts the citing rows of one article (the caller has removed the old ones).
@@ -692,8 +839,8 @@ fn insert_citing_rows(tx: &rusqlite::Transaction, key: &str, source: &str, citin
     let mut ins = tx.prepare(
         "INSERT OR REPLACE INTO backfill_citations
            (article_key, source, citing_id, citing_title, citing_date, date_precision,
-            venue, doi, url, authors, countries)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
+            venue, doi, url, authors, countries, issn_list)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
     )?;
     for c in citing {
         ins.execute(params![
@@ -707,7 +854,8 @@ fn insert_citing_rows(tx: &rusqlite::Transaction, key: &str, source: &str, citin
             c.doi,
             c.url,
             c.authors,
-            c.countries
+            c.countries,
+            c.issn_list
         ])?;
     }
     Ok(())
@@ -1297,13 +1445,14 @@ pub struct CitingRow {
     pub url: String,
     pub authors: String,
     pub countries: String,
+    pub issn_list: String,
 }
 
 /// Every stored citing work, newest first (one row per article and citing work).
 pub fn citing_works(conn: &Connection) -> Result<Vec<CitingRow>> {
     let mut st = conn.prepare(
         "SELECT b.article_key, COALESCE(a.title,''), b.source, b.citing_id, b.citing_title, b.citing_date,
-                b.date_precision, b.venue, b.doi, b.url, b.authors, b.countries
+                b.date_precision, b.venue, b.doi, b.url, b.authors, b.countries, b.issn_list
          FROM backfill_citations b LEFT JOIN articles a ON a.article_key=b.article_key
          ORDER BY b.citing_date DESC, b.citing_id ASC",
     )?;
@@ -1321,6 +1470,7 @@ pub fn citing_works(conn: &Connection) -> Result<Vec<CitingRow>> {
             url: r.get(9)?,
             authors: r.get(10)?,
             countries: r.get(11)?,
+            issn_list: r.get(12)?,
         })
     })?;
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
@@ -1514,6 +1664,7 @@ mod tests {
             year: Some(2020),
             citations: cites,
             url: format!("https://scholar.google.com/{key}"),
+            cites_ids: format!("{}", cites + 100),
         }
     }
 
@@ -1777,11 +1928,117 @@ mod tests {
             increases: (1..=5)
                 .map(|i| (format!("Title number {i} {}", "x".repeat(60)), 1))
                 .collect(),
+            decreases: vec![],
             new_articles: vec![],
         };
         let (_, body) = notification_text(&c, "en").expect("text");
         assert_eq!(body.lines().count(), 3);
         assert!(body.lines().all(|l| l.contains('…') && l.ends_with("+1")));
+    }
+
+    #[test]
+    fn extract_changes_in_both_directions_skips_the_first_point() {
+        let h = |v: &[(&str, i64)]| v.iter().map(|(a, b)| (a.to_string(), *b)).collect::<Vec<_>>();
+        let c = extract_changes(&h(&[("t1", 5), ("t2", 5), ("t3", 7), ("t4", 6), ("t5", 6)]));
+        assert_eq!(c.len(), 2, "unchanged points make no change; the first point has nothing before it");
+        assert_eq!((c[0].at.as_str(), c[0].old, c[0].new, c[0].delta), ("t4", 7, 6, -1), "newest first");
+        assert_eq!((c[1].at.as_str(), c[1].old, c[1].new, c[1].delta), ("t3", 5, 7, 2));
+        assert!(extract_changes(&h(&[("t1", 9)])).is_empty());
+        assert!(extract_changes(&[]).is_empty());
+        // a citation removed and later returning shows as a down and an up
+        let c = extract_changes(&h(&[("a", 3), ("b", 2), ("c", 3)]));
+        assert_eq!(c.iter().map(|x| x.delta).collect::<Vec<_>>(), vec![1, -1]);
+    }
+
+    #[test]
+    fn change_summary_counts_ups_downs_and_net_inside_the_window() {
+        let ch = |at: &str, old: i64, new: i64| CitationChange { at: at.into(), old, new, delta: new - old };
+        let list = vec![
+            ch("2026-11-20T10:00:00Z", 5, 7),
+            ch("2026-11-10T10:00:00Z", 7, 6),
+            ch("2026-11-05T10:00:00Z", 6, 9),
+            ch("2026-09-01T10:00:00Z", 1, 0), // outside the window
+        ];
+        let s = summarize_changes(&list, "2026-10-23T00:00:00Z");
+        assert_eq!((s.up, s.down, s.net), (5, 1, 4));
+        let all = summarize_changes(&list, "");
+        assert_eq!((all.up, all.down, all.net), (5, 2, 3));
+        assert_eq!(summarize_changes(&[], ""), ChangeSummary::default());
+    }
+
+    #[test]
+    fn scholar_changes_from_snapshots_ignore_the_first_snapshot_and_new_articles() {
+        let mut conn = mem();
+        insert_snapshot(&mut conn, "P", t("2026-11-01T10:00:00Z"), &profile(vec![art("k1", "One", 10), art("k2", "Two", 5)], 1)).expect("s1");
+        insert_snapshot(&mut conn, "P", t("2026-11-02T10:00:00Z"), &profile(vec![art("k1", "One", 12), art("k2", "Two", 4)], 1)).expect("s2");
+        // k3 shows up for the first time with 3 citations: that is not an increase
+        insert_snapshot(&mut conn, "P", t("2026-11-03T10:00:00Z"), &profile(vec![art("k1", "One", 12), art("k2", "Two", 4), art("k3", "Three", 3)], 1)).expect("s3");
+        insert_snapshot(&mut conn, "P", t("2026-11-04T10:00:00Z"), &profile(vec![art("k1", "One", 11), art("k2", "Two", 4), art("k3", "Three", 4)], 1)).expect("s4");
+        let ch = scholar_changes(&conn).expect("changes");
+        let view: Vec<(&str, i64)> = ch.iter().map(|c| (c.article_key.as_str(), c.delta)).collect();
+        assert_eq!(view, vec![("k1", -1), ("k3", 1), ("k1", 2), ("k2", -1)], "newest first, both directions");
+        assert!(ch.iter().all(|c| c.cites_ids.parse::<i64>().is_ok()), "ids travel with the change");
+        let one = article_changes(&conn, "k1", t("2026-11-10T10:00:00Z")).expect("one");
+        assert_eq!(one.items.len(), 2);
+        assert_eq!((one.last30.up, one.last30.down, one.last30.net), (2, 1, 1));
+    }
+
+    #[test]
+    fn decreases_are_recorded_but_never_notified_alone() {
+        let mut conn = mem();
+        insert_snapshot(&mut conn, "P", t("2026-11-20T10:00:00Z"), &profile(vec![art("k1", "One", 10), art("k2", "Two", 5)], 1)).expect("s1");
+        let down = insert_snapshot(&mut conn, "P", t("2026-11-20T13:00:00Z"), &profile(vec![art("k1", "One", 8), art("k2", "Two", 5)], 1)).expect("s2");
+        let c = change_since_previous(&conn, down).expect("c").expect("some");
+        assert_eq!(c.total_delta, -2);
+        assert_eq!(c.decreases, vec![("One".to_string(), 2)]);
+        assert!(c.increases.is_empty());
+        assert!(notification_text(&c, "tr").is_none() && notification_text(&c, "en").is_none());
+        // one article up and another down in the same snapshot: the net, and only the risen article
+        let both = insert_snapshot(&mut conn, "P", t("2026-11-20T16:00:00Z"), &profile(vec![art("k1", "One", 7), art("k2", "Two", 9)], 1)).expect("s3");
+        let c = change_since_previous(&conn, both).expect("c").expect("some");
+        assert_eq!((c.total_delta, c.increases.len(), c.decreases.len()), (3, 1, 1));
+        let (title, body) = notification_text(&c, "en").expect("text");
+        assert_eq!(title, "+3 new citations (total 16)");
+        assert!(body.contains("Two +4") && !body.contains("One"), "{body}");
+    }
+
+    #[test]
+    fn article_rows_carry_the_doi_and_scholar_ids() {
+        let mut conn = mem();
+        insert_snapshot(&mut conn, "P", t("2026-11-01T10:00:00Z"), &profile(vec![art("k1", "One", 10), art("k2", "Two", 5), art("k3", "Three", 1)], 1)).expect("s");
+        // k1: matched work with a DOI; k2: manual DOI wins; k3: nothing known
+        store_backfill_article(
+            &mut conn,
+            &MatchRecord { article_key: "k1".into(), source: Some("openalex".into()), external_id: Some("W1".into()), doi: Some("10.1/auto".into()), ..MatchRecord::default() },
+            t("2026-11-02T10:00:00Z"),
+            &[],
+        )
+        .expect("m1");
+        store_backfill_article(
+            &mut conn,
+            &MatchRecord { article_key: "k2".into(), source: Some("openalex".into()), external_id: Some("W2".into()), doi: Some("10.1/auto2".into()), ..MatchRecord::default() },
+            t("2026-11-02T10:00:00Z"),
+            &[],
+        )
+        .expect("m2");
+        set_override_doi(&conn, "k2", Some("10.9/manual"), t("2026-11-03T10:00:00Z")).expect("ov");
+        let rows = articles_overview(&conn, t("2026-11-05T00:00:00Z"), t("2026-11-05T12:00:00Z")).expect("rows");
+        let by = |k: &str| rows.iter().find(|r| r.key == k).expect("row");
+        assert_eq!(by("k1").doi.as_deref(), Some("10.1/auto"));
+        assert_eq!(by("k2").doi.as_deref(), Some("10.9/manual"));
+        assert_eq!(by("k3").doi, None);
+        assert_eq!(by("k1").cites_ids, "110");
+    }
+
+    #[test]
+    fn citing_rows_keep_the_issn_list() {
+        let mut conn = mem();
+        insert_snapshot(&mut conn, "P", t("2026-11-01T10:00:00Z"), &profile(vec![art("k1", "One", 10)], 1)).expect("s");
+        let with_issn = CitingRecord { issn_list: "15698432,1872826X".into(), ..cite("W1", "2026-10-01", "day") };
+        store_backfill_article(&mut conn, &mrec("k1", Some("openalex")), t("2026-11-02T10:00:00Z"), &[with_issn, cite("W2", "2026-10-02", "day")]).expect("bf");
+        let rows = citing_works(&conn).expect("c");
+        assert_eq!(rows.iter().find(|c| c.citing_id == "W1").expect("w1").issn_list, "15698432,1872826X");
+        assert_eq!(rows.iter().find(|c| c.citing_id == "W2").expect("w2").issn_list, "");
     }
 
     #[test]
@@ -2048,7 +2305,11 @@ mod tests {
         let cols: i64 = conn
             .query_row("SELECT COUNT(*) FROM pragma_table_info('backfill_citations')", [], |r| r.get(0))
             .expect("cols");
-        assert_eq!(cols, 11);
+        assert_eq!(cols, 12);
+        let issn: String = conn
+            .query_row("SELECT issn_list FROM backfill_citations WHERE citing_id='W1'", [], |r| r.get(0))
+            .expect("issn column");
+        assert_eq!(issn, "");
     }
 
     fn rich(id: &str, date: &str, venue: &str) -> CitingRecord {

@@ -11,15 +11,15 @@ Arayüz **Türkçe** ve **İngilizce** olarak sunulur. İlk açılışta dil, Wi
 ## Ekran görüntüleri
 
 <table>
-<tr><td width="50%"><img src="docs/images/tr-panel.png" alt="Panel: toplamlar, değişimler, tahmin ve en hızlı yükselen makaleler"><br><sub>Panel: toplamlar, değişimler, tahmin ve en hızlı yükselen makaleler</sub></td><td width="50%"><img src="docs/images/tr-articles.png" alt="Makaleler: makale geçmişi, eşleşen kayıt ve atıf yapanlar"><br><sub>Makaleler: makale geçmişi, eşleşen kayıt ve atıf yapanlar</sub></td></tr>
-<tr><td width="50%"><img src="docs/images/tr-citing.png" alt="Atıf yapanlar: ülke, dergi ve yıl dağılımı"><br><sub>Atıf yapanlar: ülke, dergi ve yıl dağılımı</sub></td><td width="50%"><img src="docs/images/tr-report.png" alt="PDF atıf raporu"><br><sub>PDF atıf raporu</sub></td></tr>
+<tr><td width="50%"><img src="docs/images/tr-panel.png" alt="Panel: toplamlar, tek atıf geçmişi grafiği, son atıflar, tahmin ve en hızlı yükselen makaleler"><br><sub>Panel: toplamlar, tek atıf geçmişi grafiği, son atıflar, tahmin ve en hızlı yükselen makaleler</sub></td><td width="50%"><img src="docs/images/tr-articles.png" alt="Makaleler: makale geçmişi, değişim geçmişi, eşleşen kayıt ve atıf yapanlar"><br><sub>Makaleler: makale geçmişi, değişim geçmişi, eşleşen kayıt ve atıf yapanlar</sub></td></tr>
+<tr><td width="50%"><img src="docs/images/tr-citing.png" alt="Atıf yapanlar: ülke ve dergi dağılımı"><br><sub>Atıf yapanlar: ülke ve dergi dağılımı</sub></td><td width="50%"><img src="docs/images/tr-report.png" alt="PDF atıf raporu"><br><sub>PDF atıf raporu</sub></td></tr>
 </table>
 
 ## Ne yapar?
 
 - Profil sayfasını belirli aralıklarla okur (varsayılan 3 saat; 1 ile 24 saat arasında ayarlanabilir) ve toplam atıf, h-indeksi, i10-indeksi, makale bazlı atıflar ile yıllık atıf dağılımını yerel bir SQLite veritabanına kaydeder.
-- Panel; bugün / 7 gün / 30 gün değişimlerini, toplam atıfın zaman çizgisini ve yıllık grafiği gösterir. Makaleler sekmesinde her makalenin geçmişi açılabilir.
-- Atıf sayısı arttığında veya yeni bir makale göründüğünde Windows bildirimi gösterir (ilk kayıtta bildirim yoktur).
+- Panel; bugün / 7 gün / 30 gün değişimlerini, **tek** bir atıf geçmişi grafiğini (birikmiş **Toplam** ile gün, ay ya da yıl bazında **Dönem başına** yeni atıflar arasında geçiş), [son atıfların](#son-atıflar-ve-schoların-atıf-listesi) listesini, tahmini ve en hızlı yükselen makaleleri gösterir. Makaleler sekmesinde her makalenin geçmişi, sayısının her değişimi (artış ya da azalış) ile birlikte açılabilir.
+- Atıf sayısı arttığında veya yeni bir makale göründüğünde Windows bildirimi gösterir (ilk kayıtta bildirim yoktur). Scholar bazen atıfları kaldırır (ve sonra geri ekleyebilir): azalışlar tablolarda ve değişim geçmişinde kırmızı gösterilir ama bildirim oluşturmaz. Aynı kontrolde hem artış hem azalış varsa bildirim net değişimi ve artan makaleleri gösterir.
 - Başarısız denemeler 5 dakika arayla en fazla 3 kez daha tekrarlanır; her deneme "Kayıt günlüğü" sekmesinde görünür. Google isteği engellerse (HTTP 429 / 403, CAPTCHA sayfası) deneme "Engellendi" olarak kaydedilir ve uygulama bir sonraki döngüyü bekler.
 - Pencereyi kapatınca uygulama bildirim alanına (tray) küçülür. Tray menüsünde "Paneli aç", "Şimdi güncelle", "Veri klasörünü aç" ve "Çıkış" bulunur.
 - İsteğe bağlı Windows ile başlatma: uygulama gizli olarak, yalnızca tray'de başlar. Varsayılan olarak açıktır, ancak bir profil girdikten sonra kaydedilir; Ayarlar'dan kapatılabilir.
@@ -38,13 +38,35 @@ Scholar verisi yalnızca uygulamanın kurulduğu günden itibaren toplanır. İs
 - **Eşleştirme.** ORCID kimliği bir OpenAlex yazarına çözülür. Yazarın yayınları `author.orcid:<kimlik>` ve `authorships.author.id:<yazar kimliği>` süzgeçleriyle toplanır (yayın kimliğine göre birleşim). Her Scholar makalesi bu kümedeki en iyi adaya atanır: başlık benzerliği (kelime bazlı Sørensen–Dice) en az 0,80 ve yayın yılı Scholar'daki yıldan en fazla bir yıl farklı. Bir yayın en çok bir makaleye verilir; bir makale ile onun sonradan eklenen "Version 2" kaydı gibi yakın kopyalar önce benzerlik, sonra yıl ile ayrılır. Bu kümede bulunamayan makaleler, daha sıkı 0,85 eşiğiyle genel OpenAlex başlık aramasına ve Semantic Scholar başlık eşleştirmesine düşer. DOI bilindiğinde Semantic Scholar başlık yerine doğrudan o DOI ile sorgulanır. Eşleşmenin nasıl yapıldığı (`orcid`, `title_search` ya da `manual_doi`; bkz. [Geçmiş eşleşmeyi düzeltme](#geçmiş-eşleşmeyi-düzeltme-doi)) saklanır; hiçbir yerde eşleşmeyen makaleler "eşleşmedi" olarak gösterilir.
 - **Hangi kaynak kullanılır.** Her makale için hem OpenAlex hem Semantic Scholar'dan o makaleye atıf yapan yayınlar istenir ve tarihli atıf kaydı daha çok olan kaynak kullanılır (eşitlikte OpenAlex). Makaleler sekmesinde açılan satır iki sayıyı da gösterir, örneğin "OpenAlex 40 · Semantic Scholar 36 → OpenAlex", eşleşme yöntemini ve OpenAlex / Semantic Scholar kaydına ve DOI'ye bağlantıları. Crossref, atıf tarihi vermeyip yalnızca toplam verdiği için kullanılmaz.
 - **Tarihleme kuralı.** Bir atıf, atıf yapan yayının yayın tarihine göre tarihlenir: kaynakta varsa tam gün, yoksa ay ya da yıl. Yalnızca yılı olan kayıtlar Yıl görünümünde yer alır, Gün / Ay görünümlerinde yer almaz (grafik kaç kayıt olduğunu belirtir).
-- **Sayılar Scholar'dan farklıdır.** Kaynaklar Google Scholar'dan farklı yayınları dizinler; bu yüzden toplamlar tutmaz. Hiçbir şey ölçeklenmez ya da uzlaştırılmaz ve her grafik kaynağını belirtir. Yıl görünümü varsayılan olarak Scholar'ın kendi yıllık dağılımını gösterir; geçmiş veri serisine geçmek için bir anahtar vardır.
-- **Çalışma.** İlk Scholar kontrolünden sonra (veri varsa hemen) arka planda, aynı anda tek çalıştırma olarak çalışır; Scholar zamanlayıcısını engellemez ve etkilemez; hatalar ayarlar kartında görünür. Sonraki bir kontrolde yeni makale görülürse otomatik araştırılır. Yeniden çalıştırma kayıtları ekleyip çoğaltmak yerine değiştirir. Anahtarsız, OpenAlex yaklaşık saniyede bir, Semantic Scholar en az 3 saniye arayla (HTTP 429'da geri çekilmeyle) çağrılır; anahtarlarla yaklaşık 0,4 sn ve 1,1 sn arayla. Uzun bir makale listesi yine de zaman alır. İlerleme üst çubukta ve ayarlar kartında gösterilir.
+- **Sayılar Scholar'dan farklıdır.** Kaynaklar Google Scholar'dan farklı yayınları dizinler; bu yüzden toplamlar tutmaz. Hiçbir şey ölçeklenmez ya da uzlaştırılmaz ve her grafik kaynağını belirtir. Geçmiş grafiğinde Yıl görünümü Scholar'ın kendi yıllık dağılımını kullanır; Gün ve Ay görünümleri geçmiş veri serisini kullanır ve seri yokken devre dışıdır.
+- **Çalışma.** İlk Scholar kontrolünden sonra (veri varsa hemen) arka planda, aynı anda tek çalıştırma olarak çalışır; Scholar zamanlayıcısını engellemez ve etkilemez; hatalar ayarlar kartında görünür. Sonraki bir kontrolde yeni makale görülürse otomatik araştırılır. Yeniden çalıştırma kayıtları ekleyip çoğaltmak yerine değiştirir. Anahtarsız, OpenAlex yaklaşık saniyede bir, Semantic Scholar en az 3 saniye arayla (HTTP 429'da geri çekilmeyle) çağrılır; anahtarlarla yaklaşık 0,4 sn ve 1,1 sn arayla. Uzun bir makale listesi yine de zaman alır; bu yüzden çalıştırma bir [tarama panelinde](#tarama-paneli) gösterilir ve durdurulabilir.
 - **Gizlilik.** İsteklerde genel bir User-Agent (`scholar-citation-tracker/<sürüm> (+depo adresi)`) bulunur, e-posta adresi yoktur. Makale başlıkları, DOI'ler ve ORCID kimliğiniz OpenAlex'e, başlıklar / DOI'ler Semantic Scholar'a gönderilir; bu özellik için Google'a hiçbir şey gönderilmez.
+
+## Tarama paneli
+
+Geçmiş veri taraması çalışırken sağ kenardan bir panel kayarak açılır (**Geçmiş veri taraması**; X ile kapatılır, üst çubuktaki "Geçmiş taranıyor 3/11" etiketinden ya da Ayarlar'dan yeniden açılır). Taramayı kendiniz başlattığınızda (ilk açılış seçimi, "Şimdi araştır", DOI düzeltmesi) kendiliğinden açılır; günlük otomatik yenileme yalnızca etiketi gösterir.
+
+- Genel ilerleme çubuğu: "Makale 3 / 11", geçen süre ve tahmini kalan süre.
+- Şu anki adım düz bir dille: "OpenAlex'ten atıf yapanlar alınıyor — sayfa 2, 87 kayıt" ya da bir sunucu uygulamadan yavaşlamasını istediğinde (HTTP 429 / 503) canlı geri sayımla "Semantic Scholar hız sınırı: 12 sn bekleniyor".
+- Taramadaki her makale, durumu (sırada, çalışıyor, tamam, eşleşmedi, hata) ve sonucuyla, örneğin "OpenAlex 40 · S2 36 → OpenAlex".
+- Son 30 olayı zamanlarıyla gösteren açılır **Ayrıntılar** günlüğü.
+- **Durdur**, geçerli istekten sonra taramayı bitirir; o ana kadar kaydedilenler kalır, çalıştırma "durduruldu" olarak kaydedilir.
+- Tarama bitince bir özet (eşleşen X / Y, kayıt sayısı, yeni olanlar, süre) siz paneli kapatana kadar kalır; eşleşmeyen ya da DOI'si olmayan makale sayısı da orada yer alır.
+
+Dar pencerelerde panel tüm genişliği kaplar.
+
+## Son atıflar ve Scholar'ın atıf listesi
+
+Panelin **Son atıflar** kartı iki kaynağı tek bir listede, yeniden eskiye birleştirir (son on kayıt; "Tümünü gör" Atıf yapanlar sekmesini açar):
+
+- **Scholar'da görülen değişimler.** Bir makalenin sayısı kayıtlı iki ardışık anlık görüntü arasında farklıysa "21 Kas — <makale> +2" gibi bir satır "Google Scholar" rozetiyle listelenir; azalış, "Scholar'da azaldı" etiketiyle kırmızı gösterilir. İlk anlık görüntünün öncesinde bir şey olmadığı için hiçbir zaman sayılmaz.
+- Geçmiş araştırmanın (OpenAlex / Semantic Scholar) bulduğu **atıf yapan yayınlar**; başlık, dergi, atıf yapılan makale ve kaynak rozetiyle.
+
+Her Scholar satırında ve Makaleler sekmesindeki her makalede **Scholar'da gör** bulunur. Makalenin atıf listesini Scholar'da tarihe göre sıralı olarak **varsayılan tarayıcınızda** açar. Uygulama bu sayfayı kendisi okumaz: Scholar'ın arama sayfaları CAPTCHA ile korunur ve uygulama yalnızca herkese açık profil sayfanızı düşük sıklıkla okur. Bağlantı, profil sayfasının her makale için zaten içerdiği `cites=` kimliklerinden oluşturulur.
 
 ## Atıf yapanlar, tahmin, raporlar ve dışa aktarma
 
-- **Atıf yapanlar (Atıf yapanlar sekmesi).** Geçmiş veriler açıkken, tarama atıf yapan her yayın için başlığını, yayın tarihini, dergisini (yayın yerini), DOI'sini, bağlantısını, yazarlarını, yazarların kurumlarının ülke kodlarını (yalnızca OpenAlex'te; Semantic Scholar ülke vermez) ve kayıt kimliğini saklar. Sekme hepsini listeler (tarih, DOI / OpenAlex / Semantic Scholar sayfasına bağlı başlık, dergi, hangi makalelerinize atıf yaptığı, kaynak); arama kutusu, makale süzgeci ve tarihe göre sıralama vardır. Makaleler sekmesinde bir makalenin açılan satırı da o makaleye atıf yapanları listeler. Üç grafik, atıf yapan yayınların ilk 10 ülkesini, ilk 10 dergisini ve yıllarını gösterir (bir yayın, birden çok makalenize atıf yapsa da bir kez sayılır); bir alt yazı kaç yayında ülke bilgisinin olmadığını söyler.
+- **Atıf yapanlar (Atıf yapanlar sekmesi).** Geçmiş veriler açıkken, tarama atıf yapan her yayın için başlığını, yayın tarihini, dergisini (yayın yerini), DOI'sini, bağlantısını, yazarlarını, yazarların kurumlarının ülke kodlarını (yalnızca OpenAlex'te; Semantic Scholar ülke vermez) ve kayıt kimliğini saklar. Sekme hepsini listeler (tarih, DOI / OpenAlex / Semantic Scholar sayfasına bağlı başlık, dergi, hangi makalelerinize atıf yaptığı, kaynak); arama kutusu, makale süzgeci ve tarihe göre sıralama vardır. Makaleler sekmesinde bir makalenin açılan satırı da o makaleye atıf yapanları listeler. İki grafik, atıf yapan yayınların ilk 10 ülkesini ve ilk 10 dergisini gösterir (bir yayın, birden çok makalenize atıf yapsa da bir kez sayılır); bir alt yazı kaç yayında ülke bilgisinin olmadığını söyler. Atıf yapanların yıllara göre dağılımı zaten panelteki geçmiş grafiğinin içindedir.
 - **Yeni atıf yapanlar.** Geçmiş veriler açıkken yaklaşık günde bir kez hafif bir yenileme çalışır (en erken açılıştan on dakika sonra, sonra her 24 saatte bir). Yalnızca eşleşmiş makalelerin atıf yapan listelerini, onlar için seçilmiş kaynaktan, aşağıda anlatılan istek aralıklarıyla ve yeniden eşleştirme yapmadan okur. Daha önce kayıtlı olmayan atıf yapan yayınlar bulursa (ilk taramada asla) bir Windows bildirimi en fazla ikisini adıyla belirtir. "Bildirimler" ayarına uyar.
 - **Tahmin (Panel).** Son 12 ayın aylık atıf sayısı (Scholar anlık görüntülerinden, yoksa geçmiş verilerden), yıl sonu için tahmini toplam ve karta yazdığınız bir hedef için "N atıfa tahminen <ay yıl>". Oran doğrusaldır (son üç tam ayın ortalaması; yoksa içinde bulunulan ay; yoksa kayıtlı anlık görüntülerin süresi) ve her zaman tahmin olarak etiketlenir. Hedef yerel veritabanında saklanır.
 - **En hızlı yükselenler (Panel).** Son 30 ya da 90 günde en çok atıf kazanan beş makale (Scholar anlık görüntüleri; anlık görüntüler o kadar geriye gitmiyorsa geçmiş veriler; kayıtlı geçmiş dönemden kısaysa bir not belirtir) ve sonraki h-indeksi ile i10-indeksi için gerekenler, örneğin "h=5 için: 2 makaleye toplam 3 atıf daha"; en yakın makaleler listelenir.
@@ -76,6 +98,10 @@ Makaleler sekmesinde bir makaleyi açın ve geçmiş veri sütununa bakın. Yanl
 
 Bunlardan birini kaydetmek, yalnızca o makale için aramayı hemen yeniden çalıştırır. Düzeltmeler yerel veritabanında saklanır; sonraki çalıştırmalardan ve "Geçmiş verileri sil" işleminden etkilenmez (hesaplanmış veri değil, sizin kararınızdır); yalnızca Scholar profilini değiştirdiğinizde, tüm kayıtlarla birlikte silinir.
 
+## Makalelerin DOI'si
+
+Makaleler sekmesi, DOI biliniyorsa (önce elle girilen DOI, yoksa eşleşen OpenAlex / Semantic Scholar kaydının DOI'si) her başlığın altında bir **DOI** etiketi, bilinmiyorsa bir **DOI ekle** düğmesi gösterir. Düğme, satırı açmadan "DOI'yi düzelt" ile aynı pencereyi açar. Bazı makalelerin DOI'si eksikse, tablonun üstündeki bilgi çubuğu kaç tane olduğunu söyler ve listeyi onlara süzebilir (oturum boyunca kapatılabilir); panel ve tarama özeti bu süzülmüş listeye bağlantı verir. DOI, geçmiş verilerin ve atıf yapanların doğru kayda eşleşmesini sağlar.
+
 ## Sağlık uyarısı
 
 Scholar 2 gün üst üste başarıyla okunamazsa (bu sürede deneme yapıldığı hâlde son başarılı okuma en az 48 saat önceyse) uygulama bir Windows bildirimi ("Scholar 2 gündür okunamıyor — Kayıt günlüğüne bakın") ve Panel'de bir sonraki başarılı okumaya kadar bir uyarı çubuğu gösterir. Bildirim olay başına bir kez, hiçbir zaman 24 saatte birden fazla gösterilmez ve "Bildirimler" ayarına uyar. Sayfa gelip de makale listesi okunamıyorsa da aynısı geçerlidir: profil atıf gösterip hiç makale göstermiyorsa ya da toplam atıf düşmediği hâlde makale sayısı yarıdan fazla azalırsa deneme Kayıt günlüğünde çözümleme hatası olarak kaydedilir ve anlık görüntü saklanmaz ("makale listesi okunamadı — Scholar sayfa yapısı değişmiş olabilir").
@@ -83,6 +109,8 @@ Scholar 2 gün üst üste başarıyla okunamazsa (bu sürede deneme yapıldığ�
 ## Kurulum
 
 Kurulum dosyasını (`Scholar.Citation.Tracker_<sürüm>_x64-setup.exe`) **Releases** sayfasından indirip çalıştırın. Kurulum yalnızca geçerli kullanıcı için yapılır ve yönetici yetkisi gerektirmez. Kurulum sihirbazı Türkçe ve İngilizce sunulur. Uygulama Microsoft WebView2 çalışma zamanını gerektirir; güncel Windows 10 / 11 sürümlerinde zaten bulunur.
+
+Kurulum dosyasını Dosya Gezgini'nde çift tıklayarak çalıştırın. Bir korumalı (sandbox) ya da paketlenmiş uygulamanın içinden (örneğin bir sohbet ya da mağaza uygulamasının dosya önizlemesinden) çalıştırmak Windows'un kurulumu sanallaştırmasına yol açabilir; bu durumda uygulama Yüklü uygulamalar listesinde görünmez.
 
 **Kurulum dosyası kod imzalı değildir**; bu yüzden Windows SmartScreen ilk seferde *"Windows bilgisayarınızı korudu"* uyarısını gösterir. **Ek bilgi**'ye, ardından **Yine de çalıştır**'a tıklayın.
 
@@ -105,6 +133,10 @@ Neden: kod imzalama sertifikası her yıl ücretlidir ve bu, sertifikası olmaya
 ### Güncellemeler
 
 İlk kurulumdan sonra güncellemeler uygulamanın içinden kurulur. Açılıştan yaklaşık bir dakika sonra ve sonra günde bir kez (anahtar: **Ayarlar > Güncellemeleri otomatik denetle**) uygulama daha yeni bir sürüm arar. Varsa bir çubuk "Yeni sürüm X hazır" iletisini sürüm notlarıyla ve **Şimdi güncelle** düğmesiyle gösterir: kurulum dosyasını ilerleme göstergesiyle indirir, kurar ve uygulamayı yeniden başlatır. **Ayarlar > Hakkında** sürümü, GitHub bağlantısını ve lisansı gösterir; sonucunu her zaman bildiren bir **Güncellemeleri denetle** düğmesi vardır (arka plandaki denetimin hataları sessizdir). Güncellemeler projenin güncelleme anahtarıyla imzalanır; anahtar uygulamanın içindedir ve herhangi bir şey kurulmadan önce denetlenir, bu yüzden bu yolda SmartScreen uyarısı yeniden görünmez.
+
+## Kaldırma
+
+**Ayarlar → Uygulamalar → Yüklü uygulamalar → Scholar Atıf Takip → Kaldır** yolunu izleyin ya da Başlat menüsündeki girdiye sağ tıklayıp **Kaldır**'ı seçin; uygulamadaki **Ayarlar → Hakkında → Kaldır…** düğmesi o Windows sayfasını açar. Kaldırıcı uygulama verilerinin silinmesini önerir. Atıf veritabanı, o klasörü silmediğiniz sürece (ya da Ayarlar'da veri klasörünü değiştirmediyseniz) `Documents\ScholarTakip` içinde kalır; ayarlar `%APPDATA%\io.github.bcankara.scholarcitationtracker` içindedir.
 
 ## Kaynaktan derleme
 

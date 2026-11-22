@@ -189,6 +189,17 @@ async fn get_article_history(
 }
 
 #[tauri::command]
+async fn get_article_changes(state: State<'_, AppState>, key: String) -> CmdResult<db::ArticleChanges> {
+    with_db(&state, move |conn| db::article_changes(conn, &key, Utc::now())).await
+}
+
+#[tauri::command]
+async fn get_recent_citations(state: State<'_, AppState>, limit: Option<usize>) -> CmdResult<Vec<insights::RecentItem>> {
+    let limit = limit.unwrap_or(10).clamp(1, 100);
+    with_db(&state, move |conn| insights::build_recent(conn, limit)).await
+}
+
+#[tauri::command]
 async fn get_log(state: State<'_, AppState>) -> CmdResult<Vec<db::LogRow>> {
     with_db(&state, |conn| db::recent_log(conn, 200)).await
 }
@@ -233,6 +244,27 @@ async fn get_backfill_info(state: State<'_, AppState>, bf: BackfillState<'_>) ->
         summary,
         progress: bf.progress(),
     })
+}
+
+/// Asks the running scan to stop after the current request.
+#[tauri::command]
+fn cancel_backfill(bf: BackfillState<'_>) -> bool {
+    bf.cancel()
+}
+
+/// Everything the scan panel needs to rebuild itself (after a reload or when it is reopened).
+#[tauri::command]
+fn get_scan_state(bf: BackfillState<'_>) -> backfill::ScanState {
+    bf.scan_state()
+}
+
+/// Debug builds only: plays a scripted scan with invented articles (no network).
+#[tauri::command]
+async fn debug_scan_demo(app: AppHandle, bf: BackfillState<'_>) -> CmdResult<bool> {
+    if !cfg!(debug_assertions) {
+        return Err("debug builds only".into());
+    }
+    Ok(backfill::demo(app, bf.inner().clone()))
 }
 
 fn start_status(result: backfill::Start) -> &'static str {
@@ -540,18 +572,27 @@ fn open_data_folder(app: AppHandle, state: State<'_, AppState>) -> CmdResult<()>
     open_folder(&app, &data_dir(&state))
 }
 
-#[tauri::command]
-fn open_url(app: AppHandle, state: State<'_, AppState>, url: String) -> CmdResult<()> {
-    const ALLOWED: [&str; 7] = [
+/// Pages the app may open in the default browser. The app itself never fetches any of them;
+/// in particular Scholar's cited-by search is only opened for the user.
+fn url_allowed(url: &str) -> bool {
+    const ALLOWED: [&str; 8] = [
         "https://github.com/bcankara/scholar-citation-tracker",
-        "https://scholar.google.com/",
+        "https://scholar.google.com/citations",
+        "https://scholar.google.com/scholar",
         "https://openalex.org/",
         "https://doi.org/",
         "https://www.semanticscholar.org/",
         "https://orcid.org/",
         "https://docs.openalex.org/",
     ];
-    if !ALLOWED.iter().any(|p| url.starts_with(p)) {
+    // Windows' Installed apps page, for the "Uninstall..." button (the app never uninstalls itself).
+    const EXACT: [&str; 1] = ["ms-settings:appsfeatures"];
+    ALLOWED.iter().any(|p| url.starts_with(p)) || EXACT.contains(&url)
+}
+
+#[tauri::command]
+fn open_url(app: AppHandle, state: State<'_, AppState>, url: String) -> CmdResult<()> {
+    if !url_allowed(&url) {
         return Err(i18n::tr(&lang_of(&state), "cmd.err_open_url").into());
     }
     app.opener()
@@ -1048,6 +1089,11 @@ pub fn run() {
             get_series,
             get_articles,
             get_article_history,
+            get_article_changes,
+            get_recent_citations,
+            cancel_backfill,
+            get_scan_state,
+            debug_scan_demo,
             get_log,
             get_status,
             get_settings,
@@ -1090,5 +1136,23 @@ pub fn run() {
         .run(tauri::generate_context!());
     if let Err(e) = result {
         eprintln!("application failed to start: {e}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::url_allowed;
+
+    #[test]
+    fn open_url_allow_list() {
+        assert!(url_allowed("https://scholar.google.com/scholar?oi=bibs&hl=en&cites=1,2&scisbd=1"));
+        assert!(url_allowed("https://scholar.google.com/citations?view_op=view_citation&user=x"));
+        assert!(url_allowed("https://doi.org/10.1234/abc"));
+        assert!(!url_allowed("https://scholar.google.com/"));
+        assert!(!url_allowed("http://scholar.google.com/scholar?x=1"));
+        assert!(!url_allowed("javascript:alert(1)"));
+        assert!(url_allowed("ms-settings:appsfeatures"));
+        assert!(!url_allowed("ms-settings:privacy"));
+        assert!(!url_allowed("ms-settings:appsfeatures?x=1"));
     }
 }

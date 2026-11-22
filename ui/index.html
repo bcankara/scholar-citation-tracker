@@ -32,7 +32,7 @@
           </div>
         </div>
         <div class="header-actions">
-          <span id="bfPill" class="pill pill-running" hidden><span class="pill-dot"></span><span id="bfPillText"></span></span>
+          <button id="bfPill" type="button" class="pill pill-running pill-btn" hidden><span class="pill-dot"></span><span id="bfPillText"></span></button>
           <span id="statusPill" class="pill"><span class="pill-dot"></span><span id="statusText"></span></span>
           <button id="refreshBtn" class="btn btn-primary"><span class="icon">&#xE72C;</span><span data-i18n="header.refresh"></span></button>
         </div>
@@ -92,6 +92,35 @@
         </div>
         <div id="panelData" hidden>
           <div id="kpis" class="kpis"></div>
+          <div class="card chart-card main-card" id="mainCard">
+            <div class="card-head">
+              <div class="body-strong" data-i18n="main.title"></div>
+              <div class="card-tools">
+                <div class="seg" id="modeSeg" role="group" data-i18n-aria="main.mode_label" aria-label="View">
+                  <button data-mode="total" data-i18n="main.m_total"></button>
+                  <button data-mode="period" data-i18n="main.m_period"></button>
+                </div>
+                <div class="seg" id="granSeg" role="group" data-i18n-aria="main.gran_label" aria-label="Granularity">
+                  <button data-gran="day" data-i18n="main.g_day"></button>
+                  <button data-gran="month" data-i18n="main.g_month"></button>
+                  <button data-gran="year" data-i18n="main.g_year"></button>
+                </div>
+                <div class="seg" id="rangeSeg" role="group" data-i18n-aria="main.range_label" aria-label="Range"></div>
+              </div>
+            </div>
+            <div id="mainChart" class="chart-area"></div>
+            <div id="mainLegend" class="legend"></div>
+            <div id="mainCaption" class="caption secondary main-caption"></div>
+          </div>
+          <div class="card chart-card recent-card" id="recentCard">
+            <div class="card-head">
+              <div class="body-strong" data-i18n="recent.title"></div>
+              <button id="recentAll" class="btn btn-link" type="button"><span data-i18n="recent.all"></span></button>
+            </div>
+            <div id="recentList"></div>
+            <div class="caption secondary recent-note" data-i18n="recent.note"></div>
+            <div id="recentDoiHint" class="caption recent-hint" hidden></div>
+          </div>
           <div class="insights">
             <div class="card chart-card" id="forecastCard">
               <div class="card-head">
@@ -112,52 +141,18 @@
               <div id="hNext" class="hnext"></div>
             </div>
           </div>
-          <div class="charts">
-            <div class="card chart-card">
-              <div class="card-head">
-                <div class="body-strong" data-i18n="chart.total_title"></div>
-                <div class="card-tools">
-                  <div class="seg" id="rangeSeg" role="group" data-i18n-aria="chart.range_label" aria-label="Range">
-                    <button data-range="7" data-i18n="chart.r7"></button>
-                    <button data-range="30" data-i18n="chart.r30"></button>
-                    <button data-range="90" data-i18n="chart.r90"></button>
-                    <button data-range="all" data-i18n="chart.rall"></button>
-                  </div>
-                  <label class="check"><input type="checkbox" id="sinceToggle"><span class="check-box"></span><span id="sinceToggleLabel" data-i18n="chart.since_toggle_default"></span></label>
-                </div>
-              </div>
-              <div id="lineChart" class="chart-area"></div>
-            </div>
-            <div class="card chart-card">
-              <div class="card-head"><div class="body-strong" data-i18n="chart.yearly_title"></div></div>
-              <div id="barChart" class="chart-area"></div>
-            </div>
-          </div>
-          <div class="card chart-card hist-card" id="histCard">
-            <div class="card-head">
-              <div class="body-strong" data-i18n="hist.title"></div>
-              <div class="card-tools">
-                <div class="seg" id="histGran" role="group" data-i18n-aria="hist.gran_label" aria-label="Granularity">
-                  <button data-gran="day" data-i18n="hist.g_day"></button>
-                  <button data-gran="month" data-i18n="hist.g_month"></button>
-                  <button data-gran="year" data-i18n="hist.g_year"></button>
-                </div>
-                <div class="seg" id="histRange" role="group" data-i18n-aria="hist.range_label" aria-label="Range"></div>
-                <label class="check" id="histYearSrcWrap"><input type="checkbox" id="histYearSrc"><span class="check-box"></span><span data-i18n="hist.year_src_bf"></span></label>
-              </div>
-            </div>
-            <div id="histChart" class="chart-area"></div>
-            <div class="legend">
-              <span class="lg"><i class="sw sw-bar"></i><span data-i18n="hist.legend_new"></span></span>
-              <span class="lg" id="histLegendCum"><i class="sw sw-line"></i><span data-i18n="hist.legend_cum"></span></span>
-            </div>
-            <div id="histCaption" class="caption secondary hist-caption"></div>
-            <div id="histNote" class="caption secondary" hidden></div>
-          </div>
         </div>
       </section>
 
       <section id="page-articles" class="page" hidden>
+        <div id="doiBar" class="infobar info" role="status" hidden>
+          <span class="icon ib-icon">&#xE946;</span>
+          <div class="ib-body"><div id="doiBarText" class="body"></div></div>
+          <div class="sbtns">
+            <label class="check"><input type="checkbox" id="doiOnly"><span class="check-box"></span><span data-i18n="doibar.only"></span></label>
+            <button id="doiBarClose" class="btn btn-icon" type="button" data-i18n-aria="doibar.close" aria-label="Close"><span class="icon">&#xE711;</span></button>
+          </div>
+        </div>
         <div class="card table-card">
           <div class="toolbar">
             <label class="search"><span class="icon">&#xE721;</span><input id="searchBox" type="search" data-i18n-placeholder="articles.search" autocomplete="off"></label>
@@ -190,7 +185,6 @@
           <div class="dist-grid">
             <div class="card chart-card"><div class="card-head"><div class="body-strong" data-i18n="dist.country"></div></div><div id="distCountry" class="hbars"></div></div>
             <div class="card chart-card"><div class="card-head"><div class="body-strong" data-i18n="dist.venue"></div></div><div id="distVenue" class="hbars"></div></div>
-            <div class="card chart-card"><div class="card-head"><div class="body-strong" data-i18n="dist.year"></div></div><div id="distYear" class="chart-area dist-year"></div></div>
           </div>
           <div id="distCaption" class="caption secondary dist-caption"></div>
           <div class="card table-card">
@@ -362,6 +356,7 @@
               </div>
             </div>
             <div class="sbtns">
+              <button id="bfScanBtn" class="btn"><span class="icon">&#xE8A5;</span><span data-i18n="settings.bf_scan"></span></button>
               <button id="bfRunBtn" class="btn"><span class="icon">&#xE768;</span><span data-i18n="settings.bf_run"></span></button>
               <button id="bfClearBtn" class="btn"><span class="icon">&#xE74D;</span><span data-i18n="settings.bf_clear"></span></button>
             </div>
@@ -435,9 +430,13 @@
             <div class="stext">
               <div class="body" id="aboutTitle"></div>
               <div class="caption secondary" data-i18n="about.sub"></div>
+              <div class="caption secondary" data-i18n="about.uninstall_hint"></div>
               <div class="caption about-links"><a href="#" class="ext-link" data-url="https://github.com/bcankara/scholar-citation-tracker" data-i18n="about.github"></a><span class="secondary" data-i18n="about.license"></span></div>
             </div>
-            <button id="checkUpdateBtn" class="btn"><span class="icon">&#xE72C;</span><span id="checkUpdateText" data-i18n="about.check"></span></button>
+            <div class="sbtns">
+              <button id="checkUpdateBtn" class="btn"><span class="icon">&#xE72C;</span><span id="checkUpdateText" data-i18n="about.check"></span></button>
+              <button id="uninstallBtn" class="btn" data-i18n-title="about.uninstall_hint"><span class="icon">&#xE74D;</span><span data-i18n="about.uninstall"></span></button>
+            </div>
           </div>
         </div>
       </section>
@@ -462,8 +461,12 @@
       <p id="doiDlgArticle" class="caption secondary doi-article"></p>
       <p data-i18n="art.doi_text"></p>
       <label class="field">
-        <input id="doiInput" class="input" type="text" spellcheck="false" data-i18n-placeholder="art.doi_placeholder">
+        <div class="doi-input-row">
+          <input id="doiInput" class="input" type="text" spellcheck="false" data-i18n-placeholder="art.doi_placeholder">
+          <button id="doiPaste" type="button" class="btn" hidden><span class="icon">&#xE77F;</span><span data-i18n="art.doi_paste"></span></button>
+        </div>
         <span class="caption secondary" data-i18n="art.doi_hint"></span>
+        <span class="caption secondary" data-i18n="art.doi_where"></span>
         <span id="doiError" class="caption field-error" role="alert" hidden></span>
       </label>
       <div class="modal-actions">
@@ -472,6 +475,28 @@
       </div>
     </form>
   </div>
+  <aside id="scanPanel" class="sheet" role="dialog" aria-modal="false" aria-labelledby="scanTitle" aria-hidden="true">
+    <div class="sheet-head">
+      <div id="scanTitle" class="subtitle" data-i18n="scan.title"></div>
+      <button id="scanClose" class="btn btn-icon" type="button" data-i18n-aria="scan.close" aria-label="Close"><span class="icon">&#xE711;</span></button>
+    </div>
+    <div class="sheet-body">
+      <section id="scanRun">
+        <div class="scan-top"><span id="scanCount" class="body-strong"></span><span id="scanTime" class="caption secondary"></span></div>
+        <div class="bar-track"><div class="bar-fill" id="scanBar"></div></div>
+        <div id="scanNow" class="scan-now"></div>
+      </section>
+      <section id="scanSummary" class="scan-summary" hidden></section>
+      <ul id="scanList" class="scan-list"></ul>
+      <details id="scanDetails" class="scan-details">
+        <summary class="caption secondary" data-i18n="scan.details"></summary>
+        <ol id="scanLog" class="scan-log"></ol>
+      </details>
+    </div>
+    <div class="sheet-foot">
+      <button id="scanStop" class="btn" type="button"><span class="icon">&#xE71A;</span><span id="scanStopText" data-i18n="scan.stop"></span></button>
+    </div>
+  </aside>
   <div id="toast" class="toast" role="status" hidden></div>
   <div id="tooltip" class="tooltip" hidden></div>
   <script src="i18n.js"></script>

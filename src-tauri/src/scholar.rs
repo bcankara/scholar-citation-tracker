@@ -108,6 +108,8 @@ pub struct Article {
     pub year: Option<i32>,
     pub citations: i64,
     pub url: String,
+    /// Comma-separated ids of the `cites=` parameter of the citation count link ("" when none).
+    pub cites_ids: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
@@ -225,6 +227,21 @@ fn citation_key(href: &str) -> Option<String> {
     }
 }
 
+/// The `cites=` id list (digits separated by commas) of a citation count link; "" when absent.
+fn cites_ids_of(href: &str) -> String {
+    let Some(idx) = href.find("cites=") else {
+        return String::new();
+    };
+    let rest = &href[idx + "cites=".len()..];
+    let end = rest.find(['&', '#']).unwrap_or(rest.len());
+    let ids: Vec<&str> = rest[..end]
+        .split(',')
+        .map(str::trim)
+        .filter(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
+        .collect();
+    ids.join(",")
+}
+
 /// Parses all article rows found in the document.
 pub fn parse_articles(doc: &Html) -> Vec<Article> {
     let mut out = Vec::new();
@@ -249,6 +266,12 @@ pub fn parse_articles(doc: &Html) -> Vec<Article> {
             .next()
             .and_then(|e| digits_to_i64(&text_of(&e)))
             .unwrap_or(0);
+        let cites_ids = tr
+            .select(&SEL_CITES)
+            .next()
+            .and_then(|e| e.value().attr("href"))
+            .map(cites_ids_of)
+            .unwrap_or_default();
         let year = tr
             .select(&SEL_YEAR)
             .next()
@@ -266,6 +289,7 @@ pub fn parse_articles(doc: &Html) -> Vec<Article> {
             year,
             citations,
             url,
+            cites_ids,
         });
     }
     out
@@ -556,6 +580,7 @@ mod tests {
         assert_eq!(a.authors, "J Doe, A Roe");
         assert_eq!(a.venue, "Journal of Sample Studies 12, 34-56");
         assert_eq!(a.citations, 40);
+        assert_eq!(a.cites_ids, "1,2");
         assert_eq!(a.year, Some(2019));
         assert!(a.url.starts_with("https://scholar.google.com/citations?view_op=view_citation&hl=en"));
         assert!(!a.url.contains("&amp;"));
@@ -564,6 +589,7 @@ mod tests {
         let b = &p.articles[1];
         assert_eq!(b.title, "Sample Paper B");
         assert_eq!(b.citations, 0);
+        assert_eq!(b.cites_ids, "", "an empty link has no ids");
         assert_eq!(b.year, Some(2024));
         assert_eq!(b.venue, "Sample Conference 2024");
 
@@ -571,6 +597,7 @@ mod tests {
         let c = &p.articles[2];
         assert_eq!(c.title, "Sample Paper C");
         assert_eq!(c.citations, 60);
+        assert_eq!(c.cites_ids, "3");
         assert_eq!(c.year, None);
         assert_eq!(c.venue, "");
         assert_eq!(c.authors, "A Roe, J Doe");
@@ -637,6 +664,15 @@ mod tests {
     }
 
     #[test]
+    fn cites_ids_helper() {
+        assert_eq!(cites_ids_of("https://scholar.google.com/scholar?oi=bibs&hl=en&cites=11,22,33&x=1"), "11,22,33");
+        assert_eq!(cites_ids_of("https://x/scholar?cites=5#top"), "5");
+        assert_eq!(cites_ids_of("cites=1,a,3"), "1,3");
+        assert_eq!(cites_ids_of(""), "");
+        assert_eq!(cites_ids_of("javascript:void(0)"), "");
+    }
+
+    #[test]
     fn helper_parsers() {
         assert_eq!(year_in("Since 2021"), Some(2021));
         assert_eq!(year_in("All"), None);
@@ -669,6 +705,7 @@ mod tests {
                 year: None,
                 citations: 1,
                 url: String::new(),
+                cites_ids: String::new(),
             })
             .collect();
         p
@@ -736,6 +773,10 @@ mod tests {
         assert_eq!(keys.len(), p.articles.len(), "article keys must be unique");
         assert!(p.articles.iter().all(|a| !a.title.is_empty() && a.url.starts_with(BASE_URL)));
         assert!(p.articles.iter().all(|a| !a.url.contains("&amp;")));
+        // every article that has citations carries a list of numeric ids
+        assert!(p.articles.iter().filter(|a| a.citations > 0).all(|a| {
+            !a.cites_ids.is_empty() && a.cites_ids.split(',').all(|i| !i.is_empty() && i.bytes().all(|b| b.is_ascii_digit()))
+        }));
         assert!(!p.yearly.is_empty());
         assert!(p.yearly.windows(2).all(|w| w[0].0 < w[1].0), "years ascend");
         assert!(p.yearly.iter().map(|(_, c)| c).sum::<i64>() <= p.stats.cit_all);
