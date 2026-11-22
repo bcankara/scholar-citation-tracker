@@ -54,7 +54,7 @@
     scanOpen: false,
     scanUserStart: false,
     keys: null,
-    keyMsg: { openalex: null, semanticscholar: null },
+    keyMsg: { openalex: null },
     firstDay: null,
   };
 
@@ -672,7 +672,7 @@
     state.open.forEach(drawDetail);
   }
 
-  /** Source counts, how the match was made and links for one article's backfill record. */
+  /** OpenAlex count, how the match was made and links for one article's backfill record. */
   function matchHtml(b) {
     const m = b?.match;
     if (!m) return `<span class="secondary">${esc(t("art.bf_none"))}</span>`;
@@ -680,14 +680,12 @@
     if (!m.source && manual) return `<span class="badge-none">${esc(t("art.bf_unmatched"))}</span> <span class="secondary">${esc(t("art.bf_doi_not_found"))}</span> <b>${esc(m.doi || "")}</b>`;
     if (!m.source) return `<span class="badge-none">${esc(t("art.bf_unmatched"))}</span> <span class="secondary">${esc(t("art.bf_unmatched_hint"))}</span>`;
     const c = (n) => (n === null || n === undefined ? "—" : nf.format(n));
-    const chosen = m.source === "openalex" ? "OpenAlex" : "Semantic Scholar";
-    const parts = [`<span class="bf-sources">OpenAlex <b>${c(m.openalex_count)}</b> · Semantic Scholar <b>${c(m.s2_count)}</b> → <b>${chosen}</b></span>`];
+    const parts = [`<span class="bf-sources">OpenAlex <b>${c(m.openalex_count)}</b></span>`];
     const methodKey = manual ? "art.method_manual" : m.match_method === "orcid" ? "art.method_orcid" : "art.method_title";
     parts.push(`<span class="secondary">${esc(t(methodKey))}${m.score != null && !manual ? " · " + esc(t("art.bf_score", { s: m.score.toFixed(2) })) : ""}</span>`);
     if (b.override?.rejected > 0) parts.push(`<span class="secondary">${esc(t("art.rejected_n", { n: nf.format(b.override.rejected) }))}</span>`);
     const links = [];
     if (m.source === "openalex" && m.external_id) links.push([`https://openalex.org/${m.external_id}`, t("art.open_openalex")]);
-    if (m.source === "semanticscholar" && m.external_id) links.push([`https://www.semanticscholar.org/paper/${m.external_id}`, t("art.open_s2")]);
     if (m.doi) links.push([doiUrl(m.doi), t("art.open_doi")]);
     for (const [url, label] of links) parts.push(`<a href="#" class="ext-link" data-url="${esc(url)}">${esc(label)}</a>`);
     if (b.year_only > 0) parts.push(`<span class="secondary">${esc(t("art.year_only", { n: nf.format(b.year_only) }))}</span>`);
@@ -885,14 +883,13 @@
   function recentRow(r) {
     const date = `<span class="rc-date">${esc(fmtRecentDate(r.date, r.kind === "citing" ? r.precision : ""))}</span>`;
     if (r.kind === "citing") {
-      const src = r.source === "openalex" ? "OpenAlex" : "Semantic Scholar";
       const url = r.doi ? doiUrl(r.doi) : r.url || "";
       const title = url
         ? `<a href="#" class="title-link rc-title" data-url="${esc(url)}">${esc(r.citing_title || "—")}</a>`
         : `<span class="rc-title body-strong">${esc(r.citing_title || "—")}</span>`;
       return `<li class="rc-row">${date}<div class="rc-main">${title}
         <div class="rc-sub secondary">${r.venue ? esc(r.venue) + " " : ""}<span class="rc-arrow">→</span> <span title="${esc(r.article_title)}">${esc(shortText(r.article_title, 70))}</span></div></div>
-        <div class="rc-side"><span class="src-badge">${esc(src)}</span></div></li>`;
+        <div class="rc-side"><span class="src-badge">OpenAlex</span></div></li>`;
     }
     const down = r.kind === "scholar_down";
     const link = r.cites_ids
@@ -927,12 +924,10 @@
     return h ? `${h}:${pad2(m)}:${pad2(x)}` : `${m}:${pad2(x)}`;
   };
   const clockTime = () => new Date().toLocaleTimeString(loc(), { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  const srcName = (s) => (s === "OpenAlex" || s === "openalex" ? "OpenAlex" : "Semantic Scholar");
-  const srcFrom = (s) => t(srcName(s) === "OpenAlex" ? "scan.from_oa" : "scan.from_s2");
 
   /** Plain-language text of one live step (a request or a rate-limit wait). */
   function liveText(e) {
-    const p = { src: srcName(e.source), from: srcFrom(e.source), page: e.page, records: nf.format(e.records || 0), secs: e.wait_secs, attempt: e.attempt };
+    const p = { src: "OpenAlex", from: t("scan.from_oa"), page: e.page, records: nf.format(e.records || 0), secs: e.wait_secs, attempt: e.attempt };
     if (e.event === "backoff") return t("scan.wait", p);
     if (e.what === "author") return t("scan.author", p);
     if (e.what === "works") return t("scan.works", p);
@@ -986,7 +981,7 @@
         const a = art(e.key);
         if (a) {
           a.status = e.event === "article_done" ? "done" : e.event === "unmatched" ? "unmatched" : "error";
-          Object.assign(a, { oa: e.oa_count, s2: e.s2_count, chosen: e.chosen, method: e.method, records: e.records, message: e.message });
+          Object.assign(a, { oa: e.oa_count, method: e.method, records: e.records, message: e.message });
         }
         pushLog(t(`scan.log_${e.event}`, { title: shortText(e.title, 50), n: nf.format(e.records || 0), message: e.message || "" }));
         break;
@@ -1014,8 +1009,7 @@
     if (a.status === "unmatched") return t("scan.st_unmatched");
     if (a.status === "error") return t("scan.st_error", { message: shortText(a.message || "?", 80) });
     const c = (n) => (n === null || n === undefined ? "—" : nf.format(n));
-    if (a.method === "refresh") return `${srcName(a.chosen)} ${c(a.chosen === "openalex" ? a.oa : a.s2)}`;
-    return `OpenAlex ${c(a.oa)} · S2 ${c(a.s2)} → ${srcName(a.chosen)}`;
+    return `OpenAlex ${c(a.oa)}`;
   }
 
   function renderScanTime() {
@@ -1452,9 +1446,7 @@
   }
   async function loadDist() { state.dist = await safe(() => invoke("get_distribution"), state.dist); renderDist(); }
 
-  const citingUrl = (c) => (c.doi ? "https://doi.org/" + encodeURI(c.doi)
-    : c.source === "openalex" ? "https://openalex.org/" + c.id
-    : "https://www.semanticscholar.org/paper/" + c.id);
+  const citingUrl = (c) => (c.doi ? "https://doi.org/" + encodeURI(c.doi) : "https://openalex.org/" + c.id);
 
   /** One entry per citing work, with the list of my articles it cites. */
   function groupCiting(rows) {
@@ -1462,7 +1454,7 @@
     for (const r of rows || []) {
       let g = map.get(r.citing_id);
       if (!g) {
-        g = { id: r.citing_id, title: r.title, date: r.date, precision: r.precision, venue: r.venue, doi: r.doi, source: r.source, countries: r.countries, authors: r.authors, articles: [] };
+        g = { id: r.citing_id, title: r.title, date: r.date, precision: r.precision, venue: r.venue, doi: r.doi, countries: r.countries, authors: r.authors, articles: [] };
         map.set(r.citing_id, g);
       }
       if (!g.articles.some((a) => a.key === r.article_key)) g.articles.push({ key: r.article_key, title: r.article_title });
@@ -1478,7 +1470,6 @@
       ? { month: "short", year: "numeric", timeZone: "UTC" }
       : { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
   }
-  const sourceName = (s) => (s === "openalex" ? "OpenAlex" : "Semantic Scholar");
 
   function filteredCiting() {
     const q = state.cw.query.trim().toLocaleLowerCase(loc());
@@ -1526,9 +1517,8 @@
         <td><a href="#" class="title-link" data-url="${esc(citingUrl(g))}">${esc(g.title || "—")}</a>
           <div class="title-meta">${esc(shortText(g.authors, 110))}</div>${countries ? `<div class="chips cw-countries">${countries}</div>` : ""}</td>
         <td>${esc(g.venue || "—")}</td>
-        <td class="cw-arts">${arts}</td>
-        <td><span class="src-badge">${esc(sourceName(g.source))}</span></td></tr>`;
-    }).join("") : `<tr><td colspan="5" class="empty-row">${esc(t("cw.none_match"))}</td></tr>`;
+        <td class="cw-arts">${arts}</td></tr>`;
+    }).join("") : `<tr><td colspan="4" class="empty-row">${esc(t("cw.none_match"))}</td></tr>`;
     $("#citingMoreRow").hidden = rows.length <= shown.length;
   }
 
@@ -1621,7 +1611,6 @@
   // ------------------------------------------------------------ API keys
   const KEYS = {
     openalex: { input: "#keyOa", status: "#keyOaStatus", name: "OpenAlex", flag: "openalex" },
-    semanticscholar: { input: "#keyS2", status: "#keyS2Status", name: "Semantic Scholar", flag: "semanticscholar" },
   };
   async function loadKeyStatus() { state.keys = await safe(() => invoke("api_key_status"), state.keys); renderKeys(); }
 
@@ -1635,8 +1624,7 @@
       el.textContent = msg ? msg.text : t(stored ? "keys.stored" : "keys.none");
       el.className = "caption key-status" + (msg?.cls ? " " + msg.cls : stored ? " ok" : " secondary");
       $(k.input).placeholder = t(stored ? "keys.placeholder_stored" : "keys.placeholder");
-      const del = which === "openalex" ? $("#keyOaDel") : $("#keyS2Del");
-      del.disabled = !stored;
+      $("#keyOaDel").disabled = !stored;
     }
   }
 
@@ -1815,9 +1803,6 @@
     $("#keyOaTest").addEventListener("click", () => testKey("openalex"));
     $("#keyOaDel").addEventListener("click", () => removeKey("openalex"));
     $("#keyOaRequest").addEventListener("click", requestOaKey);
-    $("#keyS2Save").addEventListener("click", () => saveKey("semanticscholar"));
-    $("#keyS2Test").addEventListener("click", () => testKey("semanticscholar"));
-    $("#keyS2Del").addEventListener("click", () => removeKey("semanticscholar"));
     $("#page-settings").addEventListener("click", (e) => {
       const link = e.target.closest("a[data-url]");
       if (!link) return;

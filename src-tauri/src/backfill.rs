@@ -5,14 +5,12 @@
 //! assigned to at most one of them (best title similarity, year within one). Articles outside
 //! that set fall back to a global title search with a stricter threshold.
 //!
-//! For each article both OpenAlex and Semantic Scholar are then queried (Semantic Scholar by
-//! DOI once one is known, otherwise by title) for the list of citing works. Whichever source
-//! returns more dated citing records is stored; on a tie OpenAlex wins. Counts are never rescaled to Scholar's totals;
-//! a record is dated by the citing work's own publication date.
+//! For each article OpenAlex is then asked for the list of citing works. Counts are never
+//! rescaled to Scholar's totals; a record is dated by the citing work's own publication date.
 //!
 //! Nothing here talks to Google, and a failure here never touches the Scholar scheduler.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -39,16 +37,13 @@ pub const USER_AGENT: &str = concat!(
 
 const OPENALEX_WORKS: &str = "https://api.openalex.org/works";
 const OPENALEX_AUTHORS: &str = "https://api.openalex.org/authors";
-const S2_BASE: &str = "https://api.semanticscholar.org/graph/v1";
 const OPENALEX_LABEL: &str = "OpenAlex";
-const S2_LABEL: &str = "Semantic Scholar";
 /// Minimum title similarity for the global title search fallback (Sørensen–Dice on word tokens).
 pub const MIN_SCORE: f64 = 0.85;
 /// Minimum title similarity inside the ORCID author set (a small, trusted candidate list).
 pub const ORCID_MIN_SCORE: f64 = 0.80;
 const OA_BACKOFF: &[u64] = &[5, 20, 60];
-const S2_BACKOFF: &[u64] = &[10, 30, 60];
-/// Safety cap on pages per article and source.
+/// Safety cap on pages per article.
 const MAX_PAGES: usize = 100;
 
 // ------------------------------------------------------------------ matching
@@ -305,10 +300,6 @@ fn short_id(url: &str, prefix: &str) -> String {
 
 fn valid_openalex_id(id: &str) -> bool {
     id.len() > 1 && id.starts_with('W') && id[1..].chars().all(|c| c.is_ascii_digit())
-}
-
-fn valid_s2_id(id: &str) -> bool {
-    !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric())
 }
 
 #[derive(Deserialize)]
@@ -645,141 +636,6 @@ pub fn parse_oa_citing(json: &str) -> Result<(Vec<CitingRecord>, Option<String>)
     Ok((records, next))
 }
 
-#[derive(Deserialize)]
-struct S2Match {
-    #[serde(default)]
-    data: Vec<S2Paper>,
-}
-
-#[derive(Deserialize)]
-struct S2Paper {
-    #[serde(rename = "paperId")]
-    paper_id: Option<String>,
-    title: Option<String>,
-    year: Option<i64>,
-    #[serde(rename = "publicationDate")]
-    publication_date: Option<String>,
-    #[serde(rename = "externalIds")]
-    external_ids: Option<HashMap<String, serde_json::Value>>,
-    venue: Option<String>,
-    #[serde(rename = "publicationVenue")]
-    publication_venue: Option<S2Venue>,
-    #[serde(default)]
-    authors: Option<Vec<S2Author>>,
-}
-
-#[derive(Deserialize)]
-struct S2Venue {
-    issn: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct S2Author {
-    name: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct S2Citations {
-    next: Option<i64>,
-    #[serde(default)]
-    data: Vec<S2CitingItem>,
-}
-
-#[derive(Deserialize)]
-struct S2CitingItem {
-    #[serde(rename = "citingPaper")]
-    citing_paper: Option<S2Paper>,
-}
-
-/// Semantic Scholar `paper/search/match` response to candidates.
-pub fn parse_s2_match(json: &str) -> Result<Vec<Candidate>> {
-    let m: S2Match = serde_json::from_str(json)?;
-    Ok(m.data
-        .into_iter()
-        .filter_map(|p| {
-            let id = p.paper_id?;
-            if !valid_s2_id(&id) {
-                return None;
-            }
-            let doi = p
-                .external_ids
-                .as_ref()
-                .and_then(|e| e.get("DOI"))
-                .and_then(|v| v.as_str())
-                .map(str::to_string);
-            Some(Candidate {
-                id,
-                doi,
-                title: p.title?,
-                year: p.year,
-            })
-        })
-        .collect())
-}
-
-/// Semantic Scholar `paper/DOI:<doi>` response (a single paper object).
-pub fn parse_s2_paper(json: &str) -> Result<Option<Candidate>> {
-    let p: S2Paper = serde_json::from_str(json)?;
-    let Some(id) = p.paper_id.filter(|id| valid_s2_id(id)) else {
-        return Ok(None);
-    };
-    let doi = p
-        .external_ids
-        .as_ref()
-        .and_then(|e| e.get("DOI"))
-        .and_then(|v| v.as_str())
-        .map(str::to_string);
-    Ok(Some(Candidate {
-        id,
-        doi,
-        title: p.title.unwrap_or_default(),
-        year: p.year,
-    }))
-}
-
-/// One `paper/{id}/citations` page: dated citing works and the next offset (if any).
-/// Without a `publicationDate` the `year` is used (year precision).
-pub fn parse_s2_citations(json: &str) -> Result<(Vec<CitingRecord>, Option<i64>)> {
-    let c: S2Citations = serde_json::from_str(json)?;
-    let empty = c.data.is_empty();
-    let next = c.next.filter(|_| !empty);
-    let records = c
-        .data
-        .into_iter()
-        .filter_map(|item| {
-            let p = item.citing_paper?;
-            let id = p.paper_id?;
-            let (date, precision) = dated(p.publication_date.as_deref(), p.year)?;
-            let doi = p
-                .external_ids
-                .as_ref()
-                .and_then(|e| e.get("DOI"))
-                .and_then(|v| v.as_str())
-                .map(|d| d.trim().to_ascii_lowercase())
-                .unwrap_or_default();
-            let authors = join_authors(
-                p.authors
-                    .iter()
-                    .flatten()
-                    .filter_map(|a| a.name.clone()),
-            );
-            Some(CitingRecord {
-                url: format!("https://www.semanticscholar.org/paper/{id}"),
-                citing_id: id,
-                citing_title: p.title.unwrap_or_default(),
-                citing_date: date,
-                date_precision: precision.to_string(),
-                venue: p.venue.unwrap_or_default().trim().to_string(),
-                doi,
-                authors,
-                countries: String::new(),
-                issn_list: join_issns(p.publication_venue.and_then(|v| v.issn)),
-            })
-        })
-        .collect();
-    Ok((records, next))
-}
-
 fn dedupe(records: Vec<CitingRecord>) -> Vec<CitingRecord> {
     let mut seen = HashSet::new();
     records.into_iter().filter(|r| seen.insert(r.citing_id.clone())).collect()
@@ -787,36 +643,13 @@ fn dedupe(records: Vec<CitingRecord>) -> Vec<CitingRecord> {
 
 // ----------------------------------------------------------------- selection
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Source {
-    OpenAlex,
-    SemanticScholar,
-}
-
-impl Source {
-    fn as_str(self) -> &'static str {
-        match self {
-            Source::OpenAlex => "openalex",
-            Source::SemanticScholar => "semanticscholar",
-        }
-    }
-}
-
-/// The source with more dated citing records wins; a tie goes to OpenAlex. `None` for a
-/// source means it did not match (or could not be read completely).
-pub fn choose_source(openalex: Option<usize>, s2: Option<usize>) -> Option<Source> {
-    match (openalex, s2) {
-        (Some(o), Some(s)) => Some(if s > o { Source::SemanticScholar } else { Source::OpenAlex }),
-        (Some(_), None) => Some(Source::OpenAlex),
-        (None, Some(_)) => Some(Source::SemanticScholar),
-        (None, None) => None,
-    }
-}
+/// Name stored in `article_matches.source` and `backfill_citations.source`.
+const SOURCE: &str = "openalex";
 
 /// How an article was tied to an external work.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MatchMethod {
-    /// Found in the works of the ORCID iD's OpenAlex author (Semantic Scholar: by that DOI).
+    /// Found in the works of the ORCID iD's OpenAlex author.
     Orcid,
     /// Global title search with the strict threshold.
     TitleSearch,
@@ -842,14 +675,14 @@ pub struct Work {
     pub method: MatchMethod,
 }
 
-/// What one source produced for one article.
+/// What OpenAlex produced for one article.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct SourceOutcome {
     /// The matched work, when the title matched.
     pub work: Option<Work>,
     /// All dated citing works; only set when every page was read.
     pub citing: Option<Vec<CitingRecord>>,
-    /// Localized description of the failure that stopped this source, if any.
+    /// Localized description of the failure that stopped the lookup, if any.
     pub error: Option<String>,
 }
 
@@ -866,57 +699,41 @@ pub enum Decision {
     Matched {
         rec: Box<db::MatchRecord>,
         citing: Vec<CitingRecord>,
-        /// Failure of the source that was not chosen (its count is then unknown).
-        other_error: Option<String>,
     },
-    /// Both sources answered and neither matched.
+    /// OpenAlex answered and nothing matched.
     Unmatched,
-    /// Nothing usable and at least one source failed: retry later, store nothing.
+    /// Nothing usable and the lookup failed: retry later, store nothing.
     Failed(String),
 }
 
-/// Combines both sources' outcomes into the stored result.
-pub fn decide(key: &str, oa: SourceOutcome, s2: SourceOutcome) -> Decision {
-    let (oc, sc) = (oa.usable_count(), s2.usable_count());
-    let Some(source) = choose_source(oc, sc) else {
-        return match oa.error.or(s2.error) {
+/// Turns OpenAlex's outcome for one article into the stored result.
+pub fn decide(key: &str, oa: SourceOutcome) -> Decision {
+    let Some(count) = oa.usable_count() else {
+        return match oa.error {
             Some(e) => Decision::Failed(e),
             None => Decision::Unmatched,
         };
     };
-    let (chosen, other) = match source {
-        Source::OpenAlex => (&oa, &s2),
-        Source::SemanticScholar => (&s2, &oa),
-    };
-    let work = chosen.work.clone();
+    let work = oa.work.clone();
     let rec = db::MatchRecord {
         article_key: key.to_string(),
-        source: Some(source.as_str().to_string()),
+        source: Some(SOURCE.to_string()),
         external_id: work.as_ref().map(|w| w.id.clone()),
         doi: work.as_ref().and_then(|w| w.doi.clone()),
         score: work.as_ref().map(|w| w.score),
         match_method: work.as_ref().map(|w| w.method.as_str().to_string()),
-        openalex_id: oa.work.as_ref().map(|w| w.id.clone()),
-        s2_id: s2.work.as_ref().map(|w| w.id.clone()),
-        openalex_count: oc.map(|n| n as i64),
-        s2_count: sc.map(|n| n as i64),
+        openalex_id: work.as_ref().map(|w| w.id.clone()),
+        openalex_count: Some(count as i64),
     };
-    let other_error = other.error.clone();
-    let citing = match source {
-        Source::OpenAlex => oa.citing,
-        Source::SemanticScholar => s2.citing,
-    }
-    .unwrap_or_default();
     Decision::Matched {
         rec: Box::new(rec),
-        citing,
-        other_error,
+        citing: oa.citing.unwrap_or_default(),
     }
 }
 
 // ---------------------------------------------------------------------- HTTP
 
-/// Spaces requests to one host. The gap can change while a run is active (a rejected API key
+/// Spaces requests to OpenAlex. The gap can change while a run is active (a rejected API key
 /// puts the host back on the keyless pace).
 struct Pacer {
     gap_ms: std::sync::atomic::AtomicU64,
@@ -971,21 +788,6 @@ impl ApiError {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Host {
-    OpenAlex,
-    Semantic,
-}
-
-impl Host {
-    fn label(self) -> &'static str {
-        match self {
-            Host::OpenAlex => OPENALEX_LABEL,
-            Host::Semantic => S2_LABEL,
-        }
-    }
-}
-
 /// What a request is for (the scan panel words it differently).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum What {
@@ -1030,13 +832,12 @@ struct Req<'a> {
     records: usize,
 }
 
-/// HTTP client plus one pacer per host, and the optional API keys.
+/// HTTP client with the OpenAlex pacer and the optional API key.
 pub struct Http {
     client: reqwest::Client,
     oa: Pacer,
-    s2: Pacer,
     keys: Mutex<Keys>,
-    /// Keys the server refused (401 / 403); the host then continues without a key.
+    /// Keys the server refused (401 / 403); requests then continue without the key.
     rejected: Mutex<Vec<KeyKind>>,
     /// Set by the user's "Stop": requests end as soon as they notice it.
     cancel: Arc<AtomicBool>,
@@ -1052,7 +853,6 @@ impl Http {
         Ok(Http {
             client,
             oa: Pacer::new(secrets::oa_gap(keys.openalex.is_some())),
-            s2: Pacer::new(secrets::s2_gap(keys.semantic.is_some())),
             keys: Mutex::new(keys),
             rejected: Mutex::new(Vec::new()),
             cancel: Arc::new(AtomicBool::new(false)),
@@ -1074,42 +874,28 @@ impl Http {
         lock(&self.rejected).clone()
     }
 
-    fn key_for(&self, host: Host) -> Option<String> {
-        let k = lock(&self.keys);
-        match host {
-            Host::OpenAlex => k.openalex.clone(),
-            Host::Semantic => k.semantic.clone(),
-        }
+    fn key(&self) -> Option<String> {
+        lock(&self.keys).openalex.clone()
     }
 
     /// Drops a refused key (once) and puts the host back on the keyless pace.
-    fn drop_key(&self, host: Host) {
-        let kind = match host {
-            Host::OpenAlex => {
-                lock(&self.keys).openalex = None;
-                self.oa.set_gap(secrets::oa_gap(false));
-                KeyKind::OpenAlex
-            }
-            Host::Semantic => {
-                lock(&self.keys).semantic = None;
-                self.s2.set_gap(secrets::s2_gap(false));
-                KeyKind::SemanticScholar
-            }
-        };
+    fn drop_key(&self) {
+        lock(&self.keys).openalex = None;
+        self.oa.set_gap(secrets::oa_gap(false));
         let mut rejected = lock(&self.rejected);
-        if !rejected.contains(&kind) {
-            rejected.push(kind);
+        if !rejected.contains(&KeyKind::OpenAlex) {
+            rejected.push(KeyKind::OpenAlex);
         }
     }
 
     /// Sleeps `secs` seconds one second at a time, reporting the countdown and honouring "Stop".
-    async fn wait_out(&self, host: Host, secs: u64, attempt: usize, say: Say<'_>) -> Result<(), ApiError> {
+    async fn wait_out(&self, secs: u64, attempt: usize, say: Say<'_>) -> Result<(), ApiError> {
         let mut left = secs;
         while left > 0 {
             if self.is_cancelled() {
                 return Err(ApiError::Cancelled);
             }
-            say(Step::Wait { source: host.label(), secs: left, attempt });
+            say(Step::Wait { source: OPENALEX_LABEL, secs: left, attempt });
             tokio::time::sleep(Duration::from_secs(1)).await;
             left -= 1;
         }
@@ -1121,18 +907,15 @@ impl Http {
 
     /// GET with pacing and 429/503 backoff. `Ok(None)` for HTTP 404. The key (if any) travels in
     /// a header, never in the URL; a 401 / 403 with a key retries once without it.
-    async fn get(&self, host: Host, url: &str, query: &[(&str, &str)], req_info: Req<'_>) -> Result<Option<String>, ApiError> {
-        let (pacer, backoff) = match host {
-            Host::OpenAlex => (&self.oa, OA_BACKOFF),
-            Host::Semantic => (&self.s2, S2_BACKOFF),
-        };
+    async fn get(&self, url: &str, query: &[(&str, &str)], req_info: Req<'_>) -> Result<Option<String>, ApiError> {
+        let (pacer, backoff) = (&self.oa, OA_BACKOFF);
         let mut attempt = 0usize;
         loop {
             if self.is_cancelled() {
                 return Err(ApiError::Cancelled);
             }
             (req_info.say)(Step::Request {
-                source: host.label(),
+                source: OPENALEX_LABEL,
                 what: req_info.what,
                 page: req_info.page,
                 records: req_info.records,
@@ -1141,16 +924,12 @@ impl Http {
             if self.is_cancelled() {
                 return Err(ApiError::Cancelled);
             }
-            let key = self.key_for(host);
+            let key = self.key();
             let mut req = self.client.get(url).query(query);
             if let Some(k) = &key {
-                let (name, value) = match host {
-                    Host::OpenAlex => ("authorization", format!("Bearer {k}")),
-                    Host::Semantic => ("x-api-key", k.clone()),
-                };
-                if let Ok(mut v) = reqwest::header::HeaderValue::from_str(&value) {
+                if let Ok(mut v) = reqwest::header::HeaderValue::from_str(&format!("Bearer {k}")) {
                     v.set_sensitive(true);
-                    req = req.header(name, v);
+                    req = req.header("authorization", v);
                 }
             }
             let resp = req
@@ -1162,14 +941,14 @@ impl Http {
                 return Ok(None);
             }
             if (code == 401 || code == 403) && key.is_some() {
-                self.drop_key(host);
+                self.drop_key();
                 continue;
             }
             if code == 429 || code == 503 {
                 match backoff.get(attempt) {
                     Some(secs) => {
                         attempt += 1;
-                        self.wait_out(host, *secs, attempt, req_info.say).await?;
+                        self.wait_out(*secs, attempt, req_info.say).await?;
                         continue;
                     }
                     None => return Err(ApiError::RateLimited),
@@ -1207,7 +986,6 @@ async fn oa_works_pages(http: &Http, filter: &str, say: Say<'_>, lang: &str) -> 
     for page in 1..=MAX_PAGES {
         let body = match http
             .get(
-                Host::OpenAlex,
                 OPENALEX_WORKS,
                 &[
                     ("filter", filter),
@@ -1241,7 +1019,6 @@ async fn load_author_set(http: &Http, orcid: &str, say: Say<'_>, lang: &str) -> 
     let url = format!("{OPENALEX_AUTHORS}/orcid:{orcid}");
     let body = http
         .get(
-            Host::OpenAlex,
             &url,
             &[("select", "id,works_count")],
             Req { say, what: What::Author, page: 1, records: 0 },
@@ -1270,7 +1047,6 @@ async fn oa_citing(http: &Http, work_id: &str, say: Say<'_>, lang: &str) -> Resu
     for page in 1..=MAX_PAGES {
         let body = match http
             .get(
-                Host::OpenAlex,
                 OPENALEX_WORKS,
                 &[
                     ("filter", filter.as_str()),
@@ -1304,22 +1080,21 @@ struct Assigned<'a> {
     score: f64,
 }
 
-/// What both sources need to know about one article.
+/// What the lookup needs to know about one article.
 #[derive(Clone, Copy)]
 struct Lookup<'a> {
     title: &'a str,
     year: Option<i64>,
-    /// Works the user ruled out for this article (OpenAlex and Semantic Scholar ids).
+    /// Works the user ruled out for this article (OpenAlex ids).
     rejected: &'a HashSet<String>,
 }
 
-/// OpenAlex side for a manual DOI: the work is resolved by `works/doi:<doi>`, then its citing works.
+/// A manual DOI: the work is resolved by `works/doi:<doi>`, then its citing works.
 async fn openalex_manual_flow(http: &Http, doi: &str, say: Say<'_>, lang: &str) -> SourceOutcome {
     let mut out = SourceOutcome::default();
     let url = format!("{OPENALEX_WORKS}/doi:{}", encode_path(doi));
     let body = match http
         .get(
-            Host::OpenAlex,
             &url,
             &[("select", "id,doi,title,publication_year")],
             Req { say, what: What::Lookup, page: 1, records: 0 },
@@ -1355,7 +1130,7 @@ async fn openalex_manual_flow(http: &Http, doi: &str, say: Say<'_>, lang: &str) 
     out
 }
 
-/// OpenAlex side of one article: the assigned work (ORCID set) or, failing that, a global
+/// One article: the assigned work (ORCID set) or, failing that, a global
 /// title search with the stricter threshold; then every dated citing work.
 async fn openalex_flow(
     http: &Http,
@@ -1376,8 +1151,7 @@ async fn openalex_flow(
         None => {
             let body = match http
                 .get(
-                    Host::OpenAlex,
-                    OPENALEX_WORKS,
+                        OPENALEX_WORKS,
                     &[
                         ("search", title),
                         ("per-page", "5"),
@@ -1421,133 +1195,6 @@ async fn openalex_flow(
     out
 }
 
-/// Semantic Scholar side of one article. With a DOI (from the ORCID set) the paper is looked
-/// up by `DOI:<doi>`; without one, or when the DOI is unknown there, by title match (strict).
-async fn s2_flow(
-    http: &Http,
-    q: Lookup<'_>,
-    doi_hint: Option<(&str, f64, MatchMethod)>,
-    say: Say<'_>,
-    lang: &str,
-) -> SourceOutcome {
-    let (title, year) = (q.title, q.year);
-    let mut out = SourceOutcome::default();
-    // A manual DOI is final: when Semantic Scholar does not know it, there is no title fallback.
-    let manual = matches!(doi_hint, Some((_, _, MatchMethod::ManualDoi)));
-    if let Some((doi, score, method)) = doi_hint {
-        let url = format!("{S2_BASE}/paper/DOI:{}", encode_path(doi));
-        match http
-            .get(
-                Host::Semantic,
-                &url,
-                &[("fields", "title,year,externalIds")],
-                Req { say, what: What::Lookup, page: 1, records: 0 },
-            )
-            .await
-        {
-            Ok(Some(body)) => match parse_s2_paper(&body) {
-                Ok(Some(c)) if !q.rejected.contains(&c.id) => {
-                    out.work = Some(Work {
-                        id: c.id,
-                        doi: Some(doi.to_string()),
-                        score,
-                        method,
-                    });
-                }
-                Ok(Some(_)) => {}
-                Ok(None) => {}
-                Err(e) => {
-                    out.error = Some(ApiError::Parse(e.to_string()).describe(lang));
-                    return out;
-                }
-            },
-            Ok(None) => {}
-            Err(e) => {
-                out.error = Some(e.describe(lang));
-                return out;
-            }
-        }
-    }
-    if out.work.is_none() && !manual {
-        let url = format!("{S2_BASE}/paper/search/match");
-        let body = match http
-            .get(
-                Host::Semantic,
-                &url,
-                &[("query", title), ("fields", "title,year,externalIds")],
-                Req { say, what: What::Lookup, page: 1, records: 0 },
-            )
-            .await
-        {
-            Ok(Some(b)) => b,
-            Ok(None) => return out,
-            Err(e) => {
-                out.error = Some(e.describe(lang));
-                return out;
-            }
-        };
-        let cands = match parse_s2_match(&body) {
-            Ok(c) => c,
-            Err(e) => {
-                out.error = Some(ApiError::Parse(e.to_string()).describe(lang));
-                return out;
-            }
-        };
-        let Some((c, score)) = best_candidate_excluding(title, year, &cands, q.rejected) else {
-            return out;
-        };
-        out.work = Some(Work {
-            id: c.id,
-            doi: c.doi,
-            score,
-            method: MatchMethod::TitleSearch,
-        });
-    }
-    let Some(paper_id) = out.work.as_ref().map(|w| w.id.clone()) else {
-        return out;
-    };
-    match s2_citing(http, &paper_id, say, lang).await {
-        Ok(c) => out.citing = Some(c),
-        Err(e) => out.error = Some(e),
-    }
-    out
-}
-
-/// All dated citing works of one Semantic Scholar paper.
-async fn s2_citing(http: &Http, paper_id: &str, say: Say<'_>, lang: &str) -> Result<Vec<CitingRecord>, String> {
-    let url = format!("{S2_BASE}/paper/{paper_id}/citations");
-    let mut all: Vec<CitingRecord> = Vec::new();
-    let mut offset = 0i64;
-    for page in 1..=MAX_PAGES {
-        let off = offset.to_string();
-        let body = match http
-            .get(
-                Host::Semantic,
-                &url,
-                &[
-                    ("fields", "title,publicationDate,year,venue,publicationVenue,externalIds,authors"),
-                    ("limit", "100"),
-                    ("offset", off.as_str()),
-                ],
-                Req { say, what: What::Citing, page, records: all.len() },
-            )
-            .await
-        {
-            Ok(Some(b)) => b,
-            Ok(None) => break,
-            Err(e) => return Err(e.describe(lang)),
-        };
-        let (mut page, next) =
-            parse_s2_citations(&body).map_err(|e| ApiError::Parse(e.to_string()).describe(lang))?;
-        all.append(&mut page);
-        match next {
-            Some(n) => offset = n,
-            None => break,
-        }
-    }
-    Ok(dedupe(all))
-}
-
 // -------------------------------------------------------------------- runner
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1558,8 +1205,8 @@ pub enum Mode {
     All,
     /// One article (after the user changed its DOI or rejected its match).
     Article(String),
-    /// Daily light run: re-reads the citing lists of articles that are already matched, from the
-    /// source that was chosen for them. No matching, no author set, no second source.
+    /// Daily light run: re-reads the citing lists of articles that are already matched, using
+    /// the stored OpenAlex id. No matching, no author set.
     Refresh,
 }
 
@@ -1592,7 +1239,7 @@ pub struct ScanTarget {
 /// - `backoff`: waiting after HTTP 429 / 503 (`source`, `wait_secs` left, `attempt`).
 /// - `works`: the author's works were collected (`works`); `matching`: they were assigned to
 ///   articles (`works`, `records` = assigned).
-/// - `article_start`, `article_done` (`oa_count`, `s2_count`, `chosen`, `method`, `records`),
+/// - `article_start`, `article_done` (`oa_count`, `method`, `records`),
 ///   `unmatched`, `error` (`message`).
 /// - `finished`, `cancelled`, `failed`: the run ended (`running == false`, `summary`).
 ///
@@ -1614,8 +1261,6 @@ pub struct Progress {
     pub attempt: usize,
     pub works: usize,
     pub oa_count: Option<i64>,
-    pub s2_count: Option<i64>,
-    pub chosen: String,
     pub method: String,
     pub message: String,
     pub done: usize,
@@ -1760,7 +1405,7 @@ fn note_new(sum: &mut RunSummary, article: &str, fresh: Vec<CitingRecord>) {
     sum.new_citing.truncate(KEEP_NEW);
 }
 
-/// Looks up every target article in both sources, stores the result, and records the run.
+/// Looks up every target article in OpenAlex, stores the result, and records the run.
 /// The ORCID author set is loaded once per run; articles outside it fall back to title search.
 /// `None` when there was nothing to do (no run row is written then). When the user stops the
 /// run (`http.is_cancelled()`), the article in progress is dropped, the rest is skipped and the
@@ -1793,7 +1438,6 @@ pub async fn run_articles(
         total: n,
         ..RunSummary::default()
     };
-    let mut gaps = 0usize;
     let mut first_error: Option<String> = None;
     let mut notes: Vec<String> = Vec::new();
     let mut cancelled = false;
@@ -1841,7 +1485,7 @@ pub async fn run_articles(
         ));
     }
 
-    // Step 3-6: both sources for each article.
+    // Step 3-6: OpenAlex for each article.
     for (i, target) in targets.iter().enumerate() {
         if cancelled || http.is_cancelled() {
             cancelled = true;
@@ -1863,31 +1507,17 @@ pub async fn run_articles(
             rejected: &rejected,
         };
         let plan = plan_for(ov);
-        let (oa, s2) = match &plan {
-            Plan::Manual(doi) => tokio::join!(
-                openalex_manual_flow(http, doi, &say, lang),
-                s2_flow(http, q, Some((doi.as_str(), 1.0, MatchMethod::ManualDoi)), &say, lang),
-            ),
-            Plan::Automatic => {
-                let doi_hint = assigned
-                    .and_then(|a| a.cand.doi.as_deref().map(|d| (d, a.score, MatchMethod::Orcid)));
-                tokio::join!(
-                    openalex_flow(http, q, assigned, &say, lang),
-                    s2_flow(http, q, doi_hint, &say, lang),
-                )
-            }
+        let oa = match &plan {
+            Plan::Manual(doi) => openalex_manual_flow(http, doi, &say, lang).await,
+            Plan::Automatic => openalex_flow(http, q, assigned, &say, lang).await,
         };
         if http.is_cancelled() {
             // The article in progress is dropped: a half-read citing list must not be stored.
             cancelled = true;
             break;
         }
-        match decide(&target.key, oa, s2) {
-            Decision::Matched {
-                rec,
-                citing,
-                other_error,
-            } => match db::store_backfill_article(&mut conn, &rec, Utc::now(), &citing) {
+        match decide(&target.key, oa) {
+            Decision::Matched { rec, citing } => match db::store_backfill_article(&mut conn, &rec, Utc::now(), &citing) {
                 Ok(fresh) => {
                     sum.matched += 1;
                     sum.records += citing.len();
@@ -1895,16 +1525,10 @@ pub async fn run_articles(
                     if !matches!(mode, Mode::Article(_)) {
                         note_new(&mut sum, &target.title, fresh);
                     }
-                    if other_error.is_some() {
-                        gaps += 1;
-                    }
                     scan.article_end("article_done", &key, &title, |p| {
                         p.oa_count = rec.openalex_count;
-                        p.s2_count = rec.s2_count;
-                        p.chosen = rec.source.clone().unwrap_or_default();
                         p.method = rec.match_method.clone().unwrap_or_default();
                         p.records = citing.len();
-                        p.message = other_error.clone().unwrap_or_default();
                     });
                 }
                 Err(e) => {
@@ -1976,10 +1600,6 @@ pub async fn run_articles(
         message.push(' ');
         message.push_str(&note);
     }
-    if gaps > 0 {
-        message.push(' ');
-        message.push_str(&i18n::trf(lang, "bf.msg_gap", &[&gaps.to_string()]));
-    }
     if sum.failed > 0 {
         message.push(' ');
         message.push_str(&i18n::trf(
@@ -1995,12 +1615,11 @@ pub async fn run_articles(
 fn key_rejected_msg(kind: KeyKind) -> &'static str {
     match kind {
         KeyKind::OpenAlex => "bf.msg_key_oa",
-        KeyKind::SemanticScholar => "bf.msg_key_s2",
     }
 }
 
-/// The daily light run: for each matched article the citing list is read again from the
-/// source chosen for it, using the stored work id. Nothing is matched again.
+/// The daily light run: for each matched article the citing list is read again from OpenAlex,
+/// using the stored work id. Nothing is matched again.
 async fn refresh_articles(
     db_path: &Path,
     http: &Http,
@@ -2031,11 +1650,7 @@ async fn refresh_articles(
         let (key, title) = (target.key.clone(), target.title.clone());
         let say = |step: Step<'_>| scan.step(step, &key, &title);
         scan.article_start(k, &key, &title);
-        let fetched = match target.source.as_str() {
-            "openalex" => oa_citing(http, &target.external_id, &say, lang).await,
-            "semanticscholar" => s2_citing(http, &target.external_id, &say, lang).await,
-            _ => continue,
-        };
+        let fetched = oa_citing(http, &target.external_id, &say, lang).await;
         if http.is_cancelled() {
             cancelled = true;
             break;
@@ -2047,13 +1662,7 @@ async fn refresh_articles(
                     sum.records += citing.len();
                     note_new(&mut sum, &target.title, fresh);
                     scan.article_end("article_done", &key, &title, |p| {
-                        let c = Some(citing.len() as i64);
-                        if target.source == "openalex" {
-                            p.oa_count = c;
-                        } else {
-                            p.s2_count = c;
-                        }
-                        p.chosen = target.source.clone();
+                        p.oa_count = Some(citing.len() as i64);
                         p.method = "refresh".to_string();
                         p.records = citing.len();
                     });
@@ -2439,7 +2048,6 @@ pub fn demo(app: AppHandle, sh: Arc<Shared>) -> bool {
             scan.article_start(i + 1, key, title);
             for page in 1..=2usize {
                 scan.step(Step::Request { source: OPENALEX_LABEL, what: What::Citing, page, records: (page - 1) * 40 }, key, title);
-                scan.step(Step::Request { source: S2_LABEL, what: What::Citing, page, records: (page - 1) * 36 }, key, title);
                 pause(450).await;
             }
             if i == 3 {
@@ -2447,7 +2055,7 @@ pub fn demo(app: AppHandle, sh: Arc<Shared>) -> bool {
                     if sh.cancel.load(Ordering::SeqCst) {
                         break;
                     }
-                    scan.step(Step::Wait { source: S2_LABEL, secs: left, attempt: 1 }, key, title);
+                    scan.step(Step::Wait { source: OPENALEX_LABEL, secs: left, attempt: 1 }, key, title);
                     pause(1000).await;
                 }
             }
@@ -2469,8 +2077,6 @@ pub fn demo(app: AppHandle, sh: Arc<Shared>) -> bool {
                     records += 40 - i * 2;
                     scan.article_end("article_done", key, title, |p| {
                         p.oa_count = Some((40 - i * 2) as i64);
-                        p.s2_count = Some((36 - i * 2) as i64);
-                        p.chosen = "openalex".into();
                         p.method = if i % 2 == 0 { "orcid" } else { "title_search" }.into();
                         p.records = 40 - i * 2;
                     });
@@ -2525,6 +2131,22 @@ pub fn recover_stale_runs(db_path: &Path, lang: &str) {
         .and_then(|c| db::mark_stale_runs(&c, Utc::now(), i18n::tr(lang, "bf.msg_interrupted")));
     if let Err(e) = result {
         eprintln!("backfill: could not mark stale runs: {e:#}");
+    }
+}
+
+/// 1.1.1 start-up clean-up, run once: forgets matches made with the retired second source (the
+/// next "missing" run matches those articles again with OpenAlex; manual DOIs are kept) and
+/// removes the key that source may have left in the Credential Manager. Silent; failures only
+/// reach stderr.
+pub fn drop_legacy_source(db_path: &Path) {
+    secrets::delete_legacy_semantic_key();
+    if !db_path.exists() {
+        return;
+    }
+    match db::open(db_path).and_then(|mut c| db::drop_legacy_source_matches(&mut c)) {
+        Ok(0) => {}
+        Ok(n) => eprintln!("backfill: {n} article(s) will be matched again with OpenAlex"),
+        Err(e) => eprintln!("backfill: clean-up of old matches failed: {e:#}"),
     }
 }
 
@@ -2731,18 +2353,6 @@ mod tests {
     }
 
     #[test]
-    fn semantic_scholar_citing_has_no_countries() {
-        let json = r#"{"data":[{"citingPaper":{"paperId":"abc123","title":"Invented S2 work","year":2024,
-          "publicationDate":"2024-02-03","venue":"Invented Proceedings","externalIds":{"DOI":"10.5555/S2.1"},
-          "authors":[{"name":"Dee Example"},{"name":"Eve Sample"}]}}]}"#;
-        let (recs, _) = parse_s2_citations(json).expect("s2");
-        let r = &recs[0];
-        assert_eq!((r.venue.as_str(), r.doi.as_str(), r.countries.as_str()), ("Invented Proceedings", "10.5555/s2.1", ""));
-        assert_eq!(r.authors, "Dee Example; Eve Sample");
-        assert_eq!(r.url, "https://www.semanticscholar.org/paper/abc123");
-    }
-
-    #[test]
     fn authors_and_countries_are_normalized() {
         let many: Vec<String> = (1..=12).map(|i| format!("Author {i}")).collect();
         let s = join_authors(many);
@@ -2800,57 +2410,6 @@ mod tests {
         assert_eq!(sum.new_citing[0].article, "A");
     }
 
-    const S2_MATCH: &str = r#"{"data":[{"paperId":"0123456789abcdef0123456789abcdef01234567",
-        "title":"Quillfern: Harmonizing the taxonomic ledger of herbarium and survey records",
-        "year":2025,"externalIds":{"DOI":"10.1234/example.2025.102000","CorpusId":12345}}]}"#;
-
-    #[test]
-    fn parses_semantic_scholar_match() {
-        let c = parse_s2_match(S2_MATCH).expect("parse");
-        assert_eq!(c.len(), 1);
-        assert_eq!(c[0].id, "0123456789abcdef0123456789abcdef01234567");
-        assert_eq!(c[0].doi.as_deref(), Some("10.1234/example.2025.102000"));
-        assert_eq!(c[0].year, Some(2025));
-        // the real "not found" answer is an HTTP 404 (handled as None); an empty list also works
-        assert!(parse_s2_match(r#"{"data":[]}"#).expect("empty").is_empty());
-        assert!(parse_s2_match(r#"{"error":"Title match not found"}"#).expect("err body").is_empty());
-        // an external id that is not a plain number/string does not break parsing
-        assert!(parse_s2_match(r#"{"data":[{"paperId":"abc","title":"T","year":null,"externalIds":null}]}"#)
-            .expect("null ids")
-            .first()
-            .is_some_and(|c| c.doi.is_none()));
-    }
-
-    const S2_CITES1: &str = r#"{"offset":0,"next":2,"data":[
-        {"citingPaper":{"paperId":"aaa111","title":"Has a full date","year":2023,"publicationDate":"2023-05-17","externalIds":{"DOI":"10.1/a"}}},
-        {"citingPaper":{"paperId":"bbb222","title":"Date missing, year only","year":2024,"publicationDate":null,"externalIds":{}}}
-      ]}"#;
-    const S2_CITES2: &str = r#"{"offset":2,"data":[
-        {"citingPaper":{"paperId":"ccc333","title":"No date and no year","year":null,"publicationDate":null}},
-        {"citingPaper":{"paperId":null,"title":"No id","year":2020,"publicationDate":"2020-01-01"}},
-        {"citingPaper":null},
-        {"citingPaper":{"paperId":"ddd444","title":"Month only","year":2021,"publicationDate":"2021-08"}}
-      ]}"#;
-
-    #[test]
-    fn parses_semantic_scholar_citations_with_missing_dates() {
-        let (recs, next) = parse_s2_citations(S2_CITES1).expect("p1");
-        assert_eq!(next, Some(2));
-        assert_eq!(recs.len(), 2);
-        assert_eq!((recs[0].citing_date.as_str(), recs[0].date_precision.as_str()), ("2023-05-17", "day"));
-        // publicationDate missing: the year is used
-        assert_eq!(recs[1].citing_id, "bbb222");
-        assert_eq!((recs[1].citing_date.as_str(), recs[1].date_precision.as_str()), ("2024", "year"));
-
-        let (recs, next) = parse_s2_citations(S2_CITES2).expect("p2");
-        assert_eq!(next, None);
-        // undated, id-less and null entries are skipped; the month-precision one stays
-        assert_eq!(recs.len(), 1);
-        assert_eq!(recs[0].citing_id, "ddd444");
-        assert_eq!(recs[0].date_precision, "month");
-        assert!(parse_s2_citations("not json").is_err());
-    }
-
     #[test]
     fn dedupe_keeps_the_first_of_each_id() {
         let mk = |id: &str, d: &str| CitingRecord {
@@ -2863,19 +2422,6 @@ mod tests {
         let out = dedupe(vec![mk("a", "2020-01-01"), mk("b", "2020-01-02"), mk("a", "2021-01-01")]);
         assert_eq!(out.len(), 2);
         assert_eq!(out[0].citing_date, "2020-01-01");
-    }
-
-    #[test]
-    fn source_choice_prefers_more_records_and_openalex_on_a_tie() {
-        assert_eq!(choose_source(Some(40), Some(36)), Some(Source::OpenAlex));
-        assert_eq!(choose_source(Some(36), Some(40)), Some(Source::SemanticScholar));
-        // tie goes to OpenAlex, also at zero
-        assert_eq!(choose_source(Some(12), Some(12)), Some(Source::OpenAlex));
-        assert_eq!(choose_source(Some(0), Some(0)), Some(Source::OpenAlex));
-        // a single matching source is used even with fewer (or no) records
-        assert_eq!(choose_source(Some(0), None), Some(Source::OpenAlex));
-        assert_eq!(choose_source(None, Some(0)), Some(Source::SemanticScholar));
-        assert_eq!(choose_source(None, None), None);
     }
 
     fn rec(id: &str, date: &str, p: &str) -> CitingRecord {
@@ -2902,71 +2448,47 @@ mod tests {
     }
 
     #[test]
-    fn decide_stores_the_larger_source_and_both_counts() {
-        match decide("k1", outcome("W1", 40), outcome("s2id", 36)) {
-            Decision::Matched { rec, citing, other_error } => {
+    fn decide_stores_the_openalex_result_and_its_count() {
+        match decide("k1", outcome("W1", 40)) {
+            Decision::Matched { rec, citing } => {
                 assert_eq!(rec.source.as_deref(), Some("openalex"));
                 assert_eq!(rec.external_id.as_deref(), Some("W1"));
                 assert_eq!(rec.doi.as_deref(), Some("10.1/W1"));
-                assert_eq!((rec.openalex_count, rec.s2_count), (Some(40), Some(36)));
-                assert_eq!((rec.openalex_id.as_deref(), rec.s2_id.as_deref()), (Some("W1"), Some("s2id")));
+                assert_eq!(rec.openalex_count, Some(40));
+                assert_eq!(rec.openalex_id.as_deref(), Some("W1"));
+                assert_eq!(rec.match_method.as_deref(), Some("orcid"));
                 assert_eq!(citing.len(), 40);
-                assert!(other_error.is_none());
             }
             other => panic!("unexpected {other:?}"),
         }
-        match decide("k1", outcome("W1", 5), outcome("s2id", 9)) {
-            Decision::Matched { rec, citing, .. } => {
-                assert_eq!(rec.source.as_deref(), Some("semanticscholar"));
-                assert_eq!(rec.external_id.as_deref(), Some("s2id"));
-                assert_eq!(citing.len(), 9);
-                assert!(citing.iter().all(|c| c.citing_id.starts_with("s2id")));
-            }
-            other => panic!("unexpected {other:?}"),
+        // the match method follows the lookup
+        let mut by_title = outcome("W2", 9);
+        if let Some(w) = by_title.work.as_mut() {
+            w.method = MatchMethod::TitleSearch;
         }
-        // tie: OpenAlex
-        match decide("k1", outcome("W1", 7), outcome("s2id", 7)) {
-            Decision::Matched { rec, .. } => assert_eq!(rec.source.as_deref(), Some("openalex")),
+        match decide("k", by_title) {
+            Decision::Matched { rec, .. } => assert_eq!(rec.match_method.as_deref(), Some("title_search")),
             other => panic!("unexpected {other:?}"),
         }
     }
 
     #[test]
-    fn decide_handles_one_sided_matches_and_failures() {
-        // only Semantic Scholar matched
-        match decide("k1", SourceOutcome::default(), outcome("s2id", 3)) {
-            Decision::Matched { rec, .. } => {
-                assert_eq!(rec.source.as_deref(), Some("semanticscholar"));
-                assert_eq!((rec.openalex_count, rec.s2_count), (None, Some(3)));
-                assert_eq!(rec.openalex_id, None);
-            }
-            other => panic!("unexpected {other:?}"),
-        }
-        // Semantic Scholar rate-limited, OpenAlex fine: OpenAlex is used, the gap is reported
+    fn decide_handles_unmatched_incomplete_and_empty_results() {
+        // rate-limited after the work was found: the citing list is incomplete, nothing is stored
         let limited = SourceOutcome {
-            work: Some(Work { id: "s2id".into(), doi: None, score: 0.9, method: MatchMethod::TitleSearch }),
+            work: Some(Work { id: "W9".into(), doi: None, score: 0.9, method: MatchMethod::TitleSearch }),
             citing: None,
             error: Some("429".into()),
         };
-        match decide("k1", outcome("W1", 2), limited.clone()) {
-            Decision::Matched { rec, other_error, .. } => {
-                assert_eq!(rec.source.as_deref(), Some("openalex"));
-                assert_eq!(rec.s2_count, None);
-                assert_eq!(rec.s2_id.as_deref(), Some("s2id"));
-                assert_eq!(other_error.as_deref(), Some("429"));
-            }
-            other => panic!("unexpected {other:?}"),
-        }
-        // nothing usable and a source failed: retry later, store nothing
-        assert_eq!(
-            decide("k1", SourceOutcome::default(), limited),
-            Decision::Failed("429".into())
-        );
-        // both answered, neither matched
-        assert_eq!(decide("k1", SourceOutcome::default(), SourceOutcome::default()), Decision::Unmatched);
-        // a matched source with zero citing works is still a match
-        match decide("k1", outcome("W1", 0), SourceOutcome::default()) {
-            Decision::Matched { rec, citing, .. } => {
+        assert_eq!(decide("k1", limited), Decision::Failed("429".into()));
+        // a failure before any match
+        let failed = SourceOutcome { error: Some("HTTP 500".into()), ..SourceOutcome::default() };
+        assert_eq!(decide("k1", failed), Decision::Failed("HTTP 500".into()));
+        // answered, not matched
+        assert_eq!(decide("k1", SourceOutcome::default()), Decision::Unmatched);
+        // a match with zero citing works is still a match
+        match decide("k1", outcome("W1", 0)) {
+            Decision::Matched { rec, citing } => {
                 assert_eq!(rec.openalex_count, Some(0));
                 assert!(citing.is_empty());
             }
@@ -2998,16 +2520,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_a_semantic_scholar_paper_by_doi() {
-        let c = parse_s2_paper(
-            r#"{"paperId":"0123456789abcdef0123456789abcdef01234567","title":"T","year":2019,"externalIds":{"DOI":"10.1/x"}}"#,
-        )
-        .expect("parse")
-        .expect("some");
-        assert_eq!(c.doi.as_deref(), Some("10.1/x"));
-        assert_eq!(c.year, Some(2019));
-        assert!(parse_s2_paper(r#"{"paperId":null}"#).expect("null id").is_none());
-        assert!(parse_s2_paper("nope").is_err());
+    fn doi_paths_are_percent_encoded() {
         assert_eq!(encode_path("10.1234/example.2019.101916"), "10.1234/example.2019.101916");
         assert_eq!(encode_path("10.1002/(SICI)1097<x>#1"), "10.1002/(SICI)1097%3Cx%3E%231");
     }
@@ -3238,33 +2751,6 @@ mod tests {
     }
 
     #[test]
-    fn match_method_is_stored_for_the_chosen_source() {
-        let orcid_work = outcome("W1", 2); // method Orcid
-        let mut title_work = outcome("s2id", 9);
-        if let Some(w) = title_work.work.as_mut() {
-            w.method = MatchMethod::TitleSearch;
-        }
-        match decide("k", orcid_work.clone(), title_work.clone()) {
-            Decision::Matched { rec, .. } => {
-                assert_eq!(rec.source.as_deref(), Some("semanticscholar"));
-                assert_eq!(rec.match_method.as_deref(), Some("title_search"));
-            }
-            other => panic!("unexpected {other:?}"),
-        }
-        match decide("k", outcome("W1", 9), title_work) {
-            Decision::Matched { rec, .. } => {
-                assert_eq!(rec.source.as_deref(), Some("openalex"));
-                assert_eq!(rec.match_method.as_deref(), Some("orcid"));
-            }
-            other => panic!("unexpected {other:?}"),
-        }
-        match decide("k", SourceOutcome::default(), SourceOutcome::default()) {
-            Decision::Unmatched => {}
-            other => panic!("unexpected {other:?}"),
-        }
-    }
-
-    #[test]
     fn user_agent_has_no_personal_data() {
         assert!(USER_AGENT.starts_with("scholar-citation-tracker/"));
         assert!(USER_AGENT.contains("github.com/bcankara/scholar-citation-tracker"));
@@ -3300,7 +2786,7 @@ mod tests {
         scan.start(&[("a".into(), "A".into()), ("b".into(), "B".into()), ("c".into(), "C".into())]);
         scan.article_start(1, "a", "A");
         scan.step(Step::Request { source: "OpenAlex", what: What::Citing, page: 2, records: 200 }, "a", "A");
-        scan.step(Step::Wait { source: "Semantic Scholar", secs: 12, attempt: 1 }, "a", "A");
+        scan.step(Step::Wait { source: "OpenAlex", secs: 12, attempt: 1 }, "a", "A");
         scan.article_end("article_done", "a", "A", |p| p.records = 7);
         scan.article_start(2, "b", "B");
         scan.article_end("unmatched", "b", "B", |_| {});
@@ -3310,7 +2796,7 @@ mod tests {
         assert_eq!(ev[0].targets.len(), 3);
         assert!(ev.iter().all(|p| p.running && p.mode == "all" && p.n == 3));
         assert_eq!((ev[2].what.as_str(), ev[2].page, ev[2].records, ev[2].k), ("citing", 2, 200, 1));
-        assert_eq!((ev[3].wait_secs, ev[3].source.as_str()), (12, "Semantic Scholar"));
+        assert_eq!((ev[3].wait_secs, ev[3].source.as_str()), (12, "OpenAlex"));
         assert_eq!((ev[1].done, ev[4].done, ev[6].done), (0, 1, 2), "done counts finished articles");
         assert_eq!(ev[1].eta_secs, None, "no ETA before the first article is done");
         assert!(ev[6].eta_secs.is_some());
@@ -3325,9 +2811,9 @@ mod tests {
         for _ in 0..50 {
             st.record(&ev("request", "OpenAlex"));
         }
-        st.record(&ev("backoff", "Semantic Scholar"));
+        st.record(&ev("backoff", "OpenAlex"));
         assert_eq!(st.events.len(), 2, "requests are not kept in the history");
-        assert_eq!(st.live.len(), 2, "newest per source");
+        assert_eq!(st.live.len(), 1, "only the newest request or wait is kept");
         st.record(&ev("article_done", ""));
         assert!(st.live.is_empty() && st.events.len() == 3);
         st.record(&ev("start", ""));
@@ -3340,14 +2826,14 @@ mod tests {
         let flag = Arc::new(AtomicBool::new(false));
         let http = Arc::new(http.with_cancel(flag.clone()));
         let seen: Arc<Mutex<Vec<u64>>> = Arc::new(Mutex::new(Vec::new()));
-        let (h2, s2) = (http.clone(), seen.clone());
+        let (h2, sink) = (http.clone(), seen.clone());
         let task = tokio::spawn(async move {
             let say = |step: Step<'_>| {
                 if let Step::Wait { secs, .. } = step {
-                    lock(&s2).push(secs);
+                    lock(&sink).push(secs);
                 }
             };
-            h2.wait_out(Host::Semantic, 60, 1, &say).await
+            h2.wait_out(60, 1, &say).await
         });
         tokio::time::sleep(Duration::from_millis(3500)).await;
         flag.store(true, Ordering::SeqCst);
@@ -3363,7 +2849,7 @@ mod tests {
         let http = Http::new(Keys::default()).expect("http").with_cancel(Arc::new(AtomicBool::new(true)));
         let say = |_: Step<'_>| panic!("no request may be announced");
         let r = http
-            .get(Host::OpenAlex, "http://127.0.0.1:9/never", &[], Req { say: &say, what: What::Citing, page: 1, records: 0 })
+            .get("http://127.0.0.1:9/never", &[], Req { say: &say, what: What::Citing, page: 1, records: 0 })
             .await;
         assert_eq!(r, Err(ApiError::Cancelled));
     }
@@ -3423,7 +2909,7 @@ mod tests {
     }
 
     #[test]
-    fn issns_are_read_from_both_sources() {
+    fn issns_are_read_from_citing_works() {
         let oa = r#"{"results":[{"id":"https://openalex.org/W1","title":"T","publication_date":"2024-05-06","publication_year":2024,
             "primary_location":{"landing_page_url":"https://x","source":{"display_name":"Journal X","issn_l":"1569-8432","issn":["1569-8432","1872-826x"]}},"authorships":[]},
             {"id":"https://openalex.org/W2","title":"U","publication_date":"2024-05-07","publication_year":2024,
@@ -3431,16 +2917,10 @@ mod tests {
         let (recs, _) = parse_oa_citing(oa).expect("oa");
         assert_eq!(recs[0].issn_list, "15698432,1872826X");
         assert_eq!(recs[1].issn_list, "");
-        let s2 = r#"{"next":null,"data":[{"citingPaper":{"paperId":"abc123","title":"T","year":2024,"publicationDate":"2024-05-06",
-            "publicationVenue":{"issn":"1234-5678"}}},{"citingPaper":{"paperId":"def456","title":"U","year":2024,"publicationVenue":null}}]}"#;
-        let (recs, _) = parse_s2_citations(s2).expect("s2");
-        assert_eq!(recs[0].issn_list, "12345678");
-        assert_eq!(recs[1].issn_list, "");
     }
 
-    /// Live check against OpenAlex and Semantic Scholar (never Google):
+    /// Live check against OpenAlex (never Google):
     /// `BACKFILL_ORCID=... BACKFILL_TITLES="Title one|Title two" cargo test live_backfill -- --ignored --nocapture`
-    /// Takes a few minutes (Semantic Scholar is paced at about 3 s per call).
     #[tokio::test]
     #[ignore]
     async fn live_backfill() {

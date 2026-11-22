@@ -504,7 +504,7 @@ pub fn build_distribution(conn: &Connection) -> Result<Distribution> {
 // ------------------------------------------------------------ recent citations
 
 /// One row of the "Recent citations" card: a change Scholar showed, or a citing work found
-/// through OpenAlex / Semantic Scholar.
+/// through OpenAlex.
 #[derive(Debug, Clone, Default, Serialize, PartialEq)]
 pub struct RecentItem {
     /// "scholar_up" | "scholar_down" | "citing"

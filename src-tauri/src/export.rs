@@ -139,7 +139,7 @@ pub fn write_xlsx(conn: &Connection, path: &Path, lang: &str) -> Result<()> {
         let ws = wb.add_worksheet();
         ws.set_name(tr("xl.sheet.citing"))?;
         let rows = db::citing_works(conn)?;
-        let headers: Vec<&str> = (0..11).map(|i| tr(&format!("xl.c.{i}"))).collect();
+        let headers: Vec<&str> = (0..10).map(|i| tr(&format!("xl.c.{i}"))).collect();
         for (i, c) in rows.iter().enumerate() {
             let n = i as u32 + 1;
             match citing_excel(&c.date, &c.precision) {
@@ -159,13 +159,12 @@ pub fn write_xlsx(conn: &Connection, path: &Path, lang: &str) -> Result<()> {
             ws.write_string(n, 6, &c.authors)?;
             ws.write_string(n, 7, &c.countries)?;
             ws.write_string(n, 8, &c.article_title)?;
-            ws.write_string(n, 9, if c.source == "openalex" { "OpenAlex" } else { "Semantic Scholar" })?;
-            ws.write_string(n, 10, &c.citing_id)?;
+            ws.write_string(n, 9, &c.citing_id)?;
         }
         write_headers(
             ws,
             &headers,
-            &[12.0, 14.0, 70.0, 34.0, 28.0, 40.0, 40.0, 12.0, 60.0, 18.0, 22.0],
+            &[12.0, 14.0, 70.0, 34.0, 28.0, 40.0, 40.0, 12.0, 60.0, 22.0],
             rows.len() as u32,
         )?;
     }

@@ -18,7 +18,7 @@ pub struct Settings {
     pub interval_hours: u32,
     pub autostart: bool,
     pub notify: bool,
-    /// Historical backfill (OpenAlex / Semantic Scholar). Off for settings files without the field.
+    /// Historical backfill (OpenAlex). Off for settings files without the field.
     pub backfill_enabled: bool,
     /// ORCID iD of the profile owner, `0000-0000-0000-0000` form. Empty in settings files
     /// written before the field existed; only the historical backfill needs it.
@@ -198,10 +198,10 @@ mod tests {
         // a settings file without the weekly switch keeps the default (on)
         assert!(s.weekly_summary);
 
-        let mut s2 = s.clone();
-        s2.notify = false;
-        save(&file, &s2).expect("save");
-        assert_eq!(load(&file, &base), s2);
+        let mut changed = s.clone();
+        changed.notify = false;
+        save(&file, &changed).expect("save");
+        assert_eq!(load(&file, &base), changed);
 
         std::fs::write(&file, "not json").expect("w");
         assert_eq!(load(&file, &base).interval_hours, 3);

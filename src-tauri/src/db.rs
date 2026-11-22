@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS article_matches(
     match_method TEXT,
     matched_at TEXT NOT NULL,
     openalex_id TEXT,
-    s2_id TEXT,
+    s2_id TEXT, -- s2_id and s2_count: kept for old databases, no longer written
     openalex_count INTEGER,
     s2_count INTEGER
 );
@@ -795,7 +795,7 @@ pub fn notification_text(c: &Change, lang: &str) -> Option<(String, String)> {
 
 // ------------------------------------------------------- historical backfill
 
-/// Outcome of matching one Scholar article against OpenAlex / Semantic Scholar.
+/// Outcome of matching one Scholar article against OpenAlex.
 /// `source == None` means "searched, not matched".
 #[derive(Debug, Clone, Default, Serialize, PartialEq)]
 pub struct MatchRecord {
@@ -807,9 +807,7 @@ pub struct MatchRecord {
     /// "orcid" | "title_search" | "manual_doi"; `None` for unmatched articles without a manual DOI.
     pub match_method: Option<String>,
     pub openalex_id: Option<String>,
-    pub s2_id: Option<String>,
     pub openalex_count: Option<i64>,
-    pub s2_count: Option<i64>,
 }
 
 /// One citing work with the date it is filed under.
@@ -906,13 +904,12 @@ pub fn store_backfill_article(
     )?;
     tx.execute(
         "INSERT INTO article_matches(article_key, source, external_id, doi, score, match_method,
-                                     matched_at, openalex_id, s2_id, openalex_count, s2_count)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)
+                                     matched_at, openalex_id, openalex_count)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)
          ON CONFLICT(article_key) DO UPDATE SET
            source=excluded.source, external_id=excluded.external_id, doi=excluded.doi,
            score=excluded.score, match_method=excluded.match_method, matched_at=excluded.matched_at,
-           openalex_id=excluded.openalex_id, s2_id=excluded.s2_id,
-           openalex_count=excluded.openalex_count, s2_count=excluded.s2_count",
+           openalex_id=excluded.openalex_id, openalex_count=excluded.openalex_count",
         params![
             rec.article_key,
             rec.source,
@@ -922,9 +919,7 @@ pub fn store_backfill_article(
             rec.match_method,
             ts(matched_at),
             rec.openalex_id,
-            rec.s2_id,
-            rec.openalex_count,
-            rec.s2_count
+            rec.openalex_count
         ],
     )?;
     if let Some(source) = &rec.source {
@@ -940,7 +935,7 @@ pub fn store_backfill_article(
 pub struct RefreshTarget {
     pub key: String,
     pub title: String,
-    /// "openalex" | "semanticscholar"
+    /// Always "openalex" (older databases may still hold rows from a source that is no longer used).
     pub source: String,
     /// Id of the work in that source.
     pub external_id: String,
@@ -956,7 +951,7 @@ pub fn refresh_targets(conn: &Connection) -> Result<Vec<RefreshTarget>> {
          FROM article_citations c
          JOIN articles a ON a.article_key=c.article_key
          JOIN article_matches m ON m.article_key=a.article_key
-         WHERE c.snapshot_id=?1 AND m.source IS NOT NULL AND m.external_id IS NOT NULL
+         WHERE c.snapshot_id=?1 AND m.source='openalex' AND m.external_id IS NOT NULL
          ORDER BY c.citations DESC, a.title ASC",
     )?;
     let rows = st.query_map(params![latest.id], |r| {
@@ -982,9 +977,8 @@ pub fn refresh_citing(
     let before = stored_citing_ids(&tx, key)?;
     tx.execute("DELETE FROM backfill_citations WHERE article_key=?1", params![key])?;
     insert_citing_rows(&tx, key, source, citing)?;
-    let col = if source == "openalex" { "openalex_count" } else { "s2_count" };
     tx.execute(
-        &format!("UPDATE article_matches SET {col}=?2 WHERE article_key=?1"),
+        "UPDATE article_matches SET openalex_count=?2 WHERE article_key=?1",
         params![key, citing.len() as i64],
     )?;
     let fresh = new_citing(Some(source), Some(source), &before, citing);
@@ -1077,7 +1071,7 @@ pub fn backfill_target_for(conn: &Connection, key: &str) -> Result<Option<Backfi
 pub struct Override {
     /// Normalized DOI that replaces automatic matching.
     pub doi: Option<String>,
-    /// External work ids (OpenAlex `W...` / Semantic Scholar paper ids) ruled out as matches.
+    /// External work ids (OpenAlex `W...`) ruled out as matches.
     pub rejected: Vec<String>,
 }
 
@@ -1379,8 +1373,8 @@ pub struct ArticleBackfill {
 pub fn article_backfill(conn: &Connection, key: &str) -> Result<ArticleBackfill> {
     let match_info = conn
         .query_row(
-            "SELECT article_key, source, external_id, doi, score, match_method, openalex_id, s2_id,
-                    openalex_count, s2_count
+            "SELECT article_key, source, external_id, doi, score, match_method, openalex_id,
+                    openalex_count
              FROM article_matches WHERE article_key=?1",
             params![key],
             |r| {
@@ -1392,9 +1386,7 @@ pub fn article_backfill(conn: &Connection, key: &str) -> Result<ArticleBackfill>
                     score: r.get(4)?,
                     match_method: r.get(5)?,
                     openalex_id: r.get(6)?,
-                    s2_id: r.get(7)?,
-                    openalex_count: r.get(8)?,
-                    s2_count: r.get(9)?,
+                    openalex_count: r.get(7)?,
                 })
             },
         )
@@ -1429,6 +1421,33 @@ pub fn article_backfill(conn: &Connection, key: &str) -> Result<ArticleBackfill>
 pub const STATE_GOAL: &str = "goal_citations";
 pub const STATE_WEEKLY: &str = "weekly_summary_week";
 pub const STATE_REFRESH: &str = "last_citing_refresh";
+/// Set once the 1.1.1 clean-up (matches made with the retired second source) has run.
+pub const STATE_LEGACY_SOURCE_DROPPED: &str = "legacy_source_dropped_v111";
+
+/// 1.1.1 migration: articles whose stored match came from the source that was dropped lose
+/// their citing rows and their match row, so the next backfill matches them again with
+/// OpenAlex. Manual DOI / rejected-work overrides live in their own table and are kept.
+/// Runs once (recorded in `app_state`); returns the number of articles reset.
+pub fn drop_legacy_source_matches(conn: &mut Connection) -> Result<usize> {
+    if get_state(conn, STATE_LEGACY_SOURCE_DROPPED)?.is_some() {
+        return Ok(0);
+    }
+    let tx = conn.transaction()?;
+    tx.execute(
+        "DELETE FROM backfill_citations WHERE article_key IN
+           (SELECT article_key FROM article_matches WHERE source='semanticscholar')
+         OR source='semanticscholar'",
+        [],
+    )?;
+    let n = tx.execute("DELETE FROM article_matches WHERE source='semanticscholar'", [])?;
+    tx.execute(
+        "INSERT INTO app_state(key, value) VALUES (?1,?2)
+         ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        params![STATE_LEGACY_SOURCE_DROPPED, ts(Utc::now())],
+    )?;
+    tx.commit()?;
+    Ok(n)
+}
 
 /// One stored citing work of one article.
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -1970,7 +1989,7 @@ mod tests {
     fn scholar_changes_from_snapshots_ignore_the_first_snapshot_and_new_articles() {
         let mut conn = mem();
         insert_snapshot(&mut conn, "P", t("2026-11-01T10:00:00Z"), &profile(vec![art("k1", "One", 10), art("k2", "Two", 5)], 1)).expect("s1");
-        insert_snapshot(&mut conn, "P", t("2026-11-02T10:00:00Z"), &profile(vec![art("k1", "One", 12), art("k2", "Two", 4)], 1)).expect("s2");
+        insert_snapshot(&mut conn, "P", t("2026-11-02T10:00:00Z"), &profile(vec![art("k1", "One", 12), art("k2", "Two", 4)], 1)).expect("second");
         // k3 shows up for the first time with 3 citations: that is not an increase
         insert_snapshot(&mut conn, "P", t("2026-11-03T10:00:00Z"), &profile(vec![art("k1", "One", 12), art("k2", "Two", 4), art("k3", "Three", 3)], 1)).expect("s3");
         insert_snapshot(&mut conn, "P", t("2026-11-04T10:00:00Z"), &profile(vec![art("k1", "One", 11), art("k2", "Two", 4), art("k3", "Three", 4)], 1)).expect("s4");
@@ -1987,7 +2006,7 @@ mod tests {
     fn decreases_are_recorded_but_never_notified_alone() {
         let mut conn = mem();
         insert_snapshot(&mut conn, "P", t("2026-11-20T10:00:00Z"), &profile(vec![art("k1", "One", 10), art("k2", "Two", 5)], 1)).expect("s1");
-        let down = insert_snapshot(&mut conn, "P", t("2026-11-20T13:00:00Z"), &profile(vec![art("k1", "One", 8), art("k2", "Two", 5)], 1)).expect("s2");
+        let down = insert_snapshot(&mut conn, "P", t("2026-11-20T13:00:00Z"), &profile(vec![art("k1", "One", 8), art("k2", "Two", 5)], 1)).expect("second");
         let c = change_since_previous(&conn, down).expect("c").expect("some");
         assert_eq!(c.total_delta, -2);
         assert_eq!(c.decreases, vec![("One".to_string(), 2)]);
@@ -2134,9 +2153,7 @@ mod tests {
             score: source.map(|_| 0.97),
             match_method: source.map(|_| "orcid".to_string()),
             openalex_id: Some("W1".into()),
-            s2_id: None,
             openalex_count: source.map(|_| 3),
-            s2_count: None,
         }
     }
 
@@ -2169,8 +2186,8 @@ mod tests {
         assert_eq!(count(&conn, "backfill_citations"), 3);
         assert_eq!(count(&conn, "article_matches"), 1);
 
-        // a re-run that returns different citing works (even from another source) replaces the old rows
-        let mut rec2 = mrec("k1", Some("semanticscholar"));
+        // a re-run that returns different citing works replaces the old rows
+        let mut rec2 = mrec("k1", Some("other"));
         rec2.external_id = Some("abc".into());
         store_backfill_article(&mut conn, &rec2, t("2026-11-22T12:00:00Z"), &[cite("p1", "2025", "year")]).expect("3");
         assert_eq!(count(&conn, "backfill_citations"), 1);
@@ -2179,7 +2196,7 @@ mod tests {
                 Ok((r.get(0)?, r.get(1)?))
             })
             .expect("row");
-        assert_eq!(src, "semanticscholar");
+        assert_eq!(src, "other");
         assert_eq!(at, "2026-11-22T12:00:00Z");
 
         // unmatched: NULL source, no citing rows
@@ -2190,6 +2207,33 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM article_matches WHERE source IS NULL", [], |r| r.get(0))
             .expect("n");
         assert_eq!(n, 1);
+    }
+
+    #[test]
+    fn legacy_source_matches_are_reset_once_and_overrides_are_kept() {
+        let mut conn = mem();
+        let legacy = |k: &str| MatchRecord { source: Some("semanticscholar".into()), ..mrec(k, Some("openalex")) };
+        store_backfill_article(&mut conn, &mrec("a", Some("openalex")), t("2026-11-01T10:00:00Z"), &[cite("W1", "2024-01-05", "day")]).expect("a");
+        store_backfill_article(&mut conn, &legacy("b"), t("2026-11-01T10:00:00Z"), &[cite("p1", "2024-02-05", "day"), cite("p2", "2024-03", "month")]).expect("b");
+        store_backfill_article(&mut conn, &mrec("c", None), t("2026-11-01T10:00:00Z"), &[]).expect("c");
+        set_override_doi(&conn, "b", Some("10.1/manual"), t("2026-11-01T10:00:00Z")).expect("ov");
+
+        assert_eq!(drop_legacy_source_matches(&mut conn).expect("run"), 1);
+        // the openalex match, its citing rows and the unmatched row stay
+        assert_eq!(count(&conn, "article_matches"), 2);
+        assert_eq!(count(&conn, "backfill_citations"), 1);
+        let gone: i64 = conn
+            .query_row("SELECT COUNT(*) FROM article_matches WHERE article_key='b'", [], |r| r.get(0))
+            .expect("n");
+        assert_eq!(gone, 0);
+        // the manual DOI survives, so the next run matches the article by it
+        assert_eq!(all_overrides(&conn).expect("ov").get("b").and_then(|o| o.doi.clone()).as_deref(), Some("10.1/manual"));
+        assert!(get_state(&conn, STATE_LEGACY_SOURCE_DROPPED).expect("state").is_some());
+
+        // runs once: a later match from that source name is left alone
+        store_backfill_article(&mut conn, &legacy("d"), t("2026-11-02T10:00:00Z"), &[cite("p3", "2024-05-05", "day")]).expect("d");
+        assert_eq!(drop_legacy_source_matches(&mut conn).expect("again"), 0);
+        assert_eq!(count(&conn, "article_matches"), 3);
     }
 
     #[test]
@@ -2369,7 +2413,7 @@ mod tests {
         // switching source (first result from the other source): not reported as new
         let switched = store_backfill_article(
             &mut conn,
-            &MatchRecord { source: Some("semanticscholar".into()), ..mrec("k1", Some("openalex")) },
+            &MatchRecord { source: Some("other".into()), ..mrec("k1", Some("openalex")) },
             t("2026-11-04T10:00:00Z"),
             &[rich("abc", "2024-01-05", "V")],
         )
@@ -2471,7 +2515,7 @@ mod tests {
         let conn = mem();
         assert_eq!(get_state(&conn, "x").expect("g"), None);
         set_state(&conn, "x", "1").expect("s");
-        set_state(&conn, "x", "2").expect("s2");
+        set_state(&conn, "x", "2").expect("second");
         assert_eq!(get_state(&conn, "x").expect("g").as_deref(), Some("2"));
 
         assert_eq!(fetch_times(&conn).expect("ft"), FetchTimes::default());
@@ -2566,10 +2610,10 @@ mod tests {
         log_attempt(&conn, &c, &c, 1, "network", "Network error: demo").expect("log");
         log_attempt(&conn, &c, &c, 2, "ok", "Total citations: 135, 11 articles").expect("log");
 
-        // historical data for the UI check: two matched articles (one per source) and one unmatched
-        for (key, n, source, oa, s2, method) in [
-            ("k1", 60i64, "openalex", Some(60i64), Some(52i64), "orcid"),
-            ("k2", 25, "semanticscholar", Some(20), Some(25), "title_search"),
+        // historical data for the UI check: two matched articles and one unmatched
+        for (key, n, source, oa, method) in [
+            ("k1", 60i64, "openalex", Some(60i64), "orcid"),
+            ("k2", 25, "openalex", Some(25), "title_search"),
         ] {
             let cites: Vec<CitingRecord> = (0..n)
                 .map(|j| {
@@ -2587,9 +2631,8 @@ mod tests {
                 .collect();
             let mut rec = mrec(key, Some(source));
             rec.match_method = Some(method.to_string());
-            rec.external_id = Some(if source == "openalex" { "W2012345678".into() } else { "0123456789abcdef".into() });
+            rec.external_id = Some(format!("W20123456{key}"));
             rec.openalex_count = oa;
-            rec.s2_count = s2;
             store_backfill_article(&mut conn, &rec, now, &cites).expect("bf");
         }
         store_backfill_article(&mut conn, &mrec("k3", None), now, &[]).expect("bf");

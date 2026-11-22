@@ -401,7 +401,7 @@ async fn reject_article_match(
         let Some(m) = db::article_backfill(conn, &k)?.match_info else {
             return Ok(());
         };
-        let ids: Vec<String> = [m.external_id, m.openalex_id, m.s2_id].into_iter().flatten().collect();
+        let ids: Vec<String> = [m.external_id, m.openalex_id].into_iter().flatten().collect();
         db::add_rejected(conn, &k, &ids, Utc::now())
     })
     .await?;
@@ -575,13 +575,12 @@ fn open_data_folder(app: AppHandle, state: State<'_, AppState>) -> CmdResult<()>
 /// Pages the app may open in the default browser. The app itself never fetches any of them;
 /// in particular Scholar's cited-by search is only opened for the user.
 fn url_allowed(url: &str) -> bool {
-    const ALLOWED: [&str; 8] = [
+    const ALLOWED: [&str; 7] = [
         "https://github.com/bcankara/scholar-citation-tracker",
         "https://scholar.google.com/citations",
         "https://scholar.google.com/scholar",
         "https://openalex.org/",
         "https://doi.org/",
-        "https://www.semanticscholar.org/",
         "https://orcid.org/",
         "https://docs.openalex.org/",
     ];
@@ -985,6 +984,7 @@ pub fn run() {
             let bf_shared = backfill::Shared::new(shared_settings.clone());
             let data_path = lock(&shared_settings).data_path();
             backfill::recover_stale_runs(&db::db_path_in(&data_path), &lang);
+            backfill::drop_legacy_source(&db::db_path_in(&data_path));
             app.manage(bf_shared);
             app.manage(Arc::new(report::Job::default()));
             app.manage(Arc::new(updater::Pending::default()));

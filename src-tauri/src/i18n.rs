@@ -132,8 +132,8 @@ pub const TABLE: &[(&str, &str, &str)] = &[
     // commands
     (
         "cmd.err_open_url",
-        "Yalnızca Google Scholar, OpenAlex, Semantic Scholar, DOI ve proje (GitHub) bağlantıları açılabilir.",
-        "Only Google Scholar, OpenAlex, Semantic Scholar, DOI and project (GitHub) links can be opened.",
+        "Yalnızca Google Scholar, OpenAlex, DOI ve proje (GitHub) bağlantıları açılabilir.",
+        "Only Google Scholar, OpenAlex, DOI and project (GitHub) links can be opened.",
     ),
     (
         "art.err_doi",
@@ -193,11 +193,6 @@ pub const TABLE: &[(&str, &str, &str)] = &[
         "The ORCID works list could not be read ({0}); title search was used.",
     ),
     (
-        "bf.msg_gap",
-        "{0} makalede bir kaynak yanıt vermedi; diğer kaynak kullanıldı.",
-        "For {0} articles one source did not answer; the other source was used.",
-    ),
-    (
         "bf.msg_failed",
         "{0} makale işlenemedi (sonra yeniden denenecek): {1}",
         "{0} articles could not be processed (they will be retried): {1}",
@@ -235,11 +230,6 @@ pub const TABLE: &[(&str, &str, &str)] = &[
         "bf.msg_key_oa",
         "OpenAlex anahtarı reddedildi; anahtarsız devam edildi. Ayarlar'dan anahtarı kontrol edin.",
         "The OpenAlex key was rejected; continued without it. Check the key in Settings.",
-    ),
-    (
-        "bf.msg_key_s2",
-        "Semantic Scholar anahtarı reddedildi; anahtarsız devam edildi. Ayarlar'dan anahtarı kontrol edin.",
-        "The Semantic Scholar key was rejected; continued without it. Check the key in Settings.",
     ),
     ("key.err_name", "Bilinmeyen anahtar türü.", "Unknown key type."),
     (
@@ -301,8 +291,7 @@ pub const TABLE: &[(&str, &str, &str)] = &[
     ("xl.c.6", "Yazarlar", "Authors"),
     ("xl.c.7", "Ülkeler", "Countries"),
     ("xl.c.8", "Atıf yapılan makale", "Cited article"),
-    ("xl.c.9", "Kaynak", "Source"),
-    ("xl.c.10", "Kayıt kimliği", "Record ID"),
+    ("xl.c.9", "Kayıt kimliği", "Record ID"),
     ("xl.y.0", "Yıl", "Year"),
     ("xl.y.1", "Scholar atıf sayısı", "Scholar citations"),
     ("xl.y.2", "Atıf yapan yayın (yayın tarihine göre)", "Citing works (by publication date)"),

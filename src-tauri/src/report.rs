@@ -268,7 +268,7 @@ mod tests {
         let mut conn = db::open(&dir.join("r.db")).expect("db");
         let at = |s: &str| -> DateTime<Utc> { db::parse_ts(s).expect("ts") };
         db::insert_snapshot(&mut conn, "P", at("2026-01-10T12:00:00Z"), &data(10, 5, 2)).expect("s1");
-        db::insert_snapshot(&mut conn, "P", at("2026-03-10T12:00:00Z"), &data(14, 6, 3)).expect("s2");
+        db::insert_snapshot(&mut conn, "P", at("2026-03-10T12:00:00Z"), &data(14, 6, 3)).expect("second");
         db::insert_snapshot(&mut conn, "P", at("2026-05-10T12:00:00Z"), &data(20, 6, 3)).expect("s3");
         db::insert_snapshot(&mut conn, "P", at("2026-09-10T12:00:00Z"), &data(99, 6, 4)).expect("s4");
         let opts = ReportOptions {

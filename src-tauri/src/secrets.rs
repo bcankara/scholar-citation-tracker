@@ -1,4 +1,4 @@
-//! Optional API keys (OpenAlex, Semantic Scholar): storage in the Windows Credential Manager,
+//! Optional OpenAlex API key: storage in the Windows Credential Manager,
 //! request pacing that depends on whether a key is present, redaction of anything that could
 //! contain a key, and the two small key calls (test a key, request an OpenAlex key by e-mail).
 //!
@@ -16,7 +16,6 @@ const SERVICE: &str = "scholar-citation-tracker";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeyKind {
     OpenAlex,
-    SemanticScholar,
 }
 
 impl KeyKind {
@@ -24,7 +23,6 @@ impl KeyKind {
     pub fn parse(s: &str) -> Option<KeyKind> {
         match s {
             "openalex" => Some(KeyKind::OpenAlex),
-            "semanticscholar" => Some(KeyKind::SemanticScholar),
             _ => None,
         }
     }
@@ -32,14 +30,12 @@ impl KeyKind {
     pub fn as_str(self) -> &'static str {
         match self {
             KeyKind::OpenAlex => "openalex",
-            KeyKind::SemanticScholar => "semanticscholar",
         }
     }
 
     fn account(self) -> &'static str {
         match self {
             KeyKind::OpenAlex => "openalex-api-key",
-            KeyKind::SemanticScholar => "semantic-scholar-api-key",
         }
     }
 }
@@ -49,16 +45,9 @@ impl KeyKind {
 pub const OA_GAP_KEYLESS_MS: u64 = 1100;
 /// A free OpenAlex key allows 30 requests per second; the app still stays far below that.
 pub const OA_GAP_KEYED_MS: u64 = 400;
-pub const S2_GAP_KEYLESS_MS: u64 = 3200;
-/// A free Semantic Scholar key reserves 1 request per second.
-pub const S2_GAP_KEYED_MS: u64 = 1100;
 
 pub fn oa_gap(has_key: bool) -> Duration {
     Duration::from_millis(if has_key { OA_GAP_KEYED_MS } else { OA_GAP_KEYLESS_MS })
-}
-
-pub fn s2_gap(has_key: bool) -> Duration {
-    Duration::from_millis(if has_key { S2_GAP_KEYED_MS } else { S2_GAP_KEYLESS_MS })
 }
 
 // ---------------------------------------------------------------- redaction
@@ -123,7 +112,7 @@ fn scrub_after(text: &str, marker: &str) -> String {
 }
 
 /// Removes every API key from `text`: the keys given in `extra`, the keys registered in this
-/// session, and anything that follows `api_key=`, `Bearer ` or `x-api-key:`.
+/// session, and anything that follows `api_key=`, or `Bearer `.
 pub fn redact(text: &str, extra: &[&str]) -> String {
     let mut out = text.to_string();
     let known: Vec<String> = KNOWN.lock().unwrap_or_else(|e| e.into_inner()).clone();
@@ -133,7 +122,7 @@ pub fn redact(text: &str, extra: &[&str]) -> String {
             out = out.replace(k, MASK);
         }
     }
-    for marker in ["api_key=", "api-key=", "apikey=", "bearer ", "x-api-key:", "x-api-key="] {
+    for marker in ["api_key=", "api-key=", "apikey=", "bearer "] {
         out = scrub_after(&out, marker);
     }
     out
@@ -172,17 +161,23 @@ pub fn delete(kind: KeyKind) -> Result<(), String> {
     }
 }
 
+/// One-time clean-up: versions before 1.1.1 could keep a key for a service that is no longer
+/// used. Removes that Credential Manager entry; a missing entry or an unreadable store is ignored.
+pub fn delete_legacy_semantic_key() {
+    if let Ok(e) = keyring::Entry::new(SERVICE, "semantic-scholar-api-key") {
+        let _ = e.delete_credential();
+    }
+}
+
 /// Which keys are stored (never the keys themselves).
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct KeyStatus {
     pub openalex: bool,
-    pub semanticscholar: bool,
 }
 
 pub fn status() -> KeyStatus {
     KeyStatus {
         openalex: load(KeyKind::OpenAlex).is_some(),
-        semanticscholar: load(KeyKind::SemanticScholar).is_some(),
     }
 }
 
@@ -190,13 +185,11 @@ pub fn status() -> KeyStatus {
 #[derive(Debug, Clone, Default)]
 pub struct Keys {
     pub openalex: Option<String>,
-    pub semantic: Option<String>,
 }
 
 pub fn load_keys() -> Keys {
     Keys {
         openalex: load(KeyKind::OpenAlex),
-        semantic: load(KeyKind::SemanticScholar),
     }
 }
 
@@ -231,28 +224,15 @@ pub async fn test_key(kind: KeyKind, key: &str) -> TestResult {
         Ok(c) => c,
         Err(e) => return TestResult { status: "unreachable", detail: e },
     };
-    let req = match kind {
-        KeyKind::OpenAlex => {
-            let mut value = match reqwest::header::HeaderValue::from_str(&format!("Bearer {key}")) {
-                Ok(v) => v,
-                Err(_) => return TestResult { status: "invalid", detail: String::new() },
-            };
-            value.set_sensitive(true);
-            client
-                .get("https://api.openalex.org/works?per-page=1&select=id")
-                .header(reqwest::header::AUTHORIZATION, value)
-        }
-        KeyKind::SemanticScholar => {
-            let mut value = match reqwest::header::HeaderValue::from_str(&key) {
-                Ok(v) => v,
-                Err(_) => return TestResult { status: "invalid", detail: String::new() },
-            };
-            value.set_sensitive(true);
-            client
-                .get("https://api.semanticscholar.org/graph/v1/paper/649def34f8be52c8b66281af98ae884c09aef38b?fields=title")
-                .header("x-api-key", value)
-        }
+    let KeyKind::OpenAlex = kind;
+    let mut value = match reqwest::header::HeaderValue::from_str(&format!("Bearer {key}")) {
+        Ok(v) => v,
+        Err(_) => return TestResult { status: "invalid", detail: String::new() },
     };
+    value.set_sensitive(true);
+    let req = client
+        .get("https://api.openalex.org/works?per-page=1&select=id")
+        .header(reqwest::header::AUTHORIZATION, value);
     match req.send().await {
         Ok(resp) => match resp.status().as_u16() {
             200..=299 => TestResult { status: "ok", detail: String::new() },
@@ -323,12 +303,9 @@ mod tests {
 
     #[test]
     fn pacing_depends_on_the_key() {
-        assert_eq!(s2_gap(false), Duration::from_millis(3200));
-        assert_eq!(s2_gap(true), Duration::from_millis(1100));
         assert_eq!(oa_gap(false), Duration::from_millis(1100));
         assert!(oa_gap(true) < oa_gap(false));
         // a key never makes the app faster than the documented limits
-        assert!(s2_gap(true) >= Duration::from_secs(1));
         assert!(oa_gap(true) >= Duration::from_millis(100));
     }
 
@@ -343,9 +320,6 @@ mod tests {
         let r = redact("Authorization: Bearer abcdef123456789 rejected", &[]);
         assert!(!r.contains("abcdef123456789"), "{r}");
         assert!(r.contains("rejected"));
-
-        let r = redact("headers {x-api-key: zzzzzzzzzzzz}", &[]);
-        assert!(!r.contains("zzzzzzzzzzzz"), "{r}");
 
         // nothing to hide: unchanged
         assert_eq!(redact("HTTP 429", &[]), "HTTP 429");
@@ -374,19 +348,16 @@ mod tests {
 
     #[test]
     fn a_rejected_key_is_reported_once_until_a_new_key_is_saved() {
-        assert!(first_warning(KeyKind::SemanticScholar));
-        assert!(!first_warning(KeyKind::SemanticScholar));
-        // another kind is independent
         assert!(first_warning(KeyKind::OpenAlex));
-        clear_warning(KeyKind::SemanticScholar);
-        assert!(first_warning(KeyKind::SemanticScholar));
+        assert!(!first_warning(KeyKind::OpenAlex));
+        clear_warning(KeyKind::OpenAlex);
+        assert!(first_warning(KeyKind::OpenAlex));
     }
 
     #[test]
     fn key_kind_round_trip() {
-        for k in [KeyKind::OpenAlex, KeyKind::SemanticScholar] {
-            assert_eq!(KeyKind::parse(k.as_str()), Some(k));
-        }
+        let k = KeyKind::OpenAlex;
+        assert_eq!(KeyKind::parse(k.as_str()), Some(k));
         assert_eq!(KeyKind::parse("x"), None);
     }
 }
