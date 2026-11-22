@@ -231,7 +231,8 @@
     renderAboutResult();
     try {
       await invoke("install_update");
-      // On Windows the installer ends this process; if we are still here, restart explicitly.
+      // On Windows the installer ends this process; on macOS the app bundle is replaced in
+      // place. If we are still here, restart explicitly.
       updateProgressUi(t("update.installing"), 100);
       await window.__TAURI__.process.relaunch();
     } catch (e) {
@@ -2508,6 +2509,9 @@
     $("#credAppCopy").textContent = state.credCopy;
     if (!state.cred) {
       try { state.cred = await (await fetch("licenses/rust-crates.json")).json(); } catch { state.cred = null; $("#credRustD").textContent = t("cred.load_fail"); return; }
+      // The file carries every shipped platform's crates; this build was compiled from one of them.
+      const plat = state.platform === "macos" ? "macos" : "windows";
+      state.cred.crates = state.cred.crates.filter((x) => !x.platforms || x.platforms.includes(plat));
       renderCredRust();
     }
   }
@@ -2765,7 +2769,13 @@
     $("#updateLater").addEventListener("click", () => { $("#updateBar").hidden = true; });
     $("#checkUpdateBtn").addEventListener("click", checkUpdatesManually);
     $("#aboutInstall").addEventListener("click", installUpdate);
-    $("#uninstallBtn").addEventListener("click", () => safe(() => invoke("open_url", { url: "ms-settings:appsfeatures" })));
+    // "Installed apps" is a Windows page. Elsewhere there is nothing to open: the hint text says
+    // how to remove the app, so the button itself goes away.
+    if (state.platform === "windows") {
+      $("#uninstallBtn").addEventListener("click", () => safe(() => invoke("open_url", { url: "ms-settings:appsfeatures" })));
+    } else {
+      $("#uninstallBtn").hidden = true;
+    }
     $("#healthOpenLog").addEventListener("click", () => showPage("log"));
     // citing works
     $("#citingSearch").addEventListener("input", (e) => { state.cw.query = e.target.value; state.cw.shown = 200; renderCiting(); });
@@ -2864,6 +2874,10 @@
 
   async function init() {
     state.scan = newScan();
+    // The platform wording ("Keychain" or "Credential Manager", "at login" or "when Windows
+    // starts") has to be in place before the first label is rendered.
+    state.platform = await safe(() => invoke("platform"), "windows");
+    window.I18N.setPlatform(state.platform);
     // Provisional language until the saved one is known (avoids empty labels).
     window.I18N.setLang(navigator.language);
     wire();

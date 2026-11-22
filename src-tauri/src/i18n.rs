@@ -22,7 +22,7 @@ pub fn lang_from_locale(locale: Option<&str>) -> &'static str {
     }
 }
 
-/// Language of the Windows UI (Turkish when the OS language starts with "tr").
+/// Language of the desktop UI (Turkish when the OS language starts with "tr").
 pub fn system_lang() -> &'static str {
     lang_from_locale(sys_locale::get_locale().as_deref())
 }
@@ -37,6 +37,20 @@ pub fn product_name(lang: &str) -> &'static str {
         PRODUCT_EN
     }
 }
+
+/// Strings whose wording depends on the platform. `tr` looks here first, so an entry with the
+/// same key as one in `TABLE` replaces it. Keep the placeholders of the replaced entry.
+#[cfg(target_os = "macos")]
+pub const PLATFORM_TABLE: &[(&str, &str, &str)] = &[
+    (
+        "key.err_store",
+        "Anahtar Anahtar Zinciri'ne yazılamadı: {0}",
+        "The key could not be saved to the Keychain: {0}",
+    ),
+];
+
+#[cfg(not(target_os = "macos"))]
+pub const PLATFORM_TABLE: &[(&str, &str, &str)] = &[];
 
 pub const TABLE: &[(&str, &str, &str)] = &[
     // tray
@@ -391,7 +405,7 @@ pub const TABLE: &[(&str, &str, &str)] = &[
 /// Looks up `key`; an unknown key returns "?" (a test guards against that).
 pub fn tr(lang: &str, key: &str) -> &'static str {
     let turkish = normalize_lang(lang) == TR;
-    for (k, t, e) in TABLE {
+    for (k, t, e) in PLATFORM_TABLE.iter().chain(TABLE.iter()) {
         if *k == key {
             return if turkish { t } else { e };
         }
@@ -418,22 +432,51 @@ mod tests {
     use super::*;
     use std::collections::HashSet;
 
+    /// Both languages filled in, the same placeholders in each.
+    fn check_pair(k: &str, t: &str, e: &str) {
+        assert!(!t.is_empty() && !e.is_empty(), "empty text for {k}");
+        for i in 0..3 {
+            let p = format!("{{{i}}}");
+            assert_eq!(t.contains(&p), e.contains(&p), "placeholder {p} differs in {k}");
+        }
+    }
+
     #[test]
     fn every_key_is_unique_and_filled_in_both_languages() {
+        let overridden: HashSet<&str> = PLATFORM_TABLE.iter().map(|(k, _, _)| *k).collect();
         let mut seen = HashSet::new();
         for (k, t, e) in TABLE {
             assert!(seen.insert(*k), "duplicate key {k}");
-            assert!(!t.is_empty() && !e.is_empty(), "empty text for {k}");
+            check_pair(k, t, e);
             assert_ne!(tr(TR, k), "?");
-            assert_eq!(tr(TR, k), *t);
-            assert_eq!(tr(EN, k), *e);
-            // the same placeholders must exist in both languages
-            for i in 0..3 {
-                let p = format!("{{{i}}}");
-                assert_eq!(t.contains(&p), e.contains(&p), "placeholder {p} differs in {k}");
+            if !overridden.contains(k) {
+                assert_eq!(tr(TR, k), *t);
+                assert_eq!(tr(EN, k), *e);
             }
         }
         assert_eq!(tr("en", "no.such.key"), "?");
+    }
+
+    /// A platform entry replaces a `TABLE` entry and keeps its placeholders, so call sites that
+    /// pass arguments keep working on every platform.
+    #[test]
+    fn platform_table_overrides_table_without_changing_placeholders() {
+        let mut seen = HashSet::new();
+        for (k, t, e) in PLATFORM_TABLE {
+            assert!(seen.insert(*k), "duplicate platform key {k}");
+            check_pair(k, t, e);
+            assert_eq!(tr(TR, k), *t);
+            assert_eq!(tr(EN, k), *e);
+            let (_, bt, be) = TABLE
+                .iter()
+                .find(|(tk, _, _)| tk == k)
+                .unwrap_or_else(|| panic!("platform key {k} has no entry in TABLE"));
+            for i in 0..3 {
+                let p = format!("{{{i}}}");
+                assert_eq!(bt.contains(&p), t.contains(&p), "placeholder {p} dropped in {k} (tr)");
+                assert_eq!(be.contains(&p), e.contains(&p), "placeholder {p} dropped in {k} (en)");
+            }
+        }
     }
 
     #[test]

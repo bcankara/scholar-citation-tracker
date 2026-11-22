@@ -2013,6 +2013,32 @@
     },
   };
 
+  /* Strings that name something the platform calls differently. setPlatform() merges the
+     matching set into `dict` before anything is rendered; the dictionaries above keep the
+     Windows wording, which is also what an unknown platform gets. */
+  const platformDict = {
+    macos: {
+      tr: {
+        "settings.autostart_title": "Oturum açılışında çalıştır",
+        "settings.autostart_sub": "Uygulama oturum açıldığında gizli olarak, yalnızca menü çubuğunda başlar.",
+        "settings.notify_sub": "Atıf sayısı arttığında veya yeni makale göründüğünde macOS bildirimi gelir.",
+        "about.sub": "Açık kaynak, MIT lisansı. Uygulama paketi GitHub Actions ile bu kaynaktan derlenir.",
+        "about.uninstall_hint": "Kaldırmak için uygulamayı Applications klasöründen Çöp Kutusu'na taşıyın",
+        "keys.storage_note": "Anahtarlar settings.json'a değil, Anahtar Zinciri'ne (\"scholar-citation-tracker\") yazılır; günlüklere ve hata iletilerine girmez. Anahtar reddedilirse uygulama bir kez uyarır ve anahtarsız devam eder.",
+        "keys.stored": "Anahtar kayıtlı (Anahtar Zinciri).",
+      },
+      en: {
+        "settings.autostart_title": "Run at login",
+        "settings.autostart_sub": "The app starts hidden at login and lives in the menu bar only.",
+        "settings.notify_sub": "A macOS notification appears when the citation count rises or a new article shows up.",
+        "about.sub": "Open source, MIT license. The app is built from this source by GitHub Actions.",
+        "about.uninstall_hint": "To uninstall, drag the app from Applications to the Trash",
+        "keys.storage_note": "Keys are stored in the Keychain (\"scholar-citation-tracker\"), not in settings.json, and never appear in logs or error messages. If a key is rejected the app warns once and continues without it.",
+        "keys.stored": "A key is stored (the Keychain).",
+      },
+    },
+  };
+
   let lang = "en";
 
   const normalize = (l) => (String(l || "").toLowerCase().startsWith("tr") ? "tr" : "en");
@@ -2040,9 +2066,17 @@
     applyStatic();
   }
 
+  /** Applies the platform wording for `p` ("macos", "windows", ...). Call before setLang. */
+  function setPlatform(p) {
+    const over = platformDict[String(p || "")];
+    if (!over) return;
+    for (const l of Object.keys(over)) Object.assign(dict[l], over[l]);
+  }
+
   window.I18N = {
     t,
     setLang,
+    setPlatform,
     applyStatic,
     dict,
     get lang() { return lang; },

@@ -1,9 +1,11 @@
 name: release
 
-# Tag push (v*): test, build, and create a DRAFT GitHub release with the NSIS installer, its
-# .sig, latest.json (updater feed), SHA256SUMS.txt and a build provenance attestation.
-# Manual run (workflow_dispatch): same build, but no release is created; the installer is only
-# kept as a workflow artifact.
+# Tag push (v*): test and build on both platforms, then create a DRAFT GitHub release with the
+# Windows NSIS installer, the macOS universal .dmg, the signed updater artifacts, latest.json
+# (updater feed, covering both platforms), SHA256SUMS-<platform>.txt and a build provenance
+# attestation per platform.
+# Manual run (workflow_dispatch): same builds, but no release is created; the files are only kept
+# as workflow artifacts.
 
 on:
   push:
@@ -22,7 +24,38 @@ concurrency:
 
 jobs:
   build:
-    runs-on: windows-latest
+    strategy:
+      # One platform failing must not throw away the other platform's build.
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows
+            os: windows-latest
+            # Empty: build for the host.
+            target: ""
+            rust_targets: ""
+            bundle_dir: src-tauri/target/release/bundle/nsis
+            # What a user downloads, and the updater artifact the app installs.
+            download_glob: "*-setup.exe"
+            download_regex: 'setup\.exe$'
+            updater_glob: "*-setup.exe"
+            # Keys of the `platforms` object in latest.json.
+            updater_keys: windows-x86_64
+          - platform: macos
+            os: macos-latest
+            # One universal binary covers both Apple Silicon and Intel Macs.
+            target: universal-apple-darwin
+            rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
+            bundle_dir: src-tauri/target/universal-apple-darwin/release/bundle
+            download_glob: "dmg/*.dmg"
+            download_regex: '\.dmg$'
+            updater_glob: "macos/*.app.tar.gz"
+            updater_keys: darwin-aarch64 darwin-x86_64
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        # Git Bash on the Windows runner, so every script below is written once.
+        shell: bash
     env:
       IS_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') }}
     steps:
@@ -30,32 +63,38 @@ jobs:
 
       - name: Rust stable toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_targets }}
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          key: ${{ matrix.platform }}
 
       # The app has no package.json. The Tauri CLI is installed from npm on the runner only and
       # handed to tauri-action through `tauriScript`.
       - name: Install Tauri CLI
-        shell: pwsh
         run: npm install --global "@tauri-apps/cli@2"
 
       - name: Check that the tag matches the app version
         if: env.IS_RELEASE == 'true'
-        shell: pwsh
         run: |
-          $version = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
-          if ("v$version" -ne "${{ github.ref_name }}") {
-            Write-Error "Tag ${{ github.ref_name }} does not match tauri.conf.json version v$version"
+          set -euo pipefail
+          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          if [ "v$version" != "${{ github.ref_name }}" ]; then
+            echo "Tag ${{ github.ref_name }} does not match tauri.conf.json version v$version" >&2
             exit 1
-          }
+          fi
 
       # Tests that need the (git-ignored) local profile fixture skip themselves on CI.
       - name: cargo test
-        shell: pwsh
         run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      # The licence list covers every shipped target, so the sources of the other platform's crates
+      # have to be on the runner as well; `cargo fetch` without a target fetches for all of them.
+      - name: Fetch the crate sources of every target
+        run: cargo fetch --manifest-path src-tauri/Cargo.toml
 
       # The Credits page lists the Rust crates compiled into the app; the files are generated from Cargo.lock.
       - name: Check the generated licence files
@@ -76,56 +115,151 @@ jobs:
         with:
           tauriScript: tauri
           projectPath: .
+          args: ${{ matrix.target != '' && format('--target {0}', matrix.target) || '' }}
           # An empty tagName makes the action build only (manual runs).
           tagName: ${{ env.IS_RELEASE == 'true' && github.ref_name || '' }}
           releaseName: ${{ env.IS_RELEASE == 'true' && 'v__VERSION__' || '' }}
-          releaseBody: "See the assets below. The installer is not code-signed; see the README (Installing) for the SmartScreen notice and how to verify the download."
+          releaseBody: "See the assets below. Neither build is code-signed; see the README (Installing) for the Windows SmartScreen notice, the macOS Gatekeeper step, and how to verify the download."
           releaseDraft: true
           prerelease: false
-          uploadUpdaterJson: true
+          # latest.json is assembled once, by the updater-feed job, so that it describes every
+          # platform. A per-platform upload here would overwrite the other platform's entry.
+          uploadUpdaterJson: false
           uploadUpdaterSignatures: true
           uploadWorkflowArtifacts: ${{ env.IS_RELEASE != 'true' }}
 
-      - name: SHA256SUMS.txt
+      - name: SHA256SUMS
         id: sums
-        shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_ID: ${{ steps.tauri.outputs.releaseId }}
         run: |
-          $exe = Get-ChildItem src-tauri/target/release/bundle/nsis -Filter "*-setup.exe" | Select-Object -First 1
-          if (-not $exe) { Write-Error "NSIS installer not found"; exit 1 }
+          set -euo pipefail
+          file=$(ls -1 ${{ matrix.bundle_dir }}/${{ matrix.download_glob }} 2>/dev/null | head -1 || true)
+          if [ -z "$file" ]; then
+            echo "no bundle matched ${{ matrix.download_glob }}" >&2
+            exit 1
+          fi
           # The file name as GitHub stores it (spaces become dots), so the sums match the download.
-          $name = $exe.Name
-          if ($env:RELEASE_ID) {
-            $assets = gh api "repos/${{ github.repository }}/releases/$env:RELEASE_ID" --jq '.assets[].name'
-            $match = $assets | Where-Object { $_ -like "*setup.exe" } | Select-Object -First 1
-            if ($match) { $name = $match }
-          }
-          $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
-          "$hash  $name" | Out-File -FilePath SHA256SUMS.txt -Encoding ascii
-          Get-Content SHA256SUMS.txt
-          "installer=$($exe.FullName)" >> $env:GITHUB_OUTPUT
+          name=$(basename "$file" | tr ' ' '.')
+          if [ -n "${RELEASE_ID:-}" ]; then
+            match=$(gh api "repos/${{ github.repository }}/releases/$RELEASE_ID" --jq '.assets[].name' \
+              | grep -E '${{ matrix.download_regex }}' | head -1 || true)
+            if [ -n "$match" ]; then name="$match"; fi
+          fi
+          if command -v sha256sum >/dev/null 2>&1; then
+            hash=$(sha256sum "$file" | cut -d' ' -f1)
+          else
+            hash=$(shasum -a 256 "$file" | cut -d' ' -f1)
+          fi
+          printf '%s  %s\n' "$hash" "$name" > "SHA256SUMS-${{ matrix.platform }}.txt"
+          cat "SHA256SUMS-${{ matrix.platform }}.txt"
 
-      - name: Upload SHA256SUMS.txt to the draft release
+      - name: Upload SHA256SUMS to the draft release
         if: env.IS_RELEASE == 'true'
-        shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_ID: ${{ steps.tauri.outputs.releaseId }}
         run: |
+          set -euo pipefail
           # Drafts have no tag yet, so upload by release id through the API.
-          gh api --method POST "https://uploads.github.com/repos/${{ github.repository }}/releases/$env:RELEASE_ID/assets?name=SHA256SUMS.txt" `
-            -H "Content-Type: text/plain" --input SHA256SUMS.txt
+          gh api --method POST \
+            "https://uploads.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID/assets?name=SHA256SUMS-${{ matrix.platform }}.txt" \
+            -H "Content-Type: text/plain" --input "SHA256SUMS-${{ matrix.platform }}.txt"
+
+      # One fragment per platform, merged into latest.json by the next job.
+      - name: Updater feed fragment
+        if: env.IS_RELEASE == 'true'
+        run: |
+          set -euo pipefail
+          artifact=$(ls -1 ${{ matrix.bundle_dir }}/${{ matrix.updater_glob }} 2>/dev/null | head -1 || true)
+          if [ -z "$artifact" ]; then
+            echo "no updater artifact matched ${{ matrix.updater_glob }}" >&2
+            exit 1
+          fi
+          signature=$(cat "$artifact.sig")
+          asset=$(basename "$artifact" | tr ' ' '.')
+          url="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/$asset"
+          echo "updater artifact: $asset"
+          : > fragment.json
+          for key in ${{ matrix.updater_keys }}; do
+            jq -n --arg k "$key" --arg s "$signature" --arg u "$url" \
+              '{($k): {signature: $s, url: $u}}' >> fragment.json
+          done
+          jq -s 'add' fragment.json > "fragment-${{ matrix.platform }}.json"
+          cat "fragment-${{ matrix.platform }}.json"
+
+      - name: Keep the updater fragment for the feed job
+        if: env.IS_RELEASE == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: updater-fragment-${{ matrix.platform }}
+          path: fragment-${{ matrix.platform }}.json
 
       - name: Build provenance attestation
         uses: actions/attest-build-provenance@v4
         with:
-          subject-path: src-tauri/target/release/bundle/nsis/*-setup.exe
+          subject-path: ${{ matrix.bundle_dir }}/${{ matrix.download_glob }}
 
-      - name: Keep SHA256SUMS.txt for manual runs
+      - name: Keep SHA256SUMS for manual runs
         if: env.IS_RELEASE != 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: SHA256SUMS
-          path: SHA256SUMS.txt
+          name: SHA256SUMS-${{ matrix.platform }}
+          path: SHA256SUMS-${{ matrix.platform }}.txt
+
+  # latest.json has to name every platform in one file, so it is written after both builds.
+  updater-feed:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: updater-fragment-*
+          path: fragments
+          merge-multiple: true
+
+      - name: Compose latest.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          # The release notes of the draft this tag just produced, so the app shows them.
+          notes=$(gh api "repos/${{ github.repository }}/releases" \
+            --jq '[.[] | select(.tag_name == "${{ github.ref_name }}")][0].body // ""')
+          jq -s --arg version "$version" \
+                --arg notes "$notes" \
+                --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+             '{version: $version, notes: $notes, pub_date: $date, platforms: add}' \
+             fragments/fragment-*.json > latest.json
+          cat latest.json
+          # Every platform the app can ask for must be present.
+          for key in windows-x86_64 darwin-aarch64 darwin-x86_64; do
+            jq -e --arg k "$key" '.platforms[$k].url and .platforms[$k].signature' latest.json > /dev/null \
+              || { echo "latest.json is missing $key" >&2; exit 1; }
+          done
+
+      - name: Upload latest.json to the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          release_id=$(gh api "repos/${{ github.repository }}/releases" \
+            --jq '[.[] | select(.tag_name == "${{ github.ref_name }}")][0].id')
+          if [ -z "$release_id" ] || [ "$release_id" = "null" ]; then
+            echo "no release found for ${{ github.ref_name }}" >&2
+            exit 1
+          fi
+          # Replace the asset if a previous run of this tag already uploaded one.
+          old=$(gh api "repos/${{ github.repository }}/releases/$release_id" \
+            --jq '.assets[] | select(.name == "latest.json") | .id')
+          if [ -n "$old" ]; then
+            gh api --method DELETE "repos/${{ github.repository }}/releases/assets/$old"
+          fi
+          gh api --method POST \
+            "https://uploads.github.com/repos/${{ github.repository }}/releases/$release_id/assets?name=latest.json" \
+            -H "Content-Type: application/json" --input latest.json

@@ -2,11 +2,11 @@
 
 <p align="center"><img src="docs/images/banner.png" alt="Scholar Citation Tracker" width="100%"></p>
 
-<p align="center"><a href="https://github.com/bcankara/scholar-citation-tracker/releases/latest"><b>⬇ Download for Windows</b></a> · <a href="README.tr.md">Türkçe</a></p>
+<p align="center"><a href="https://github.com/bcankara/scholar-citation-tracker/releases/latest"><b>⬇ Download for Windows or macOS</b></a> · <a href="README.tr.md">Türkçe</a></p>
 
-A small Windows desktop app (Rust + Tauri 2) that tracks the citation counts on a public Google Scholar profile over time. It is meant for personal use: you point it at your own profile, it checks the page at a low rate, and it keeps the history on your computer.
+A small desktop app for **Windows and macOS** (Rust + Tauri 2) that tracks the citation counts on a public Google Scholar profile over time. It is meant for personal use: you point it at your own profile, it checks the page at a low rate, and it keeps the history on your computer.
 
-The interface is available in **English** and **Turkish**. On first launch the language follows the Windows display language; you can change it at any time in Settings.
+The interface is available in **English** and **Turkish**. On first launch the language follows the display language of the operating system; you can change it at any time in Settings.
 
 ## Highlights
 
@@ -158,10 +158,10 @@ The interface follows the Windows light/dark setting.
 
 - Reads the profile page at a fixed interval (default: every 3 hours, configurable from 1 to 24) and stores total citations, h-index, i10-index, per-article citations and the yearly citation histogram in a local SQLite database.
 - The **Dashboard** says in one sentence what changed since your last visit, shows four totals (the h and i10 cards also say what the next step needs, for example "3 more citations for h=9"), the latest changes grouped by day and a 12-month citation history. Trends, forecasts and breakdowns live on the **Analysis** page, the PDF on the **Report** page; see [Dashboard, Analysis and Report](#dashboard-analysis-and-report). The Articles tab lets you open the history of each article, including every change of its count, up or down.
-- Shows a Windows notification when a citation count rises or a new article appears (the very first fetch is silent). Scholar sometimes removes citations (and may add them back later): decreases are shown in red in the tables and the change history, but never trigger a notification. If one check has both, the notification shows the net change and the articles that rose.
+- Shows a system notification when a citation count rises or a new article appears (the very first fetch is silent). Scholar sometimes removes citations (and may add them back later): decreases are shown in red in the tables and the change history, but never trigger a notification. If one check has both, the notification shows the net change and the articles that rose.
 - Failed attempts are retried every 5 minutes, up to 3 more times; every attempt is listed in the Fetch log tab. If Google blocks the request (HTTP 429 / 403, CAPTCHA page), the attempt is recorded as "Blocked" and the app waits for the next cycle.
-- Closing the window minimises the app to the notification area (tray). The tray menu has "Open dashboard", "Refresh now", "Open data folder" and "Quit".
-- Optional start with Windows: the app then starts hidden, in the tray only. It is on by default but is only registered once you have entered a profile, and you can turn it off in Settings.
+- Closing the window hides the app in the notification area on Windows, in the menu bar on macOS. That menu has "Open dashboard", "Refresh now", "Open data folder" and "Quit". On Windows a left click on the icon opens the dashboard and the menu belongs to the right button; on macOS a left click opens the menu, as it does for every other menu-bar item.
+- Optional start at sign-in (Windows) or at login (macOS, as a Launch Agent): the app then starts hidden, in the tray or menu bar only. It is on by default but is only registered once you have entered a profile, and you can turn it off in Settings.
 - The summary history and the article history can be exported as CSV (UTF-8 with BOM, so Excel shows non-ASCII characters correctly), or everything as one Excel workbook. Column headers follow the selected language.
 - Nothing is fetched until you enter a profile. The first-run card accepts either a bare profile ID or the full profile URL (`https://scholar.google.com/citations?user=XXXX&hl=en`), together with your ORCID iD (required, see [Historical data](#historical-data-optional)).
 - Changing the profile later deletes the stored data of the previous profile, after a confirmation.
@@ -230,10 +230,10 @@ Each Scholar row, and each article in the Articles tab, has **View on Scholar**.
 ## Citing works, forecast, reports and export
 
 - **Citing works (Citing works tab).** While historical data is on, the lookup stores for every citing work its title, publication date, venue (journal), DOI, link, authors, the country codes of the authors' institutions and its record id. The tab lists them all (date, title linked to the DOI / OpenAlex page, venue, which of your articles it cites) with a search box, an article filter and date sorting; the expanded row of an article in the Articles tab lists that article's citing works too. Two charts show the top 10 countries and the top 10 venues of the citing works (each work counts once, even if it cites several of your articles); a caption says how many works have no country data. The citing works by year are already part of the history chart on the dashboard. Click a bar of the country or venue chart and the list is filtered to it; active filters (country, venue, date or period from the Calendar, article) are shown as removable chips.
-- **New citing works.** While historical data is on, a light refresh runs about once a day (ten minutes after start at the earliest, then whenever 24 hours have passed). It re-reads only the citing lists of articles that are already matched, using the stored OpenAlex id, with the request pacing described below and no re-matching. When it finds citing works that were not stored before (never on a first lookup), a Windows notification names up to two of them. It follows the "Notifications" setting.
+- **New citing works.** While historical data is on, a light refresh runs about once a day (ten minutes after start at the earliest, then whenever 24 hours have passed). It re-reads only the citing lists of articles that are already matched, using the stored OpenAlex id, with the request pacing described below and no re-matching. When it finds citing works that were not stored before (never on a first lookup), a system notification names up to two of them. It follows the "Notifications" setting.
 - **Forecast (Analysis > Trend).** One continuous cumulative line with a forecast to the end of the year, drawn as a range. The rate is the average of 30-day windows between Scholar snapshots (newest first, up to six), the range follows how much the windows differ, the first scan is never counted as growth, and the forecast is hidden until the snapshots cover 60 days. A goal you type in gives "N citations expected around <month year>". Always labelled as an estimate; the goal is stored in the local database.
 - **Fastest rising (Analysis > Articles).** The five articles that gained the most in the last 30 or 90 days, with its basis stated (see [Scholar and OpenAlex do not count the same](#scholar-and-openalex-do-not-count-the-same-and-openalex-is-late)). What the next h-index and i10-index need is on the Indices tab and on the dashboard cards.
-- **PDF report (Report tab).** Choose a date range, the report language (Turkish or English) and whether to include the citing-works list and the charts, then **Create PDF**. The A4 PDF with page numbers contains a title page (profile name, ORCID iD, range, generation date), summary metrics (total, since-year, h, i10, change in the range), a table per article (citations at the end of the range, gained in the range), charts (total over time, per year), optionally the citing works of the range (date, title, venue, cited article) and a sources-and-method note. The report is an HTML page (`ui/report.html`) rendered in a hidden window and printed to PDF by WebView2's own `PrintToPdf`, so Turkish characters come from the system font.
+- **PDF report (Report tab).** Choose a date range, the report language (Turkish or English) and whether to include the citing-works list and the charts, then **Create PDF**. The A4 PDF with page numbers contains a title page (profile name, ORCID iD, range, generation date), summary metrics (total, since-year, h, i10, change in the range), a table per article (citations at the end of the range, gained in the range), charts (total over time, per year), optionally the citing works of the range (date, title, venue, cited article) and a sources-and-method note. The report is an HTML page (`ui/report.html`) rendered in a hidden window and printed to PDF by the platform's own webview printing (`PrintToPdf` on WebView2, an `NSPrintOperation` on `WKWebView`), so Turkish characters come from the system font. Both produce the same A4 pages; on macOS the job is sent straight to a PDF file through Core Printing, so no printer has to be configured.
 - **Excel export (Settings > Export).** One .xlsx with the sheets Summary (snapshot history), Articles (latest values with today / 7 / 30-day changes), Article history (long format), Citing works and Yearly. Header rows are bold and filled, frozen and filtered; dates are real Excel dates; sheet names and headers follow the interface language. The two CSV exports remain.
 - **Weekly summary.** On the first start on Monday at or after 09:00 (local time), once per ISO week, a notification says "This week +N citations; most: <article> (+k)". It is skipped when the week has no data. Switch: **Settings > Weekly summary notification** (on by default; it also needs "Notifications").
 
@@ -270,14 +270,14 @@ The data source and its licence are listed under [Licences and credits](#licence
 **Settings > API keys (optional)** takes a free OpenAlex key. The app works without one.
 
 - **OpenAlex.** A key is not required. Without one, the daily budget is shared by IP address (it can run out quickly on university networks) and the limit is 10 requests per second; a free key raises the daily budget 10 times and the limit to 30 requests per second. Get one at [openalex.org](https://openalex.org) (create an account and copy the key from Settings > API key), or press **Request a free key by email**: you type your e-mail address and the app calls `POST https://api.openalex.org/api-keys`; OpenAlex answers with the key (status `pending_activation`), the app stores it and you click the activation link in your e-mail. The address is sent only on that click and is never stored. See the [OpenAlex rate limits and authentication](https://docs.openalex.org/how-to-use-the-api/rate-limits-and-authentication) page. The key is sent as `Authorization: Bearer <key>`, never in the URL.
-- **Daily budget spent.** When OpenAlex answers HTTP 429 with the reason `daily_budget`, the app stops the scan cleanly (what is stored stays, no half-read article), marks the run "paused" and shows a notice on the scan panel, in Settings > API keys and as a dismissible bar on the Dashboard, Analysis and Citing works pages, with the time the budget resets (midnight UTC, shown in your local time) and buttons for a free key, an e-mail key request and Settings. The scan resumes by itself a few minutes after the reset (or at the next start); nothing asks OpenAlex before that. A per-second limit just waits for `Retry-After`. A Windows notification appears at most once a day and only for scans you started.
-- **Storage and safety.** Keys are stored in the Windows Credential Manager (service name `scholar-citation-tracker`), not in `settings.json` or the database. They are never written to logs, run messages or error texts (anything that looks like a key is redacted). The **Test** button makes one cheap request and says whether the key is valid. If OpenAlex rejects the stored key (HTTP 401 / 403), the app warns once and continues without it.
+- **Daily budget spent.** When OpenAlex answers HTTP 429 with the reason `daily_budget`, the app stops the scan cleanly (what is stored stays, no half-read article), marks the run "paused" and shows a notice on the scan panel, in Settings > API keys and as a dismissible bar on the Dashboard, Analysis and Citing works pages, with the time the budget resets (midnight UTC, shown in your local time) and buttons for a free key, an e-mail key request and Settings. The scan resumes by itself a few minutes after the reset (or at the next start); nothing asks OpenAlex before that. A per-second limit just waits for `Retry-After`. A system notification appears at most once a day and only for scans you started.
+- **Storage and safety.** Keys are stored in the platform credential store (the Windows Credential Manager, or the macOS Keychain) under the service name `scholar-citation-tracker`, not in `settings.json` or the database. They are never written to logs, run messages or error texts (anything that looks like a key is redacted). The **Test** button makes one cheap request and says whether the key is valid. If OpenAlex rejects the stored key (HTTP 401 / 403), the app warns once and continues without it.
 
 ## Where data is stored
 
-- Database: `Documents\ScholarTakip\scholar_takip.db` (SQLite, WAL mode). You can change the folder in Settings; if the new folder has no database the current one is copied there, otherwise the one that is already there is used.
-- Settings: `%APPDATA%\io.github.bcankara.scholarcitationtracker\settings.json`
-- OpenAlex API key (if you add one): Windows Credential Manager, service name `scholar-citation-tracker`.
+- Database: `Documents\ScholarTakip\scholar_takip.db` on Windows, `~/Documents/ScholarTakip/scholar_takip.db` on macOS (SQLite, WAL mode). You can change the folder in Settings; if the new folder has no database the current one is copied there, otherwise the one that is already there is used.
+- Settings: `%APPDATA%\io.github.bcankara.scholarcitationtracker\settings.json` on Windows, `~/Library/Application Support/io.github.bcankara.scholarcitationtracker/settings.json` on macOS
+- OpenAlex API key (if you add one): Windows Credential Manager or macOS Keychain, service name `scholar-citation-tracker`.
 
 ## Correcting a historical match (DOI)
 
@@ -295,9 +295,11 @@ The Articles tab shows a **DOI** chip under each title when a DOI is known (a ma
 
 ## Health warning
 
-If Scholar could not be read successfully for 2 days in a row (the last successful fetch is at least 48 hours old although attempts were made in that time), the app shows one Windows notification ("Scholar has been unreadable for 2 days - see the Fetch log") and a warning bar on the Panel until the next successful fetch. The notification is shown once per incident, never more than once every 24 hours, and follows the "Notifications" setting. The same applies when the page is served but its article list cannot be read: if the profile shows citations but no articles, or the article count drops by more than half while the citation total does not drop, the attempt is recorded as a parse error in the Fetch log and no snapshot is stored ("article list could not be read - Scholar's page layout may have changed").
+If Scholar could not be read successfully for 2 days in a row (the last successful fetch is at least 48 hours old although attempts were made in that time), the app shows one system notification ("Scholar has been unreadable for 2 days - see the Fetch log") and a warning bar on the Panel until the next successful fetch. The notification is shown once per incident, never more than once every 24 hours, and follows the "Notifications" setting. The same applies when the page is served but its article list cannot be read: if the profile shows citations but no articles, or the article count drops by more than half while the citation total does not drop, the attempt is recorded as a parse error in the Fetch log and no snapshot is stored ("article list could not be read - Scholar's page layout may have changed").
 
 ## Installing
+
+### Windows
 
 Download the installer (`Scholar.Citation.Tracker_<version>_x64-setup.exe`) from the **Releases** page and run it. It installs for the current user only and does not need administrator rights. The installer is available in English and Turkish. The app needs the Microsoft WebView2 runtime, which is already part of current Windows 10 / 11.
 
@@ -305,37 +307,60 @@ Run the installer by double-clicking it in File Explorer. Running it from inside
 
 **The installer is not code-signed**, so Windows SmartScreen shows *"Windows protected your PC"* the first time. Click **More info**, then **Run anyway**.
 
-Why: a code-signing certificate costs money every year, and this is a small personal open-source project without one. Instead, the installer is built in the open by GitHub Actions from the source in this repository (see `.github/workflows/release.yml`), and you can check that the file you downloaded is the one that workflow built:
+### macOS
 
-1. **SHA-256.** Every release has a `SHA256SUMS.txt`. Compare it with the hash of your download in PowerShell:
+Download the disk image (`Scholar.Citation.Tracker_<version>_universal.dmg`) from the **Releases** page, open it and drag the app to **Applications**. One universal build covers both Apple Silicon and Intel Macs; macOS 11 Big Sur or newer is required.
+
+**The app is not signed with an Apple Developer ID and is not notarized**, so Gatekeeper refuses it on the first launch (*"Apple could not verify ... is free of malware"*). Either right-click the app in Applications and choose **Open**, then confirm, or clear the quarantine flag once:
+
+```
+xattr -dr com.apple.quarantine "/Applications/Scholar Citation Tracker.app"
+```
+
+The app keeps a menu-bar icon; closing the window hides it there rather than quitting. Quit from the menu-bar icon or with Cmd-Q.
+
+### Verifying the download
+
+Why the warnings: a code-signing certificate (and, on macOS, an Apple Developer Program membership) costs money every year, and this is a small personal open-source project without either. Instead, both builds are produced in the open by GitHub Actions from the source in this repository (see `.github/workflows/release.yml`), and you can check that the file you downloaded is the one that workflow built. Replace `<file>` with your download.
+
+1. **SHA-256.** Every release has a `SHA256SUMS-windows.txt` and a `SHA256SUMS-macos.txt`. Compare the matching one with the hash of your download:
 
    ```
-   Get-FileHash .\Scholar.Citation.Tracker_<version>_x64-setup.exe -Algorithm SHA256
+   Get-FileHash .\<file> -Algorithm SHA256        # Windows, PowerShell
+   shasum -a 256 <file>                           # macOS
    ```
 
 2. **Build provenance.** With the [GitHub CLI](https://cli.github.com/) installed:
 
    ```
-   gh attestation verify .\Scholar.Citation.Tracker_<version>_x64-setup.exe --repo bcankara/scholar-citation-tracker
+   gh attestation verify <file> --repo bcankara/scholar-citation-tracker
    ```
 
    This confirms that GitHub Actions of this repository built exactly that file.
 
 ### Updates
 
-After the first installation, updates are installed from inside the app. About a minute after start and then once a day (switch: **Settings > Check for updates automatically**), the app looks for a newer release. When one exists, a bar shows "Version X is ready" with the release notes and an **Update now** button: it downloads the installer with a progress indication, installs it and restarts the app. **Settings > About** shows the version, the GitHub link and the license, and has a **Check for updates** button that always reports its result (background check failures are silent). Updates are signed with the project's updater key, which is built into the app and checked before anything is installed, so this path does not show the SmartScreen warning again.
+After the first installation, updates are installed from inside the app. About a minute after start and then once a day (switch: **Settings > Check for updates automatically**), the app looks for a newer release. When one exists, a bar shows "Version X is ready" with the release notes and an **Update now** button: it downloads the update with a progress indication, installs it and restarts the app. On Windows that is the installer; on macOS the app bundle is replaced in place. **Settings > About** shows the version, the GitHub link and the license, and has a **Check for updates** button that always reports its result (background check failures are silent). Updates are signed with the project's updater key, which is built into the app and checked before anything is installed, so this path does not show the SmartScreen or Gatekeeper warning again.
 
 ## Uninstalling
 
-Use **Settings → Apps → Installed apps → Scholar Citation Tracker → Uninstall**, or right-click the Start menu entry and choose **Uninstall**; **Settings → About → Uninstall…** inside the app opens that Windows page. The uninstaller offers to delete the app data. The citation database stays in `Documents\ScholarTakip` unless you delete that folder (or you changed the data folder in Settings), and the settings are in `%APPDATA%\io.github.bcankara.scholarcitationtracker`.
+**Windows.** Use **Settings → Apps → Installed apps → Scholar Citation Tracker → Uninstall**, or right-click the Start menu entry and choose **Uninstall**; **Settings → About → Uninstall…** inside the app opens that Windows page. The uninstaller offers to delete the app data. The citation database stays in `Documents\ScholarTakip` unless you delete that folder (or you changed the data folder in Settings), and the settings are in `%APPDATA%\io.github.bcankara.scholarcitationtracker`.
+
+**macOS.** Turn **Run at login** off in Settings first, so the app removes its Launch Agent, then quit from the menu-bar icon and drag the app from **Applications** to the Trash. Nothing else is installed outside your home folder. What stays behind: the settings in `~/Library/Application Support/io.github.bcankara.scholarcitationtracker` and the citation database in `~/Documents/ScholarTakip` (or the data folder you chose in Settings); delete both if you want it gone completely.
 
 ## Build from source
 
-Prerequisites:
+Prerequisites on **Windows**:
 
 - Rust (stable, MSVC toolchain)
 - Visual Studio C++ Build Tools (Desktop development with C++)
 - Microsoft WebView2 runtime
+- Tauri CLI: `cargo install tauri-cli --version "^2"`
+
+Prerequisites on **macOS** (11 or newer):
+
+- Rust (stable); for a universal build also `rustup target add aarch64-apple-darwin x86_64-apple-darwin`
+- Xcode Command Line Tools: `xcode-select --install`
 - Tauri CLI: `cargo install tauri-cli --version "^2"`
 
 Node.js and npm are not needed; the UI is plain HTML/CSS/JS in `ui/`.
@@ -348,7 +373,7 @@ Build and run a **dev identity** so that nothing collides with a real installati
 cargo tauri build --debug --no-bundle --config src-tauri/tauri.dev.conf.json
 ```
 
-`src-tauri/tauri.dev.conf.json` sets the identifier `io.github.bcankara.scholarcitationtracker.dev` and the product name "Scholar Citation Tracker Dev". Its settings live in `%APPDATA%\io.github.bcankara.scholarcitationtracker.dev`, its WebView data in `%LOCALAPPDATA%\io.github.bcankara.scholarcitationtracker.dev`, the single-instance mutex is `<identifier>-sim` and the autostart value is named after the product name. Put an explicit temporary `data_dir` and `"autostart": false, "auto_update": false` in its `settings.json`, and delete the `.dev` folders when you are done. Debug builds also honour `SCT_KEYRING_SERVICE` (use a separate Credential Manager service name) and `SCT_TEST_PDF_PATH` (write the report PDF there instead of asking where to save); release builds ignore both.
+`src-tauri/tauri.dev.conf.json` sets the identifier `io.github.bcankara.scholarcitationtracker.dev` and the product name "Scholar Citation Tracker Dev". Its settings live in `%APPDATA%\io.github.bcankara.scholarcitationtracker.dev` (`~/Library/Application Support/io.github.bcankara.scholarcitationtracker.dev` on macOS), its WebView data in `%LOCALAPPDATA%\io.github.bcankara.scholarcitationtracker.dev` on Windows, the single-instance mutex is `<identifier>-sim` and the autostart value is named after the product name. Put an explicit temporary `data_dir` and `"autostart": false, "auto_update": false` in its `settings.json`, and delete the `.dev` folders when you are done. Debug builds also honour `SCT_KEYRING_SERVICE` (use a separate credential store service name) and `SCT_TEST_PDF_PATH` (write the report PDF there instead of asking where to save); release builds ignore both.
 
 `node tools/gen_licenses.js` regenerates `ui/licenses/` (the Rust crates compiled into the app with their licences, for the Credits page) from `src-tauri/Cargo.lock`; run it after every dependency change. `node tools/gen_licenses.js --check` fails when the files are out of date (the release workflow runs it).
 
@@ -359,10 +384,15 @@ cargo tauri build --debug --no-bundle --config src-tauri/tauri.dev.conf.json
 ```
 cd src-tauri
 cargo test
-cargo tauri build
+cargo tauri build                                  # Windows, or the host Mac only
+cargo tauri build --target universal-apple-darwin  # macOS, both architectures
 ```
 
-Because updater artifacts are enabled, `cargo tauri build` needs a signing key: set `TAURI_SIGNING_PRIVATE_KEY_PATH` (path to a key file made with `cargo tauri signer generate`) and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`; the matching public key goes into `plugins.updater.pubkey` in `tauri.conf.json`. The installer and its `.sig` are written to `src-tauri\target\release\bundle\nsis\`.
+Because updater artifacts are enabled, `cargo tauri build` needs a signing key: set `TAURI_SIGNING_PRIVATE_KEY_PATH` (path to a key file made with `cargo tauri signer generate`) and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`; the matching public key goes into `plugins.updater.pubkey` in `tauri.conf.json`. The installer and its `.sig` are written to `src-tauri\target\release\bundle\nsis\`; on macOS the `.app`, `.dmg` and the signed `.app.tar.gz` land in `src-tauri/target/universal-apple-darwin/release/bundle/`.
+
+Platform settings that only apply to one target live in their own config file, which the Tauri CLI merges automatically: `src-tauri/tauri.macos.conf.json` holds the macOS bundle targets, the minimum system version and `macOSPrivateApi` (needed for the translucent window).
+
+The interface writes its icons as private-use code points of "Segoe Fluent Icons", a font that ships with Windows and is installed nowhere else. `ui/icons.js` measures whether that font can draw; where it cannot, each code point is swapped for the same shape as inline SVG, which inherits the colour and the size of the element it replaces, so the existing size rules keep working. Only an element that holds the code point and nothing else is swapped: a button that wraps an icon beside a label reads as that one character too while the label is still empty, and overwriting it would take the label with it. On Windows the file does nothing and the system font is drawn as before. A code point without a shape is left alone and named once in the console, so an icon added later shows as a missing shape rather than a silent blank.
 
 To check that the live page can still be parsed (one request), run `cargo run -- --once <profile id or profile URL>` from `src-tauri`; a debug build prints the result to the console.
 
@@ -370,7 +400,7 @@ Tests use a small hand-written profile page that is part of the test code. If yo
 
 ## Releasing (maintainers)
 
-Pushing a tag `vX.Y.Z` that matches the version in `src-tauri/tauri.conf.json` starts `.github/workflows/release.yml` on GitHub Actions. It runs the tests, builds the NSIS installer (signed with the updater key from the `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets), and creates a **draft** release containing the installer, its `.sig`, `latest.json` and `SHA256SUMS.txt`, with a build provenance attestation. Review the draft and publish it. The in-app updater reads `https://github.com/bcankara/scholar-citation-tracker/releases/latest/download/latest.json`, which only exists once a release is **published** (a draft is invisible to it). A manual run of the workflow (*Run workflow*) builds the same files as workflow artifacts and creates no release.
+Pushing a tag `vX.Y.Z` that matches the version in `src-tauri/tauri.conf.json` starts `.github/workflows/release.yml` on GitHub Actions. It runs the tests and builds on both platforms in parallel: the NSIS installer on `windows-latest` and the universal `.dmg` on `macos-latest`, both signed with the updater key from the `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets. It creates a **draft** release containing both downloads, their `.sig` files, `SHA256SUMS-windows.txt`, `SHA256SUMS-macos.txt` and a build provenance attestation per platform. A third job then writes `latest.json` once from both builds, so the updater feed names `windows-x86_64`, `darwin-aarch64` and `darwin-x86_64` in one file; it fails the run if any of the three is missing. Review the draft and publish it. The in-app updater reads `https://github.com/bcankara/scholar-citation-tracker/releases/latest/download/latest.json`, which only exists once a release is **published** (a draft is invisible to it). A manual run of the workflow (*Run workflow*) builds the same files as workflow artifacts and creates no release.
 
 ## Disclaimer
 

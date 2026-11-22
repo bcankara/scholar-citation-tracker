@@ -6,8 +6,11 @@
 //                                       or Cargo.lock changed since the files were written
 //
 // Only crates that are compiled into the app are listed: the normal-dependency closure of the root
-// package for the Windows target (dev- and build-only crates are not in the shipped binary).
-// Output is deterministic: sorted keys and arrays, LF line endings, no timestamps, no absolute paths.
+// package (dev- and build-only crates are not in the shipped binary). The closure is resolved once per
+// shipped target and the lists are merged, so a crate that only one platform compiles is still listed,
+// with the platforms it belongs to in its "platforms" field; the Credits page shows the ones the running
+// binary was built from. Output is deterministic: sorted keys and arrays, LF line endings, no timestamps,
+// no absolute paths.
 
 "use strict";
 const fs = require("fs");
@@ -18,7 +21,13 @@ const { spawnSync } = require("child_process");
 const ROOT = path.resolve(__dirname, "..");
 const TAURI = path.join(ROOT, "src-tauri");
 const OUT = path.join(ROOT, "ui", "licenses");
-const TARGET = "x86_64-pc-windows-msvc";
+// Every target a release ships. Both Apple targets resolve to the same crates today, but asking for
+// each one keeps the list right if that stops being true.
+const TARGETS = [
+  { target: "x86_64-pc-windows-msvc", platform: "windows" },
+  { target: "aarch64-apple-darwin", platform: "macos" },
+  { target: "x86_64-apple-darwin", platform: "macos" },
+];
 const LICENCE_FILE = /^(LICEN[SC]E|COPYING|COPYRIGHT|NOTICE|UNLICEN[SC]E)([-._].*)?$/i;
 
 const sha256 = (buf) => crypto.createHash("sha256").update(buf).digest("hex");
@@ -30,11 +39,11 @@ function cargoBin() {
   return fs.existsSync(exe) ? exe : "cargo";
 }
 
-function metadata() {
-  const args = ["metadata", "--format-version", "1", "--locked", "--offline", "--filter-platform", TARGET];
+function metadata(target) {
+  const args = ["metadata", "--format-version", "1", "--locked", "--offline", "--filter-platform", target];
   const r = spawnSync(cargoBin(), args, { cwd: TAURI, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
   if (r.status !== 0) {
-    console.error("cargo metadata failed:\n" + (r.stderr || r.error));
+    console.error(`cargo metadata failed for ${target}:\n` + (r.stderr || r.error));
     process.exit(2);
   }
   return JSON.parse(r.stdout);
@@ -86,8 +95,22 @@ function sortedObject(o) {
 }
 
 function build() {
-  const meta = metadata();
-  const pkgs = shipped(meta).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : a.version < b.version ? -1 : a.version > b.version ? 1 : 0));
+  // name + version -> the package and the platforms whose build includes it
+  const merged = new Map();
+  for (const { target, platform } of TARGETS) {
+    for (const p of shipped(metadata(target))) {
+      const key = `${p.name} ${p.version}`;
+      const entry = merged.get(key) || { pkg: p, platforms: new Set() };
+      entry.platforms.add(platform);
+      merged.set(key, entry);
+    }
+  }
+  const entries = [...merged.values()].sort((a, b) => {
+    const x = a.pkg, y = b.pkg;
+    return x.name < y.name ? -1 : x.name > y.name ? 1 : x.version < y.version ? -1 : x.version > y.version ? 1 : 0;
+  });
+  const pkgs = entries.map((e) => e.pkg);
+  const platformsOf = new Map(entries.map((e) => [`${e.pkg.name} ${e.pkg.version}`, [...e.platforms].sort()]));
   const texts = {};
   let noText = 0;
   const crates = pkgs.map((p) => {
@@ -112,6 +135,7 @@ function build() {
       version: p.version,
       license: p.license || (p.license_file ? "see licence file" : ""),
       repository: p.repository || "",
+      platforms: platformsOf.get(`${p.name} ${p.version}`),
       texts: t.map((x) => ({ file: x.file, id: x.id })),
       ...(textFrom ? { textFrom } : {}),
       ...(textSource ? { textSource } : {}),
@@ -119,7 +143,7 @@ function build() {
   });
   // LF-normalised, so a CRLF checkout (core.autocrlf on the Windows CI runner) hashes the same
   const lock = Buffer.from(fs.readFileSync(path.join(TAURI, "Cargo.lock"), "utf8").replace(/\r\n/g, "\n"), "utf8");
-  const crateJson = JSON.stringify({ cargo_lock_sha256: sha256(lock), target: TARGET, crates }, null, 1) + "\n";
+  const crateJson = JSON.stringify({ cargo_lock_sha256: sha256(lock), targets: TARGETS.map((t) => t.target), crates }, null, 1) + "\n";
   const textJson = JSON.stringify(sortedObject(texts), null, 1) + "\n";
   const mit = norm(fs.readFileSync(path.join(ROOT, "LICENSE"), "utf8"));
   return {
