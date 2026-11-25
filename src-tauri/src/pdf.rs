@@ -101,6 +101,7 @@ use mac::start_print;
 #[cfg(target_os = "macos")]
 mod mac {
     use std::ffi::c_void;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Mutex, OnceLock};
 
     use objc2::rc::Retained;
@@ -130,14 +131,31 @@ mod mac {
         ) -> i32;
     }
 
-    /// The print that is running now. One at a time: `print_report` destroys the report window
-    /// before it builds the next one.
-    static PENDING: Mutex<Option<oneshot::Sender<PrintResult>>> = Mutex::new(None);
+    /// The print that is running now, with its generation. One at a time: `print_report` destroys
+    /// the report window before it builds the next one, and clears this when it stops waiting.
+    static PENDING: Mutex<Option<(usize, oneshot::Sender<PrintResult>)>> = Mutex::new(None);
+    /// Generation of the latest print. It travels to AppKit as the operation's `contextInfo` and
+    /// comes back in the delegate call, so a callback that arrives after its export gave up (the
+    /// 90 s timeout) cannot complete the export that started after it.
+    static GENERATION: AtomicUsize = AtomicUsize::new(0);
 
-    fn finish(result: PrintResult) {
-        if let Some(tx) = PENDING.lock().unwrap_or_else(|e| e.into_inner()).take() {
-            let _ = tx.send(result);
+    fn pending() -> std::sync::MutexGuard<'static, Option<(usize, oneshot::Sender<PrintResult>)>> {
+        PENDING.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Answers the print of generation `generation`, if that is still the one waiting.
+    fn finish(generation: usize, result: PrintResult) {
+        let mut slot = pending();
+        if slot.as_ref().is_some_and(|(g, _)| *g == generation) {
+            if let Some((_, tx)) = slot.take() {
+                let _ = tx.send(result);
+            }
         }
+    }
+
+    /// Drops whatever print is still waiting; its caller has stopped listening (timeout or close).
+    pub(super) fn cancel() {
+        pending().take();
     }
 
     define_class!(
@@ -149,8 +167,8 @@ mod mac {
 
         impl PrintDelegate {
             #[unsafe(method(printOperationDidRun:success:contextInfo:))]
-            fn did_run(&self, _op: *mut AnyObject, success: Bool, _ctx: *mut c_void) {
-                finish(if success.as_bool() {
+            fn did_run(&self, _op: *mut AnyObject, success: Bool, ctx: *mut c_void) {
+                finish(ctx.addr(), if success.as_bool() {
                     Ok(())
                 } else {
                     Err("the print operation reported failure".to_string())
@@ -181,8 +199,12 @@ mod mac {
             return;
         }
         // A print that ended without reporting must not leave its caller waiting for this one.
-        finish(Err("superseded by a new report".to_string()));
-        *PENDING.lock().unwrap_or_else(|e| e.into_inner()) = Some(tx);
+        if let Some((_, old)) = pending().take() {
+            let _ = old.send(Err("superseded by a new report".to_string()));
+        }
+        // Never 0, so a callback with a null contextInfo matches nothing.
+        let generation = GENERATION.fetch_add(1, Ordering::Relaxed).wrapping_add(1).max(1);
+        *pending() = Some((generation, tx));
 
         // SAFETY: plain Objective-C messages to the report window's own WKWebView and to AppKit
         // printing objects, on the main thread, which is the thread `with_webview` calls this on.
@@ -217,7 +239,7 @@ mod mac {
                 Retained::as_ptr(&url) as *const c_void,
             );
             if status != 0 {
-                finish(Err(format!("the PDF destination was refused (PM status {status})")));
+                finish(generation, Err(format!("the PDF destination was refused (PM status {status})")));
                 return;
             }
 
@@ -228,7 +250,7 @@ mod mac {
                 runOperationModalForWindow: window,
                 delegate: delegate(),
                 didRunSelector: sel!(printOperationDidRun:success:contextInfo:),
-                contextInfo: std::ptr::null_mut::<c_void>()
+                contextInfo: std::ptr::without_provenance_mut::<c_void>(generation)
             ];
         }
     }
@@ -278,6 +300,9 @@ pub async fn print_report(app: &AppHandle, job: &Arc<Job>, payload: String, out:
     }
     .await;
 
+    // A print that timed out may still call back later; it must not answer the next export.
+    #[cfg(target_os = "macos")]
+    mac::cancel();
     close(app);
     *lock(&job.payload) = None;
     *lock(&job.ready) = None;
