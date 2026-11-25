@@ -1,7 +1,7 @@
 /* Fluent 2 / Windows 11 look. No external fonts or libraries. */
 :root {
   --font-text: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
-  --font-display: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   --font-icon: "Segoe Fluent Icons", "Segoe MDL2 Assets";
   --ease: cubic-bezier(0.1, 0.9, 0.2, 1);
 
@@ -109,6 +109,9 @@ body {
 [hidden] { display: none !important; }
 button, input { font: inherit; color: inherit; }
 code { font-family: Consolas, monospace; font-size: 12px; background: var(--neutral-bg); padding: 0 4px; border-radius: 3px; }
+/* Drawn by icons.js where the Windows icon font is missing; it takes the size and the
+   colour of the .icon element around it, so every size rule below still applies. */
+.svg-icon { display: block; width: 1em; height: 1em; }
 .icon { font-family: var(--font-icon); font-weight: 400; font-size: 16px; line-height: 1; font-style: normal; display: inline-flex; align-items: center; justify-content: center; width: 16px; flex: none; }
 .caption { font-size: 12px; line-height: 16px; }
 .body-strong { font-weight: 600; }
@@ -236,6 +239,14 @@ code { font-family: Consolas, monospace; font-size: 12px; background: var(--neut
 .check-box { width: 16px; height: 16px; border-radius: 3px; border: 1px solid var(--switch-off-stroke); display: inline-flex; align-items: center; justify-content: center; transition: background 150ms var(--ease); }
 .check input:checked + .check-box { background: var(--accent); border-color: var(--accent); }
 .check input:checked + .check-box::after { content: "\E73E"; font-family: var(--font-icon); font-size: 10px; color: var(--on-accent); }
+/* The check mark is the one icon that comes from CSS rather than from the markup, so
+   icons.js cannot reach it; without the font it is drawn as a shape instead. */
+.no-fluent-icons .check input:checked + .check-box::after {
+  content: ""; width: 10px; height: 10px; background: var(--on-accent);
+  -webkit-mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="none" stroke="black" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M3.2 8.4 6.4 11.6 12.8 4.6"/></svg>'); mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="none" stroke="black" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M3.2 8.4 6.4 11.6 12.8 4.6"/></svg>');
+  -webkit-mask-size: contain; mask-size: contain;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+}
 .check input:focus-visible + .check-box { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .input {

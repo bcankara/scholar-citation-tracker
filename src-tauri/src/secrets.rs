@@ -1,4 +1,5 @@
-//! Optional OpenAlex API key: storage in the Windows Credential Manager,
+//! Optional OpenAlex API key: storage in the platform credential store (the Windows
+//! Credential Manager, or the macOS Keychain),
 //! request pacing that depends on whether a key is present, redaction of anything that could
 //! contain a key, and the two small key calls (test a key, request an OpenAlex key by e-mail).
 //!
@@ -13,7 +14,7 @@ use crate::backfill::USER_AGENT;
 
 const SERVICE: &str = "scholar-citation-tracker";
 
-/// Credential Manager service name. Debug builds honour `SCT_KEYRING_SERVICE`, so a test instance with its
+/// Credential store service name. Debug builds honour `SCT_KEYRING_SERVICE`, so a test instance with its
 /// own identity can use its own entries and never read or delete the keys of an installed app.
 fn service() -> String {
     #[cfg(debug_assertions)]
@@ -174,7 +175,7 @@ pub fn delete(kind: KeyKind) -> Result<(), String> {
 }
 
 /// One-time clean-up: versions before 1.1.1 could keep a key for a service that is no longer
-/// used. Removes that Credential Manager entry; a missing entry or an unreadable store is ignored.
+/// used. Removes that credential store entry; a missing entry or an unreadable store is ignored.
 pub fn delete_legacy_semantic_key() {
     if let Ok(e) = keyring::Entry::new(&service(), "semantic-scholar-api-key") {
         let _ = e.delete_credential();
@@ -279,7 +280,7 @@ struct KeyReply {
     status: Option<String>,
 }
 
-/// Requests a free OpenAlex key for `email`. The key is stored in the Credential Manager; the
+/// Requests a free OpenAlex key for `email`. The key is stored in the credential store; the
 /// address is used for this one request only and is neither stored nor logged. Returns the
 /// activation status OpenAlex reports (normally "pending_activation").
 pub async fn request_openalex_key(email: &str) -> Result<String, String> {

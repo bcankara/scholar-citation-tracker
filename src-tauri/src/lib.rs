@@ -24,7 +24,10 @@ use serde::Serialize;
 use settings::Settings;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::Wry;
-use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::tray::TrayIconBuilder;
+// Only the Windows build maps a left click on the tray icon to "open the dashboard".
+#[cfg(not(target_os = "macos"))]
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_plugin_dialog::DialogExt;
@@ -32,12 +35,27 @@ use tauri_plugin_opener::OpenerExt;
 
 use scheduler::lock;
 
-/// True when the Mica backdrop was applied (page background must then be transparent).
-static MICA_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// True when the translucent window backdrop was applied: Mica on Windows 11, the
+/// "under window" vibrancy on macOS. The page background must then be transparent.
+static BACKDROP_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// Kept under its original name so the UI keeps working unchanged; see `BACKDROP_ACTIVE`.
 #[tauri::command]
 fn backdrop_mica() -> bool {
-    MICA_ACTIVE.load(std::sync::atomic::Ordering::SeqCst)
+    BACKDROP_ACTIVE.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// The host platform, so the UI can name the right thing ("Keychain" or "Credential Manager",
+/// "at login" or "when Windows starts"). Anything but Windows and macOS gets the neutral wording.
+#[tauri::command]
+fn platform() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "macos"
+    } else if cfg!(windows) {
+        "windows"
+    } else {
+        "other"
+    }
 }
 
 #[derive(Clone)]
@@ -133,6 +151,10 @@ fn record_visit(app: &AppHandle, begin: bool) {
 }
 
 fn show_main(app: &AppHandle) {
+    // The window is hidden, not closed, so on macOS the app itself may still be in the
+    // background; without this the shown window stays behind the frontmost app.
+    #[cfg(target_os = "macos")]
+    let _ = app.show();
     if let Some(w) = app.get_webview_window("main") {
         // a window that is already on screen is not a new visit
         let seen = w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false);
@@ -1094,7 +1116,7 @@ pub fn run() {
     }
     let hidden = std::env::args().any(|a| a == "--hidden");
 
-    let result = tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             show_main(app);
         }))
@@ -1172,11 +1194,13 @@ pub fn run() {
                 .cloned()
                 .ok_or("application icon not found")?;
             let menu_state = state.clone();
-            TrayIconBuilder::with_id("main")
+            let tray = TrayIconBuilder::with_id("main")
                 .icon(icon)
                 .tooltip(i18n::product_name(&lang))
                 .menu(&menu)
-                .show_menu_on_left_click(false)
+                // Every other macOS menu-bar item opens its menu on a left click; on Windows a
+                // left click opens the dashboard and the menu belongs to the right button.
+                .show_menu_on_left_click(cfg!(target_os = "macos"))
                 .on_menu_event(move |app, event| match event.id.as_ref() {
                     "open" => show_main(app),
                     "refresh" => {
@@ -1189,25 +1213,40 @@ pub fn run() {
                     }
                     "quit" => app.exit(0),
                     _ => {}
-                })
-                .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
-                        button_state: MouseButtonState::Up,
-                        ..
-                    } = event
-                    {
-                        show_main(tray.app_handle());
-                    }
-                })
-                .build(app)?;
+                });
+            // On macOS the left click already opened the menu, so it must not also open a window.
+            #[cfg(not(target_os = "macos"))]
+            let tray = tray.on_tray_icon_event(|tray, event| {
+                if let TrayIconEvent::Click {
+                    button: MouseButton::Left,
+                    button_state: MouseButtonState::Up,
+                    ..
+                } = event
+                {
+                    show_main(tray.app_handle());
+                }
+            });
+            tray.build(app)?;
             apply_language(&handle, &state);
 
             if let Some(w) = app.get_webview_window("main") {
+                #[cfg(target_os = "macos")]
+                use tauri::window::EffectState;
                 use tauri::window::{Effect, EffectsBuilder};
-                match w.set_effects(EffectsBuilder::new().effect(Effect::Mica).build()) {
-                    Ok(()) => MICA_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst),
-                    Err(e) => eprintln!("mica unavailable: {e}"),
+
+                // Mica on Windows 11, the matching system vibrancy on macOS. When the effect is
+                // unavailable the flag stays false and the page draws its own opaque background.
+                #[cfg(target_os = "macos")]
+                let effects = EffectsBuilder::new()
+                    .effect(Effect::UnderWindowBackground)
+                    .state(EffectState::FollowsWindowActiveState)
+                    .build();
+                #[cfg(not(target_os = "macos"))]
+                let effects = EffectsBuilder::new().effect(Effect::Mica).build();
+
+                match w.set_effects(effects) {
+                    Ok(()) => BACKDROP_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst),
+                    Err(e) => eprintln!("window backdrop unavailable: {e}"),
                 }
             }
 
@@ -1238,6 +1277,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             backdrop_mica,
+            platform,
             get_overview,
             get_series,
             get_articles,
@@ -1301,9 +1341,20 @@ pub fn run() {
             updater::install_update,
             updater::app_version,
         ])
-        .run(tauri::generate_context!());
-    if let Err(e) = result {
-        eprintln!("application failed to start: {e}");
+        .build(tauri::generate_context!());
+
+    match app {
+        // The event handler only exists for macOS: clicking the Dock icon of an app whose
+        // windows are all hidden must bring the dashboard back, as there is nothing else to click.
+        Ok(app) => app.run(|_app, event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = event {
+                show_main(_app);
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = event;
+        }),
+        Err(e) => eprintln!("application failed to start: {e}"),
     }
 }
 

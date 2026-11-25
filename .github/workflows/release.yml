@@ -1,9 +1,11 @@
 name: release
 
-# Tag push (v*): test, build, and create a DRAFT GitHub release with the NSIS installer, its
-# .sig, latest.json (updater feed), SHA256SUMS.txt and a build provenance attestation.
-# Manual run (workflow_dispatch): same build, but no release is created; the installer is only
-# kept as a workflow artifact.
+# Tag push (v*): test and build on both platforms, then create a DRAFT GitHub release with the
+# Windows NSIS installer, the macOS universal .dmg, the signed updater artifacts, latest.json
+# (updater feed, covering every platform that built), SHA256SUMS.txt (Windows, the name every
+# earlier release used), SHA256SUMS-macos.txt and a build provenance attestation per platform.
+# Manual run (workflow_dispatch): same builds, but no release is created; the files are only kept
+# as workflow artifacts.
 
 on:
   push:
@@ -11,10 +13,9 @@ on:
       - "v*"
   workflow_dispatch:
 
+# Each job asks for what it needs below.
 permissions:
-  contents: write
-  id-token: write
-  attestations: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -22,40 +23,90 @@ concurrency:
 
 jobs:
   build:
-    runs-on: windows-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    strategy:
+      # One platform failing must not throw away the other platform's build.
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows
+            os: windows-latest
+            # Empty: build for the host.
+            target: ""
+            rust_targets: ""
+            bundle_dir: src-tauri/target/release/bundle/nsis
+            # What a user downloads, and the updater artifact the app installs.
+            download_glob: "*-setup.exe"
+            download_regex: 'setup\.exe$'
+            updater_glob: "*-setup.exe"
+            updater_regex: 'setup\.exe$'
+            # Windows keeps the checksum file name of every earlier release.
+            sums_name: SHA256SUMS.txt
+            sums_artifact: SHA256SUMS
+            # Keys of the `platforms` object in latest.json.
+            updater_keys: windows-x86_64
+          - platform: macos
+            os: macos-latest
+            # One universal binary covers both Apple Silicon and Intel Macs.
+            target: universal-apple-darwin
+            rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
+            bundle_dir: src-tauri/target/universal-apple-darwin/release/bundle
+            download_glob: "dmg/*.dmg"
+            download_regex: '\.dmg$'
+            updater_glob: "macos/*.app.tar.gz"
+            updater_regex: '\.app\.tar\.gz$'
+            sums_name: SHA256SUMS-macos.txt
+            sums_artifact: SHA256SUMS-macos
+            updater_keys: darwin-aarch64 darwin-x86_64
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        # Git Bash on the Windows runner, so every script below is written once.
+        shell: bash
     env:
       IS_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') }}
+      TAG: ${{ github.ref_name }}
+      REPO: ${{ github.repository }}
     steps:
       - uses: actions/checkout@v7
 
       - name: Rust stable toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_targets }}
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          key: ${{ matrix.platform }}
 
       # The app has no package.json. The Tauri CLI is installed from npm on the runner only and
       # handed to tauri-action through `tauriScript`.
       - name: Install Tauri CLI
-        shell: pwsh
         run: npm install --global "@tauri-apps/cli@2"
 
       - name: Check that the tag matches the app version
         if: env.IS_RELEASE == 'true'
-        shell: pwsh
         run: |
-          $version = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
-          if ("v$version" -ne "${{ github.ref_name }}") {
-            Write-Error "Tag ${{ github.ref_name }} does not match tauri.conf.json version v$version"
+          set -euo pipefail
+          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          if [ "v$version" != "$TAG" ]; then
+            echo "Tag $TAG does not match tauri.conf.json version v$version" >&2
             exit 1
-          }
+          fi
 
       # Tests that need the (git-ignored) local profile fixture skip themselves on CI.
       - name: cargo test
-        shell: pwsh
         run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      # The licence list covers every shipped target, so the sources of the other platform's crates
+      # have to be on the runner as well; `cargo fetch` without a target fetches for all of them.
+      - name: Fetch the crate sources of every target
+        run: cargo fetch --manifest-path src-tauri/Cargo.toml
 
       # The Credits page lists the Rust crates compiled into the app; the files are generated from Cargo.lock.
       - name: Check the generated licence files
@@ -76,56 +127,200 @@ jobs:
         with:
           tauriScript: tauri
           projectPath: .
+          args: ${{ matrix.target != '' && format('--target {0}', matrix.target) || '' }}
           # An empty tagName makes the action build only (manual runs).
           tagName: ${{ env.IS_RELEASE == 'true' && github.ref_name || '' }}
           releaseName: ${{ env.IS_RELEASE == 'true' && 'v__VERSION__' || '' }}
-          releaseBody: "See the assets below. The installer is not code-signed; see the README (Installing) for the SmartScreen notice and how to verify the download."
+          releaseBody: "See the assets below. Neither build is code-signed and the macOS build is not notarized; see the README (Installing) for the Windows SmartScreen notice, the macOS Gatekeeper steps, and how to verify the download."
           releaseDraft: true
           prerelease: false
-          uploadUpdaterJson: true
+          # latest.json is assembled once, by the updater-feed job, so that it describes every
+          # platform. A per-platform upload here would overwrite the other platform's entry.
+          uploadUpdaterJson: false
           uploadUpdaterSignatures: true
           uploadWorkflowArtifacts: ${{ env.IS_RELEASE != 'true' }}
 
-      - name: SHA256SUMS.txt
-        id: sums
-        shell: pwsh
+      - name: Checksum file
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_ID: ${{ steps.tauri.outputs.releaseId }}
+          BUNDLE_DIR: ${{ matrix.bundle_dir }}
+          DOWNLOAD_GLOB: ${{ matrix.download_glob }}
+          DOWNLOAD_REGEX: ${{ matrix.download_regex }}
+          SUMS_NAME: ${{ matrix.sums_name }}
         run: |
-          $exe = Get-ChildItem src-tauri/target/release/bundle/nsis -Filter "*-setup.exe" | Select-Object -First 1
-          if (-not $exe) { Write-Error "NSIS installer not found"; exit 1 }
+          set -euo pipefail
+          file=$(ls -1 $BUNDLE_DIR/$DOWNLOAD_GLOB 2>/dev/null | head -1 || true)
+          if [ -z "$file" ]; then
+            echo "no bundle matched $DOWNLOAD_GLOB" >&2
+            exit 1
+          fi
           # The file name as GitHub stores it (spaces become dots), so the sums match the download.
-          $name = $exe.Name
-          if ($env:RELEASE_ID) {
-            $assets = gh api "repos/${{ github.repository }}/releases/$env:RELEASE_ID" --jq '.assets[].name'
-            $match = $assets | Where-Object { $_ -like "*setup.exe" } | Select-Object -First 1
-            if ($match) { $name = $match }
-          }
-          $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
-          "$hash  $name" | Out-File -FilePath SHA256SUMS.txt -Encoding ascii
-          Get-Content SHA256SUMS.txt
-          "installer=$($exe.FullName)" >> $env:GITHUB_OUTPUT
+          name=$(basename "$file" | tr ' ' '.')
+          if [ -n "${RELEASE_ID:-}" ]; then
+            match=$(gh api "repos/$REPO/releases/$RELEASE_ID" --jq '.assets[].name' \
+              | grep -E "$DOWNLOAD_REGEX" | head -1 || true)
+            if [ -n "$match" ]; then name="$match"; fi
+          fi
+          if command -v sha256sum >/dev/null 2>&1; then
+            hash=$(sha256sum "$file" | cut -d' ' -f1)
+          else
+            hash=$(shasum -a 256 "$file" | cut -d' ' -f1)
+          fi
+          printf '%s  %s\n' "$hash" "$name" > "$SUMS_NAME"
+          cat "$SUMS_NAME"
 
-      - name: Upload SHA256SUMS.txt to the draft release
+      - name: Upload the checksum file to the draft release
         if: env.IS_RELEASE == 'true'
-        shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_ID: ${{ steps.tauri.outputs.releaseId }}
+          SUMS_NAME: ${{ matrix.sums_name }}
         run: |
+          set -euo pipefail
+          # A re-run of a failed job finds the file from the first run, and GitHub answers
+          # 422 already_exists for a second asset of the same name, so remove the old one first.
+          for id in $(gh api "repos/$REPO/releases/$RELEASE_ID" --jq '.assets[] | select(.name==env.SUMS_NAME) | .id'); do
+            gh api --method DELETE "repos/$REPO/releases/assets/$id"
+          done
           # Drafts have no tag yet, so upload by release id through the API.
-          gh api --method POST "https://uploads.github.com/repos/${{ github.repository }}/releases/$env:RELEASE_ID/assets?name=SHA256SUMS.txt" `
-            -H "Content-Type: text/plain" --input SHA256SUMS.txt
+          gh api --method POST \
+            "https://uploads.github.com/repos/$REPO/releases/$RELEASE_ID/assets?name=$SUMS_NAME" \
+            -H "Content-Type: text/plain" --input "$SUMS_NAME"
 
       - name: Build provenance attestation
         uses: actions/attest-build-provenance@v4
         with:
-          subject-path: src-tauri/target/release/bundle/nsis/*-setup.exe
+          subject-path: ${{ matrix.bundle_dir }}/${{ matrix.download_glob }}
 
-      - name: Keep SHA256SUMS.txt for manual runs
+      - name: Keep the checksum file for manual runs
         if: env.IS_RELEASE != 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: SHA256SUMS
-          path: SHA256SUMS.txt
+          name: ${{ matrix.sums_artifact }}
+          path: ${{ matrix.sums_name }}
+
+      # One fragment per platform, merged into latest.json by the updater-feed job. These are the
+      # last steps of a leg, so a fragment exists only when everything above it succeeded.
+      # The URL is the public download URL the release will have once it is published
+      # (https://github.com/<repo>/releases/download/<tag>/<asset>), built from the asset name
+      # GitHub stored, so latest.json needs no rewriting by hand.
+      - name: Updater feed fragment
+        if: env.IS_RELEASE == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ steps.tauri.outputs.releaseId }}
+          BUNDLE_DIR: ${{ matrix.bundle_dir }}
+          UPDATER_GLOB: ${{ matrix.updater_glob }}
+          UPDATER_REGEX: ${{ matrix.updater_regex }}
+          UPDATER_KEYS: ${{ matrix.updater_keys }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          artifact=$(ls -1 $BUNDLE_DIR/$UPDATER_GLOB 2>/dev/null | head -1 || true)
+          if [ -z "$artifact" ]; then
+            echo "no updater artifact matched $UPDATER_GLOB" >&2
+            exit 1
+          fi
+          signature=$(cat "$artifact.sig")
+          # The name the asset got in the release (tauri-action may rename it; spaces become dots).
+          asset=$(gh api "repos/$REPO/releases/$RELEASE_ID" --jq '.assets[].name' \
+            | grep -E "$UPDATER_REGEX" | head -1 || true)
+          if [ -z "$asset" ]; then
+            echo "the draft release has no asset matching $UPDATER_REGEX" >&2
+            exit 1
+          fi
+          url="https://github.com/$REPO/releases/download/$TAG/$asset"
+          echo "updater artifact: $asset"
+          : > fragment.json
+          for key in $UPDATER_KEYS; do
+            jq -n --arg k "$key" --arg s "$signature" --arg u "$url" \
+              '{($k): {signature: $s, url: $u}}' >> fragment.json
+          done
+          jq -s 'add' fragment.json > "fragment-$PLATFORM.json"
+          cat "fragment-$PLATFORM.json"
+
+      - name: Keep the updater fragment for the feed job
+        if: env.IS_RELEASE == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: updater-fragment-${{ matrix.platform }}
+          path: fragment-${{ matrix.platform }}.json
+
+  # latest.json has to name every platform in one file, so it is written after the builds. It runs
+  # even when a leg failed: Windows is required (without it the feed is not written at all), macOS is
+  # added when its leg produced a fragment. Publishing without macOS keeps Windows updates working;
+  # Macs then stay on their version until a later release carries them.
+  updater-feed:
+    needs: build
+    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.ref_name }}
+      REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # A failed leg leaves no fragment; the next step decides what that means.
+      - uses: actions/download-artifact@v7
+        continue-on-error: true
+        with:
+          pattern: updater-fragment-*
+          path: fragments
+          merge-multiple: true
+
+      - name: Compose latest.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ ! -s fragments/fragment-windows.json ]; then
+            echo "::error::The Windows build did not finish, so latest.json is not written. Do not publish this release."
+            echo "**latest.json not written:** the Windows build did not finish. Do not publish this release." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          if [ ! -s fragments/fragment-macos.json ]; then
+            echo "::warning::The macOS build did not finish: latest.json covers Windows only. Macs will not be offered this version; publish only if that is intended, or re-run the macOS leg first."
+            echo "**Warning:** the macOS build did not finish, so latest.json covers Windows only (no darwin-aarch64 / darwin-x86_64). Macs will not be offered this version." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          # The release notes of the draft this tag just produced, so the app shows them.
+          notes=$(gh api "repos/$REPO/releases" \
+            | jq -r --arg tag "$TAG" '[.[] | select(.tag_name == $tag)][0].body // ""')
+          jq -s --arg version "$version" \
+                --arg notes "$notes" \
+                --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+             '{version: $version, notes: $notes, pub_date: $date, platforms: add}' \
+             fragments/fragment-*.json > latest.json
+          cat latest.json
+          # Windows must be present; the darwin keys must be complete when macOS built.
+          keys="windows-x86_64"
+          if [ -s fragments/fragment-macos.json ]; then keys="$keys darwin-aarch64 darwin-x86_64"; fi
+          for key in $keys; do
+            jq -e --arg k "$key" '.platforms[$k].url and .platforms[$k].signature' latest.json > /dev/null \
+              || { echo "latest.json is missing $key" >&2; exit 1; }
+          done
+          echo "latest.json platforms: $(jq -r '.platforms | keys | join(", ")' latest.json)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload latest.json to the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          release_id=$(gh api "repos/$REPO/releases" \
+            | jq -r --arg tag "$TAG" '[.[] | select(.tag_name == $tag)][0].id // empty')
+          if [ -z "$release_id" ]; then
+            echo "no release found for $TAG" >&2
+            exit 1
+          fi
+          # Replace the asset if a previous run of this tag already uploaded one.
+          old=$(gh api "repos/$REPO/releases/$release_id" \
+            --jq '.assets[] | select(.name == "latest.json") | .id')
+          if [ -n "$old" ]; then
+            gh api --method DELETE "repos/$REPO/releases/assets/$old"
+          fi
+          gh api --method POST \
+            "https://uploads.github.com/repos/$REPO/releases/$release_id/assets?name=latest.json" \
+            -H "Content-Type: application/json" --input latest.json

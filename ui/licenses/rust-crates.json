@@ -1,12 +1,20 @@
 {
- "cargo_lock_sha256": "215f4089100ca7ffeac43ada7bb664f82172cf65af7634d3380551834ade4dc6",
- "target": "x86_64-pc-windows-msvc",
+ "cargo_lock_sha256": "abd4ae13ea2ce4c89690706c31ead80b7b494d141f459eae2f2f8dd22c25e146",
+ "targets": [
+  "x86_64-pc-windows-msvc",
+  "aarch64-apple-darwin",
+  "x86_64-apple-darwin"
+ ],
  "crates": [
   {
    "name": "adler2",
    "version": "2.0.1",
    "license": "0BSD OR MIT OR Apache-2.0",
    "repository": "https://github.com/oyvindln/adler2",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-0BSD",
@@ -27,6 +35,10 @@
    "version": "1.1.5",
    "license": "Unlicense OR MIT",
    "repository": "https://github.com/BurntSushi/aho-corasick",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "COPYING",
@@ -47,6 +59,10 @@
    "version": "3.0.0",
    "license": "BSD-3-Clause",
    "repository": "https://github.com/dropbox/rust-alloc-no-stdlib",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -59,19 +75,27 @@
    "version": "0.3.0",
    "license": "BSD-3-Clause",
    "repository": "https://github.com/dropbox/rust-alloc-no-stdlib",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
-     "id": "c0c56f26d9c051ca"
+     "id": "c0c56f26d9c051ca",
+     "source": "https://github.com/dropbox/rust-alloc-no-stdlib/blob/master/LICENSE"
     }
-   ],
-   "textSource": "https://github.com/dropbox/rust-alloc-no-stdlib/blob/master/LICENSE"
+   ]
   },
   {
    "name": "anyhow",
    "version": "1.0.104",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/dtolnay/anyhow",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -88,6 +112,10 @@
    "version": "0.4.52",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/Nullus157/async-compression",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -104,6 +132,10 @@
    "version": "1.1.2",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/smol-rs/atomic-waker",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -124,6 +156,10 @@
    "version": "0.6.0",
    "license": "MIT",
    "repository": "https://github.com/zzzgydi/auto-launch.git",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -133,9 +169,32 @@
   },
   {
    "name": "base64",
+   "version": "0.21.7",
+   "license": "MIT OR Apache-2.0",
+   "repository": "https://github.com/marshallpierce/rust-base64",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE",
+     "id": "a60eea8175145316"
+    },
+    {
+     "file": "LICENSE-MIT",
+     "id": "0dd882e53de11566"
+    }
+   ]
+  },
+  {
+   "name": "base64",
    "version": "0.22.1",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/marshallpierce/rust-base64",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -152,6 +211,10 @@
    "version": "0.23.1",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/marshallpierce/rust-base64",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -168,6 +231,10 @@
    "version": "0.8.0",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/contain-rs/bit-set",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -184,6 +251,10 @@
    "version": "0.8.0",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/contain-rs/bit-vec",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -200,6 +271,10 @@
    "version": "2.13.2",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/bitflags/bitflags",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -216,6 +291,10 @@
    "version": "0.12.1",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/RustCrypto/utils",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -228,10 +307,30 @@
    ]
   },
   {
+   "name": "block2",
+   "version": "0.6.2",
+   "license": "MIT",
+   "repository": "https://github.com/madsmtm/objc2",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-MIT.txt",
+     "id": "f6a2e783669a0dd7",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-MIT.txt"
+    }
+   ]
+  },
+  {
    "name": "brotli",
    "version": "9.1.3",
    "license": "BSD-3-Clause AND MIT",
    "repository": "https://github.com/dropbox/rust-brotli",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE.BSD-3-Clause",
@@ -248,6 +347,10 @@
    "version": "6.3.2",
    "license": "BSD-3-Clause/MIT",
    "repository": "https://github.com/dropbox/rust-brotli-decompressor",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -260,6 +363,10 @@
    "version": "0.5.1",
    "license": "MIT/Apache-2.0",
    "repository": "https://github.com/Nullus157/bs58-rs",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -276,6 +383,10 @@
    "version": "3.20.4",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/fitzgen/bumpalo",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -292,6 +403,10 @@
    "version": "1.5.0",
    "license": "Unlicense OR MIT",
    "repository": "https://github.com/BurntSushi/byteorder",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "COPYING",
@@ -312,6 +427,10 @@
    "version": "1.12.2",
    "license": "MIT",
    "repository": "https://github.com/tokio-rs/bytes",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -324,6 +443,10 @@
    "version": "1.2.6",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/camino-rs/camino",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -340,6 +463,10 @@
    "version": "0.1.9",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rust-lang/cargo",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -356,6 +483,10 @@
    "version": "0.19.2",
    "license": "MIT",
    "repository": "https://github.com/oli-obk/cargo_metadata",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-MIT",
@@ -368,6 +499,10 @@
    "version": "0.14.0",
    "license": "MIT",
    "repository": "https://github.com/mdsteele/rust-cfb",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -380,6 +515,10 @@
    "version": "1.0.5",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rust-lang/cfg-if",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -396,6 +535,10 @@
    "version": "0.10.2",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/RustCrypto/stream-ciphers",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -412,6 +555,10 @@
    "version": "0.4.45",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/chronotope/chrono",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE.txt",
@@ -424,6 +571,10 @@
    "version": "0.4.48",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/Nullus157/async-compression",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -440,6 +591,10 @@
    "version": "0.4.34",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/Nullus157/async-compression",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -456,6 +611,10 @@
    "version": "0.10.3",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/RustCrypto/formats",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -472,6 +631,10 @@
    "version": "0.6.1",
    "license": "CC0-1.0 OR MIT-0 OR Apache-2.0",
    "repository": "https://codeberg.org/cesarb/constant_time_eq",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -492,6 +655,10 @@
    "version": "0.18.2",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/SergioBenitez/cookie-rs",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -508,6 +675,10 @@
    "version": "0.22.1",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/pfernie/cookie_store",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -520,10 +691,113 @@
    ]
   },
   {
+   "name": "core-foundation",
+   "version": "0.10.1",
+   "license": "MIT OR Apache-2.0",
+   "repository": "https://github.com/servo/core-foundation-rs",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE",
+     "id": "a60eea8175145316"
+    },
+    {
+     "file": "LICENSE-MIT",
+     "id": "62065228e42caebc"
+    }
+   ]
+  },
+  {
+   "name": "core-foundation",
+   "version": "0.9.4",
+   "license": "MIT OR Apache-2.0",
+   "repository": "https://github.com/servo/core-foundation-rs",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE",
+     "id": "a60eea8175145316"
+    },
+    {
+     "file": "LICENSE-MIT",
+     "id": "62065228e42caebc"
+    }
+   ]
+  },
+  {
+   "name": "core-foundation-sys",
+   "version": "0.8.7",
+   "license": "MIT OR Apache-2.0",
+   "repository": "https://github.com/servo/core-foundation-rs",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE",
+     "id": "a60eea8175145316"
+    },
+    {
+     "file": "LICENSE-MIT",
+     "id": "62065228e42caebc"
+    }
+   ]
+  },
+  {
+   "name": "core-graphics",
+   "version": "0.25.0",
+   "license": "MIT OR Apache-2.0",
+   "repository": "https://github.com/servo/core-foundation-rs",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "COPYRIGHT",
+     "id": "ec82b96487e9e778"
+    },
+    {
+     "file": "LICENSE-APACHE",
+     "id": "a60eea8175145316"
+    },
+    {
+     "file": "LICENSE-MIT",
+     "id": "62065228e42caebc"
+    }
+   ]
+  },
+  {
+   "name": "core-graphics-types",
+   "version": "0.2.0",
+   "license": "MIT OR Apache-2.0",
+   "repository": "https://github.com/servo/core-foundation-rs",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE",
+     "id": "a60eea8175145316"
+    },
+    {
+     "file": "LICENSE-MIT",
+     "id": "62065228e42caebc"
+    }
+   ]
+  },
+  {
    "name": "cpufeatures",
    "version": "0.3.1",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/RustCrypto/utils",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -540,6 +814,10 @@
    "version": "1.5.5",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/srijs/rust-crc32fast",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -556,6 +834,10 @@
    "version": "0.5.17",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/crossbeam-rs/crossbeam",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -576,6 +858,10 @@
    "version": "0.8.23",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/crossbeam-rs/crossbeam",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -592,6 +878,10 @@
    "version": "0.2.2",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/RustCrypto/traits",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -608,6 +898,10 @@
    "version": "0.37.0",
    "license": "MPL-2.0",
    "repository": "https://github.com/servo/rust-cssparser",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -620,6 +914,10 @@
    "version": "0.38.0",
    "license": "MPL-2.0",
    "repository": "https://github.com/servo/rust-cssparser",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -632,6 +930,10 @@
    "version": "0.7.1",
    "license": "MPL-2.0",
    "repository": "https://github.com/servo/rust-cssparser",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -644,6 +946,10 @@
    "version": "1.4.0",
    "license": "Unlicense/MIT",
    "repository": "https://github.com/BurntSushi/rust-csv",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "COPYING",
@@ -664,6 +970,10 @@
    "version": "0.1.13",
    "license": "Unlicense/MIT",
    "repository": "https://github.com/BurntSushi/rust-csv",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "COPYING",
@@ -684,6 +994,10 @@
    "version": "1.0.14",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/mmastrac/linktime",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -700,6 +1014,10 @@
    "version": "0.24.1",
    "license": "MIT",
    "repository": "https://github.com/TedDriggs/darling",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -712,6 +1030,10 @@
    "version": "0.24.1",
    "license": "MIT",
    "repository": "https://github.com/TedDriggs/darling",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -724,6 +1046,10 @@
    "version": "0.24.1",
    "license": "MIT",
    "repository": "https://github.com/TedDriggs/darling",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -736,6 +1062,10 @@
    "version": "0.5.9",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/jhpratt/deranged",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-Apache",
@@ -752,6 +1082,10 @@
    "version": "2.1.1",
    "license": "MIT",
    "repository": "https://github.com/JelteF/derive_more",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -764,6 +1098,10 @@
    "version": "2.1.1",
    "license": "MIT",
    "repository": "https://github.com/JelteF/derive_more",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -776,6 +1114,10 @@
    "version": "0.11.3",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/RustCrypto/traits",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -789,9 +1131,32 @@
   },
   {
    "name": "dirs",
+   "version": "6.0.0",
+   "license": "MIT OR Apache-2.0",
+   "repository": "https://github.com/soc/dirs-rs",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE",
+     "id": "d3174ad63e721d4c"
+    },
+    {
+     "file": "LICENSE-MIT",
+     "id": "6a2e0ade09a7d5f8"
+    }
+   ]
+  },
+  {
+   "name": "dirs",
    "version": "7.0.0",
    "license": "MIT OR Apache-2.0",
    "repository": "https://codeberg.org/dirs/dirs-rs",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -808,6 +1173,10 @@
    "version": "0.5.0",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/dirs-dev/dirs-sys-rs",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -820,10 +1189,40 @@
    ]
   },
   {
+   "name": "dispatch2",
+   "version": "0.3.1",
+   "license": "Zlib OR Apache-2.0 OR MIT",
+   "repository": "https://github.com/madsmtm/objc2",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE.txt",
+     "id": "0c9a5f6fe28e2701",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-APACHE.txt"
+    },
+    {
+     "file": "LICENSE-MIT.txt",
+     "id": "f6a2e783669a0dd7",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-MIT.txt"
+    },
+    {
+     "file": "LICENSE-ZLIB.txt",
+     "id": "fced3e7fedc235fa",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-ZLIB.txt"
+    }
+   ]
+  },
+  {
    "name": "displaydoc",
    "version": "0.2.7",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/yaahc/displaydoc",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -840,6 +1239,10 @@
    "version": "0.2.12",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/slint-ui/document-features",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -856,6 +1259,10 @@
    "version": "0.28.0",
    "license": "MIT",
    "repository": "https://github.com/niklak/dom_query",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -868,6 +1275,10 @@
    "version": "0.1.2",
    "license": "Apache-2.0 AND MIT",
    "repository": "https://github.com/rust-windowing/winit",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -884,6 +1295,10 @@
    "version": "1.0.11",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/dtolnay/dtoa",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -900,6 +1315,10 @@
    "version": "0.3.5",
    "license": "MPL-2.0",
    "repository": "https://github.com/upsuper/dtoa-short",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -912,6 +1331,10 @@
    "version": "1.0.5",
    "license": "CC0-1.0 OR MIT-0 OR Apache-2.0",
    "repository": "https://gitlab.com/kornelski/dunce",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -924,6 +1347,10 @@
    "version": "1.0.20",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/dtolnay/dyn-clone",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -940,6 +1367,10 @@
    "version": "0.11.1",
    "license": "ISC",
    "repository": "https://github.com/rust-scraper/ego-tree",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -948,10 +1379,33 @@
    ]
   },
   {
+   "name": "embed_plist",
+   "version": "1.2.2",
+   "license": "MIT OR Apache-2.0",
+   "repository": "https://github.com/nvzqz/embed-plist-rs",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE",
+     "id": "cfc7749b96f63bd3"
+    },
+    {
+     "file": "LICENSE-MIT",
+     "id": "daacc37f680c7dd0"
+    }
+   ]
+  },
+  {
    "name": "equivalent",
    "version": "1.0.3",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/indexmap-rs/equivalent",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -968,6 +1422,10 @@
    "version": "0.4.11",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/dtolnay/erased-serde",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -980,10 +1438,33 @@
    ]
   },
   {
+   "name": "errno",
+   "version": "0.3.15",
+   "license": "MIT OR Apache-2.0",
+   "repository": "https://github.com/lambda-fairy/rust-errno",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE",
+     "id": "a60eea8175145316"
+    },
+    {
+     "file": "LICENSE-MIT",
+     "id": "8764a597675778dd"
+    }
+   ]
+  },
+  {
    "name": "fallible-iterator",
    "version": "0.3.0",
    "license": "MIT/Apache-2.0",
    "repository": "https://github.com/sfackler/rust-fallible-iterator",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1000,6 +1481,10 @@
    "version": "0.1.9",
    "license": "MIT/Apache-2.0",
    "repository": "https://github.com/sfackler/fallible-streaming-iterator",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1016,6 +1501,10 @@
    "version": "2.5.0",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/smol-rs/fastrand",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1032,6 +1521,10 @@
    "version": "0.3.7",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/image-rs/fdeflate",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1044,10 +1537,33 @@
    ]
   },
   {
+   "name": "filetime",
+   "version": "0.2.30",
+   "license": "MIT/Apache-2.0",
+   "repository": "https://github.com/alexcrichton/filetime",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE",
+     "id": "a60eea8175145316"
+    },
+    {
+     "file": "LICENSE-MIT",
+     "id": "378f5840b258e277"
+    }
+   ]
+  },
+  {
    "name": "flate2",
    "version": "1.1.11",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rust-lang/flate2-rs",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1064,6 +1580,10 @@
    "version": "1.0.7",
    "license": "Apache-2.0 / MIT",
    "repository": "https://github.com/servo/rust-fnv",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1080,6 +1600,10 @@
    "version": "0.2.0",
    "license": "Zlib",
    "repository": "https://github.com/orlp/foldhash",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -1088,10 +1612,71 @@
    ]
   },
   {
+   "name": "foreign-types",
+   "version": "0.5.0",
+   "license": "MIT/Apache-2.0",
+   "repository": "https://github.com/sfackler/foreign-types",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE",
+     "id": "b40930bbcf80744c"
+    },
+    {
+     "file": "LICENSE-MIT",
+     "id": "333ea3aaa3cadb81"
+    }
+   ]
+  },
+  {
+   "name": "foreign-types-macros",
+   "version": "0.2.4",
+   "license": "MIT/Apache-2.0",
+   "repository": "https://github.com/sfackler/foreign-types",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE",
+     "id": "b40930bbcf80744c"
+    },
+    {
+     "file": "LICENSE-MIT",
+     "id": "333ea3aaa3cadb81"
+    }
+   ]
+  },
+  {
+   "name": "foreign-types-shared",
+   "version": "0.3.1",
+   "license": "MIT/Apache-2.0",
+   "repository": "https://github.com/sfackler/foreign-types",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE",
+     "id": "b40930bbcf80744c"
+    },
+    {
+     "file": "LICENSE-MIT",
+     "id": "333ea3aaa3cadb81"
+    }
+   ]
+  },
+  {
    "name": "form_urlencoded",
    "version": "1.2.3",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/servo/rust-url",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1108,6 +1693,10 @@
    "version": "0.3.34",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rust-lang/futures-rs",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1124,6 +1713,10 @@
    "version": "0.3.34",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rust-lang/futures-rs",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1140,6 +1733,10 @@
    "version": "0.3.34",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rust-lang/futures-rs",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1156,6 +1753,10 @@
    "version": "0.3.34",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rust-lang/futures-rs",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1172,6 +1773,10 @@
    "version": "0.3.34",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rust-lang/futures-rs",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1188,6 +1793,10 @@
    "version": "0.3.34",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rust-lang/futures-rs",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1204,6 +1813,10 @@
    "version": "0.3.34",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rust-lang/futures-rs",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1220,6 +1833,10 @@
    "version": "0.2.24",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rust-lang/getopts",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1236,6 +1853,10 @@
    "version": "0.2.17",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rust-random/getrandom",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1252,6 +1873,10 @@
    "version": "0.3.4",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rust-random/getrandom",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1268,6 +1893,10 @@
    "version": "0.4.3",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rust-random/getrandom",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1284,6 +1913,10 @@
    "version": "0.3.4",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rust-lang/glob",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1300,6 +1933,10 @@
    "version": "0.12.3",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rust-lang/hashbrown",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1316,6 +1953,10 @@
    "version": "0.17.2",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rust-lang/hashbrown",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1332,6 +1973,10 @@
    "version": "0.12.2",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/djc/hashlink",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1348,6 +1993,10 @@
    "version": "0.5.0",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/withoutboats/heck",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1364,6 +2013,10 @@
    "version": "0.4.3",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/KokaKiwi/rust-hex",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1380,6 +2033,10 @@
    "version": "0.39.0",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/servo/html5ever",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1396,6 +2053,10 @@
    "version": "0.40.1",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/servo/html5ever",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1412,6 +2073,10 @@
    "version": "1.5.0",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/hyperium/http",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1428,6 +2093,10 @@
    "version": "1.1.0",
    "license": "MIT",
    "repository": "https://github.com/hyperium/http-body",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -1440,6 +2109,10 @@
    "version": "0.1.5",
    "license": "MIT",
    "repository": "https://github.com/hyperium/http-body",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -1452,6 +2125,10 @@
    "version": "1.10.1",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/seanmonstar/httparse",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1468,6 +2145,10 @@
    "version": "0.4.15",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/RustCrypto/hybrid-array",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1484,6 +2165,10 @@
    "version": "1.12.0",
    "license": "MIT",
    "repository": "https://github.com/hyperium/hyper",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -1496,6 +2181,10 @@
    "version": "0.27.10",
    "license": "Apache-2.0 OR ISC OR MIT",
    "repository": "https://github.com/rustls/hyper-rustls",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1516,6 +2205,10 @@
    "version": "0.1.21",
    "license": "MIT",
    "repository": "https://github.com/hyperium/hyper-util",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -1524,10 +2217,33 @@
    ]
   },
   {
+   "name": "iana-time-zone",
+   "version": "0.1.65",
+   "license": "MIT OR Apache-2.0",
+   "repository": "https://github.com/strawlab/iana-time-zone",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE",
+     "id": "696759d65dfe558f"
+    },
+    {
+     "file": "LICENSE-MIT",
+     "id": "da28ccc6b158fc2d"
+    }
+   ]
+  },
+  {
    "name": "ico",
    "version": "0.6.0",
    "license": "MIT",
    "repository": "https://github.com/mdsteele/rust-ico",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -1540,6 +2256,10 @@
    "version": "2.4.0",
    "license": "Unicode-3.0",
    "repository": "https://github.com/unicode-org/icu4x",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -1552,6 +2272,10 @@
    "version": "2.4.0",
    "license": "Unicode-3.0",
    "repository": "https://github.com/unicode-org/icu4x",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -1564,6 +2288,10 @@
    "version": "2.4.0",
    "license": "Unicode-3.0",
    "repository": "https://github.com/unicode-org/icu4x",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -1576,6 +2304,10 @@
    "version": "2.4.0",
    "license": "Unicode-3.0",
    "repository": "https://github.com/unicode-org/icu4x",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -1588,6 +2320,10 @@
    "version": "2.4.0",
    "license": "Unicode-3.0",
    "repository": "https://github.com/unicode-org/icu4x",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -1600,6 +2336,10 @@
    "version": "2.4.0",
    "license": "Unicode-3.0",
    "repository": "https://github.com/unicode-org/icu4x",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -1612,6 +2352,10 @@
    "version": "2.4.0",
    "license": "Unicode-3.0",
    "repository": "https://github.com/unicode-org/icu4x",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -1624,6 +2368,10 @@
    "version": "1.0.1",
    "license": "MIT/Apache-2.0",
    "repository": "https://github.com/TedDriggs/ident_case",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -1636,6 +2384,10 @@
    "version": "1.1.0",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/servo/rust-url/",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1652,6 +2404,10 @@
    "version": "1.2.2",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/hsivonen/idna_adapter",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1668,6 +2424,10 @@
    "version": "1.9.3",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/bluss/indexmap",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1684,6 +2444,10 @@
    "version": "2.14.2",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/indexmap-rs/indexmap",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1700,6 +2464,10 @@
    "version": "0.22.0",
    "license": "MIT",
    "repository": "https://github.com/bojand/infer",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -1712,6 +2480,10 @@
    "version": "2.12.2",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/krisprice/ipnet",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1728,6 +2500,10 @@
    "version": "1.0.19",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/dtolnay/itoa",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1744,6 +2520,10 @@
    "version": "0.2.46",
    "license": "Unlicense OR MIT",
    "repository": "https://github.com/BurntSushi/jiff",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "COPYING",
@@ -1764,6 +2544,10 @@
    "version": "1.0.2",
    "license": "Unlicense OR MIT",
    "repository": "https://github.com/BurntSushi/jiff",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "COPYING",
@@ -1784,6 +2568,10 @@
    "version": "0.1.8",
    "license": "Unlicense OR MIT",
    "repository": "https://github.com/BurntSushi/jiff",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "COPYING",
@@ -1804,6 +2592,10 @@
    "version": "1.0.1",
    "license": "Unlicense OR MIT",
    "repository": "https://github.com/BurntSushi/jiff",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "COPYING",
@@ -1824,6 +2616,9 @@
    "version": "0.1.10",
    "license": "Unlicense OR MIT",
    "repository": "https://github.com/BurntSushi/jiff",
+   "platforms": [
+    "windows"
+   ],
    "texts": [
     {
      "file": "COPYING",
@@ -1844,6 +2639,9 @@
    "version": "1.0.0",
    "license": "Unlicense OR MIT",
    "repository": "https://github.com/BurntSushi/jiff",
+   "platforms": [
+    "windows"
+   ],
    "texts": [
     {
      "file": "COPYING",
@@ -1864,6 +2662,9 @@
    "version": "0.1.3",
    "license": "Unlicense OR MIT",
    "repository": "https://github.com/BurntSushi/jiff",
+   "platforms": [
+    "windows"
+   ],
    "texts": [
     {
      "file": "COPYING",
@@ -1884,6 +2685,9 @@
    "version": "1.0.0",
    "license": "Unlicense OR MIT",
    "repository": "https://github.com/BurntSushi/jiff",
+   "platforms": [
+    "windows"
+   ],
    "texts": [
     {
      "file": "COPYING",
@@ -1904,6 +2708,10 @@
    "version": "4.2.0",
    "license": "MIT/Apache-2.0",
    "repository": "https://github.com/idubrov/json-patch",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1920,6 +2728,10 @@
    "version": "0.7.1",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/chanced/jsonptr",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1936,6 +2748,10 @@
    "version": "0.8.3",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rust-windowing/keyboard-types",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1952,6 +2768,10 @@
    "version": "3.6.3",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/hwchen/keyring-rs.git",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1968,6 +2788,10 @@
    "version": "0.2.191",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rust-lang/libc",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -1984,6 +2808,10 @@
    "version": "0.40.0",
    "license": "MIT",
    "repository": "https://github.com/rusqlite/rusqlite",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -1996,6 +2824,10 @@
    "version": "0.8.3",
    "license": "Unicode-3.0",
    "repository": "https://github.com/unicode-org/icu4x",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -2008,6 +2840,10 @@
    "version": "1.0.1",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/LukasKalbertodt/litrs",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -2024,6 +2860,10 @@
    "version": "0.4.14",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/Amanieu/parking_lot",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -2040,6 +2880,10 @@
    "version": "0.4.35",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rust-lang/log",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -2056,6 +2900,10 @@
    "version": "0.1.3",
    "license": "MIT OR Apache-2.0 OR Zlib",
    "repository": "https://github.com/Ralith/lru-slab",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -2072,10 +2920,35 @@
    ]
   },
   {
+   "name": "mac-notification-sys",
+   "version": "0.6.15",
+   "license": "MIT/Apache-2.0",
+   "repository": "https://github.com/h4llow3En/mac-notification-sys",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-Apache",
+     "id": "b40930bbcf80744c",
+     "source": "https://github.com/h4llow3En/mac-notification-sys/blob/v0.6.15/LICENSE-Apache"
+    },
+    {
+     "file": "LICENSE-MIT",
+     "id": "1299b4d9d15e9d67",
+     "source": "https://github.com/h4llow3En/mac-notification-sys/blob/v0.6.15/LICENSE-MIT"
+    }
+   ]
+  },
+  {
    "name": "markup5ever",
    "version": "0.39.0",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/servo/html5ever",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -2092,6 +2965,10 @@
    "version": "0.40.0",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/servo/html5ever",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -2108,6 +2985,10 @@
    "version": "2.8.3",
    "license": "Unlicense OR MIT",
    "repository": "https://github.com/BurntSushi/memchr",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "COPYING",
@@ -2128,6 +3009,10 @@
    "version": "0.3.18",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/hyperium/mime",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -2144,6 +3029,10 @@
    "version": "0.3.0",
    "license": "MIT",
    "repository": "https://github.com/jedisct1/rust-minisign-verify",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -2156,6 +3045,10 @@
    "version": "0.8.9",
    "license": "MIT OR Zlib OR Apache-2.0",
    "repository": "https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -2180,6 +3073,10 @@
    "version": "0.9.1",
    "license": "MIT OR Zlib OR Apache-2.0",
    "repository": "https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -2204,6 +3101,10 @@
    "version": "1.2.5",
    "license": "MIT",
    "repository": "https://github.com/tokio-rs/mio",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -2216,6 +3117,10 @@
    "version": "0.20.0",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/tauri-apps/muda",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -2236,6 +3141,10 @@
    "version": "1.0.6",
    "license": "MIT",
    "repository": "https://github.com/mbrubeck/rust-debug-unreachable",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-MIT",
@@ -2244,10 +3153,29 @@
    ]
   },
   {
+   "name": "nix",
+   "version": "0.31.4",
+   "license": "MIT",
+   "repository": "https://github.com/nix-rust/nix",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE",
+     "id": "66e3ee1fa7f909ad"
+    }
+   ]
+  },
+  {
    "name": "notify-rust",
    "version": "4.19.0",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/hoodie/notify-rust",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-Apache",
@@ -2264,6 +3192,10 @@
    "version": "0.2.2",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/jhpratt/num-conv",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-Apache",
@@ -2280,6 +3212,10 @@
    "version": "0.2.19",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rust-num/num-traits",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -2292,10 +3228,322 @@
    ]
   },
   {
+   "name": "objc2",
+   "version": "0.6.5",
+   "license": "MIT",
+   "repository": "https://github.com/madsmtm/objc2",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-MIT.txt",
+     "id": "f6a2e783669a0dd7",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-MIT.txt"
+    }
+   ]
+  },
+  {
+   "name": "objc2-app-kit",
+   "version": "0.3.2",
+   "license": "Zlib OR Apache-2.0 OR MIT",
+   "repository": "https://github.com/madsmtm/objc2",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE.txt",
+     "id": "0c9a5f6fe28e2701",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-APACHE.txt"
+    },
+    {
+     "file": "LICENSE-MIT.txt",
+     "id": "f6a2e783669a0dd7",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-MIT.txt"
+    },
+    {
+     "file": "LICENSE-ZLIB.txt",
+     "id": "fced3e7fedc235fa",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-ZLIB.txt"
+    }
+   ]
+  },
+  {
+   "name": "objc2-core-foundation",
+   "version": "0.3.2",
+   "license": "Zlib OR Apache-2.0 OR MIT",
+   "repository": "https://github.com/madsmtm/objc2",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE.txt",
+     "id": "0c9a5f6fe28e2701",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-APACHE.txt"
+    },
+    {
+     "file": "LICENSE-MIT.txt",
+     "id": "f6a2e783669a0dd7",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-MIT.txt"
+    },
+    {
+     "file": "LICENSE-ZLIB.txt",
+     "id": "fced3e7fedc235fa",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-ZLIB.txt"
+    }
+   ]
+  },
+  {
+   "name": "objc2-core-graphics",
+   "version": "0.3.2",
+   "license": "Zlib OR Apache-2.0 OR MIT",
+   "repository": "https://github.com/madsmtm/objc2",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE.txt",
+     "id": "0c9a5f6fe28e2701",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-APACHE.txt"
+    },
+    {
+     "file": "LICENSE-MIT.txt",
+     "id": "f6a2e783669a0dd7",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-MIT.txt"
+    },
+    {
+     "file": "LICENSE-ZLIB.txt",
+     "id": "fced3e7fedc235fa",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-ZLIB.txt"
+    }
+   ]
+  },
+  {
+   "name": "objc2-encode",
+   "version": "4.1.0",
+   "license": "MIT",
+   "repository": "https://github.com/madsmtm/objc2",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-MIT.txt",
+     "id": "f6a2e783669a0dd7",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-MIT.txt"
+    }
+   ]
+  },
+  {
+   "name": "objc2-exception-helper",
+   "version": "0.1.1",
+   "license": "Zlib OR Apache-2.0 OR MIT",
+   "repository": "https://github.com/madsmtm/objc2",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE.txt",
+     "id": "0c9a5f6fe28e2701",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-APACHE.txt"
+    },
+    {
+     "file": "LICENSE-MIT.txt",
+     "id": "f6a2e783669a0dd7",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-MIT.txt"
+    },
+    {
+     "file": "LICENSE-ZLIB.txt",
+     "id": "fced3e7fedc235fa",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-ZLIB.txt"
+    }
+   ]
+  },
+  {
+   "name": "objc2-foundation",
+   "version": "0.3.2",
+   "license": "MIT",
+   "repository": "https://github.com/madsmtm/objc2",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-MIT.txt",
+     "id": "f6a2e783669a0dd7",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-MIT.txt"
+    }
+   ]
+  },
+  {
+   "name": "objc2-io-surface",
+   "version": "0.3.2",
+   "license": "Zlib OR Apache-2.0 OR MIT",
+   "repository": "https://github.com/madsmtm/objc2",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE.txt",
+     "id": "0c9a5f6fe28e2701",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-APACHE.txt"
+    },
+    {
+     "file": "LICENSE-MIT.txt",
+     "id": "f6a2e783669a0dd7",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-MIT.txt"
+    },
+    {
+     "file": "LICENSE-ZLIB.txt",
+     "id": "fced3e7fedc235fa",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-ZLIB.txt"
+    }
+   ]
+  },
+  {
+   "name": "objc2-osa-kit",
+   "version": "0.3.2",
+   "license": "Zlib OR Apache-2.0 OR MIT",
+   "repository": "https://github.com/madsmtm/objc2",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE.txt",
+     "id": "0c9a5f6fe28e2701",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-APACHE.txt"
+    },
+    {
+     "file": "LICENSE-MIT.txt",
+     "id": "f6a2e783669a0dd7",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-MIT.txt"
+    },
+    {
+     "file": "LICENSE-ZLIB.txt",
+     "id": "fced3e7fedc235fa",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-ZLIB.txt"
+    }
+   ]
+  },
+  {
+   "name": "objc2-quartz-core",
+   "version": "0.3.2",
+   "license": "Zlib OR Apache-2.0 OR MIT",
+   "repository": "https://github.com/madsmtm/objc2",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE.txt",
+     "id": "0c9a5f6fe28e2701",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-APACHE.txt"
+    },
+    {
+     "file": "LICENSE-MIT.txt",
+     "id": "f6a2e783669a0dd7",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-MIT.txt"
+    },
+    {
+     "file": "LICENSE-ZLIB.txt",
+     "id": "fced3e7fedc235fa",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-ZLIB.txt"
+    }
+   ]
+  },
+  {
+   "name": "objc2-security",
+   "version": "0.3.2",
+   "license": "Zlib OR Apache-2.0 OR MIT",
+   "repository": "https://github.com/madsmtm/objc2",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE.txt",
+     "id": "0c9a5f6fe28e2701",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-APACHE.txt"
+    },
+    {
+     "file": "LICENSE-MIT.txt",
+     "id": "f6a2e783669a0dd7",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-MIT.txt"
+    },
+    {
+     "file": "LICENSE-ZLIB.txt",
+     "id": "fced3e7fedc235fa",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-ZLIB.txt"
+    }
+   ]
+  },
+  {
+   "name": "objc2-service-management",
+   "version": "0.3.2",
+   "license": "Zlib OR Apache-2.0 OR MIT",
+   "repository": "https://github.com/madsmtm/objc2",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE.txt",
+     "id": "0c9a5f6fe28e2701",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-APACHE.txt"
+    },
+    {
+     "file": "LICENSE-MIT.txt",
+     "id": "f6a2e783669a0dd7",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-MIT.txt"
+    },
+    {
+     "file": "LICENSE-ZLIB.txt",
+     "id": "fced3e7fedc235fa",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-ZLIB.txt"
+    }
+   ]
+  },
+  {
+   "name": "objc2-web-kit",
+   "version": "0.3.2",
+   "license": "Zlib OR Apache-2.0 OR MIT",
+   "repository": "https://github.com/madsmtm/objc2",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE.txt",
+     "id": "0c9a5f6fe28e2701",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-APACHE.txt"
+    },
+    {
+     "file": "LICENSE-MIT.txt",
+     "id": "f6a2e783669a0dd7",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-MIT.txt"
+    },
+    {
+     "file": "LICENSE-ZLIB.txt",
+     "id": "fced3e7fedc235fa",
+     "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-ZLIB.txt"
+    }
+   ]
+  },
+  {
    "name": "once_cell",
    "version": "1.21.4",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/matklad/once_cell",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -2312,6 +3560,10 @@
    "version": "5.4.5",
    "license": "MIT",
    "repository": "https://github.com/Byron/open-rs",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE.md",
@@ -2324,6 +3576,10 @@
    "version": "0.2.0",
    "license": "MPL-2.0",
    "repository": "https://github.com/soc/option-ext.git",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE.txt",
@@ -2336,6 +3592,10 @@
    "version": "3.15.0",
    "license": "MIT",
    "repository": "https://github.com/stanislav-tkach/os_info",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -2344,10 +3604,33 @@
    ]
   },
   {
+   "name": "osakit",
+   "version": "0.3.1",
+   "license": "MIT OR Apache-2.0",
+   "repository": "https://github.com/mdevils/rust-osakit",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE",
+     "id": "62c7a1e35f564068"
+    },
+    {
+     "file": "LICENSE-MIT",
+     "id": "5fb3573f6e7198ff"
+    }
+   ]
+  },
+  {
    "name": "parking_lot",
    "version": "0.12.5",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/Amanieu/parking_lot",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -2364,6 +3647,10 @@
    "version": "0.9.12",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/Amanieu/parking_lot",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -2380,6 +3667,10 @@
    "version": "2.3.2",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/servo/rust-url/",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -2396,6 +3687,10 @@
    "version": "0.13.1",
    "license": "MIT",
    "repository": "https://github.com/rust-phf/rust-phf",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -2408,6 +3703,10 @@
    "version": "0.14.0",
    "license": "MIT",
    "repository": "https://github.com/rust-phf/rust-phf",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -2420,6 +3719,10 @@
    "version": "0.13.1",
    "license": "MIT",
    "repository": "https://github.com/rust-phf/rust-phf",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -2432,6 +3735,10 @@
    "version": "0.14.0",
    "license": "MIT",
    "repository": "https://github.com/rust-phf/rust-phf",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -2444,6 +3751,10 @@
    "version": "0.13.1",
    "license": "MIT",
    "repository": "https://github.com/rust-phf/rust-phf",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -2456,6 +3767,10 @@
    "version": "0.14.0",
    "license": "MIT",
    "repository": "https://github.com/rust-phf/rust-phf",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -2468,6 +3783,10 @@
    "version": "0.13.1",
    "license": "MIT",
    "repository": "https://github.com/rust-phf/rust-phf",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -2480,6 +3799,10 @@
    "version": "0.14.0",
    "license": "MIT",
    "repository": "https://github.com/rust-phf/rust-phf",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -2492,6 +3815,10 @@
    "version": "0.2.18",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/taiki-e/pin-project-lite",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -2508,6 +3835,10 @@
    "version": "1.10.4",
    "license": "MIT",
    "repository": "https://github.com/ebarnard/rust-plist/",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENCE",
@@ -2520,6 +3851,10 @@
    "version": "0.18.1",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/image-rs/image-png",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -2536,6 +3871,10 @@
    "version": "0.1.6",
    "license": "Unicode-3.0",
    "repository": "https://github.com/unicode-org/icu4x",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -2548,6 +3887,10 @@
    "version": "0.2.1",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/jhpratt/powerfmt",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-Apache",
@@ -2564,6 +3907,10 @@
    "version": "0.1.1",
    "license": "MIT",
    "repository": "https://github.com/emilio/precomputed-hash",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -2576,6 +3923,10 @@
    "version": "1.0.107",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/dtolnay/proc-macro2",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -2592,6 +3943,10 @@
    "version": "2.0.11",
    "license": "MIT/Apache-2.0",
    "repository": "https://github.com/addr-rs/psl-types",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -2608,6 +3963,10 @@
    "version": "2.3.0",
    "license": "MIT/Apache-2.0",
    "repository": "https://github.com/rushmorem/publicsuffix",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -2624,6 +3983,10 @@
    "version": "0.42.0",
    "license": "MIT",
    "repository": "https://github.com/tafia/quick-xml",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-MIT.md",
@@ -2636,6 +3999,10 @@
    "version": "0.11.12",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/quinn-rs/quinn",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -2652,6 +4019,10 @@
    "version": "0.11.19",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/quinn-rs/quinn",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -2668,6 +4039,10 @@
    "version": "0.5.16",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/quinn-rs/quinn",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -2684,6 +4059,10 @@
    "version": "1.0.47",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/dtolnay/quote",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -2700,6 +4079,10 @@
    "version": "0.10.4",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rust-random/rand",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "COPYRIGHT",
@@ -2720,6 +4103,10 @@
    "version": "0.10.1",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rust-random/rand_core",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "COPYRIGHT",
@@ -2740,6 +4127,10 @@
    "version": "0.10.3",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rust-random/rngs",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "COPYRIGHT",
@@ -2760,6 +4151,10 @@
    "version": "0.6.2",
    "license": "MIT OR Apache-2.0 OR Zlib",
    "repository": "https://github.com/rust-windowing/raw-window-handle",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE.md",
@@ -2780,6 +4175,10 @@
    "version": "1.0.27",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/dtolnay/ref-cast",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -2796,6 +4195,10 @@
    "version": "1.0.27",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/dtolnay/ref-cast",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -2812,6 +4215,10 @@
    "version": "1.13.2",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rust-lang/regex",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -2828,6 +4235,10 @@
    "version": "0.4.19",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rust-lang/regex",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -2844,6 +4255,10 @@
    "version": "0.8.12",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rust-lang/regex",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -2860,6 +4275,10 @@
    "version": "0.12.28",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/seanmonstar/reqwest",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -2876,6 +4295,10 @@
    "version": "0.13.5",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/seanmonstar/reqwest",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -2892,6 +4315,10 @@
    "version": "0.17.2",
    "license": "MIT",
    "repository": "https://github.com/PolyMeilex/rfd",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -2904,6 +4331,10 @@
    "version": "0.17.14",
    "license": "Apache-2.0 AND ISC",
    "repository": "https://github.com/briansmith/ring",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -2924,6 +4355,10 @@
    "version": "0.43.0",
    "license": "MIT",
    "repository": "https://github.com/rusqlite/rusqlite",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -2936,6 +4371,10 @@
    "version": "0.103.0",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/jmcnamara/rust_xlsxwriter",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE_Apache2.0",
@@ -2952,6 +4391,10 @@
    "version": "2.1.3",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/rust-lang/rustc-hash",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -2964,10 +4407,41 @@
    ]
   },
   {
+   "name": "rustix",
+   "version": "1.1.6",
+   "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+   "repository": "https://github.com/bytecodealliance/rustix",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "COPYRIGHT",
+     "id": "377c2e7c53250cc5"
+    },
+    {
+     "file": "LICENSE-APACHE",
+     "id": "a60eea8175145316"
+    },
+    {
+     "file": "LICENSE-Apache-2.0_WITH_LLVM-exception",
+     "id": "a6c48161a09acc75"
+    },
+    {
+     "file": "LICENSE-MIT",
+     "id": "23f18e03dc49df91"
+    }
+   ]
+  },
+  {
    "name": "rustls",
    "version": "0.23.46",
    "license": "Apache-2.0 OR ISC OR MIT",
    "repository": "https://github.com/rustls/rustls",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -2988,6 +4462,10 @@
    "version": "1.16.0",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rustls/pki-types",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -3004,6 +4482,10 @@
    "version": "0.7.1",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rustls/rustls-platform-verifier",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -3020,6 +4502,10 @@
    "version": "0.103.17",
    "license": "ISC",
    "repository": "https://github.com/rustls/webpki",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -3032,6 +4518,10 @@
    "version": "1.0.23",
    "license": "Apache-2.0 OR BSL-1.0",
    "repository": "https://github.com/dtolnay/ryu",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -3048,6 +4538,10 @@
    "version": "1.0.6",
    "license": "Unlicense/MIT",
    "repository": "https://github.com/BurntSushi/same-file",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "COPYING",
@@ -3068,6 +4562,10 @@
    "version": "0.8.22",
    "license": "MIT",
    "repository": "https://github.com/GREsau/schemars",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -3080,6 +4578,10 @@
    "version": "0.9.0",
    "license": "MIT",
    "repository": "https://github.com/GREsau/schemars",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -3092,6 +4594,10 @@
    "version": "1.2.3",
    "license": "MIT",
    "repository": "https://github.com/GREsau/schemars",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -3104,6 +4610,10 @@
    "version": "0.8.22",
    "license": "MIT",
    "repository": "https://github.com/GREsau/schemars",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -3116,6 +4626,10 @@
    "version": "1.2.0",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/bluss/scopeguard",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -3132,6 +4646,10 @@
    "version": "0.29.0",
    "license": "ISC",
    "repository": "https://github.com/rust-scraper/scraper",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -3140,10 +4658,52 @@
    ]
   },
   {
+   "name": "security-framework",
+   "version": "3.7.0",
+   "license": "MIT OR Apache-2.0",
+   "repository": "https://github.com/kornelski/rust-security-framework",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE",
+     "id": "a60eea8175145316"
+    },
+    {
+     "file": "LICENSE-MIT",
+     "id": "91e934255ba3b2f2"
+    }
+   ]
+  },
+  {
+   "name": "security-framework-sys",
+   "version": "2.17.0",
+   "license": "MIT OR Apache-2.0",
+   "repository": "https://github.com/kornelski/rust-security-framework",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE",
+     "id": "a60eea8175145316"
+    },
+    {
+     "file": "LICENSE-MIT",
+     "id": "91e934255ba3b2f2"
+    }
+   ]
+  },
+  {
    "name": "selectors",
    "version": "0.38.0",
    "license": "MPL-2.0",
    "repository": "https://github.com/servo/stylo",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -3157,6 +4717,10 @@
    "version": "0.41.0",
    "license": "MPL-2.0",
    "repository": "https://github.com/servo/stylo",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -3170,6 +4734,10 @@
    "version": "1.0.28",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/dtolnay/semver",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -3186,6 +4754,10 @@
    "version": "1.0.229",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/serde-rs/serde",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -3202,6 +4774,10 @@
    "version": "0.1.9",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/dtolnay/serde-untagged",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -3218,6 +4794,10 @@
    "version": "1.0.229",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/serde-rs/serde",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -3234,6 +4814,10 @@
    "version": "1.0.229",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/serde-rs/serde",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -3250,6 +4834,10 @@
    "version": "0.29.1",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/serde-rs/serde",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -3266,6 +4854,10 @@
    "version": "1.0.154",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/serde-rs/json",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -3282,6 +4874,10 @@
    "version": "0.1.21",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/dtolnay/serde-repr",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -3298,6 +4894,10 @@
    "version": "1.1.3",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/toml-rs/toml",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -3314,6 +4914,10 @@
    "version": "0.7.1",
    "license": "MIT/Apache-2.0",
    "repository": "https://github.com/nox/serde_urlencoded",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -3330,6 +4934,10 @@
    "version": "3.25.0",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/jonasbb/serde_with/",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -3346,6 +4954,10 @@
    "version": "3.25.0",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/jonasbb/serde_with/",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -3362,6 +4974,10 @@
    "version": "0.1.2",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/chippers/serialize-to-javascript",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -3378,6 +4994,10 @@
    "version": "0.1.2",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/chippers/serialize-to-javascript",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -3394,6 +5014,10 @@
    "version": "0.4.3",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/servo/stylo",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -3410,6 +5034,10 @@
    "version": "0.5.0",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/servo/stylo",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -3426,6 +5054,10 @@
    "version": "0.11.1",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/RustCrypto/hashes",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -3442,6 +5074,10 @@
    "version": "0.3.10",
    "license": "MIT",
    "repository": "https://github.com/mcountryman/simd-adler32",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE.md",
@@ -3454,6 +5090,10 @@
    "version": "1.0.4",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/jedisct1/rust-siphash",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "COPYING",
@@ -3474,6 +5114,10 @@
    "version": "0.4.12",
    "license": "MIT",
    "repository": "https://github.com/tokio-rs/slab",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -3486,6 +5130,10 @@
    "version": "1.16.6",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/smallvec/smallvec",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -3498,10 +5146,29 @@
    ]
   },
   {
+   "name": "smappservice-rs",
+   "version": "0.1.3",
+   "license": "MIT",
+   "repository": "https://github.com/gethopp/smappservice-rs",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE.md",
+     "id": "85343f47bd94b5f3"
+    }
+   ]
+  },
+  {
    "name": "socket2",
    "version": "0.6.5",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rust-lang/socket2",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -3518,6 +5185,9 @@
    "version": "0.4.8",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rust-windowing/softbuffer",
+   "platforms": [
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -3534,6 +5204,10 @@
    "version": "1.2.1",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/storyyeller/stable_deref_trait",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -3550,6 +5224,10 @@
    "version": "0.11.0",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/servo/string-cache",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -3566,6 +5244,10 @@
    "version": "0.9.0",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/servo/string-cache",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -3582,6 +5264,10 @@
    "version": "0.11.1",
    "license": "MIT",
    "repository": "https://github.com/rapidfuzz/strsim-rs",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -3594,6 +5280,10 @@
    "version": "2.6.1",
    "license": "BSD-3-Clause",
    "repository": "https://github.com/dalek-cryptography/subtle",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -3602,10 +5292,33 @@
    ]
   },
   {
+   "name": "swift-rs",
+   "version": "1.0.9",
+   "license": "MIT OR Apache-2.0",
+   "repository": "https://github.com/Brendonovich/swift-rs",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE",
+     "id": "ccaab19135434ffa"
+    },
+    {
+     "file": "LICENSE-MIT",
+     "id": "f3c3e9f4febe81ff"
+    }
+   ]
+  },
+  {
    "name": "syn",
    "version": "2.0.119",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/dtolnay/syn",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -3622,6 +5335,10 @@
    "version": "3.0.10",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/dtolnay/syn",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -3638,6 +5355,10 @@
    "version": "1.0.2",
    "license": "Apache-2.0",
    "repository": "https://github.com/Actyx/sync_wrapper",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -3650,6 +5371,10 @@
    "version": "0.14.0",
    "license": "MIT",
    "repository": "https://github.com/mystor/synstructure",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -3662,6 +5387,10 @@
    "version": "0.3.2",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/1Password/sys-locale",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -3674,10 +5403,52 @@
    ]
   },
   {
+   "name": "system-configuration",
+   "version": "0.7.0",
+   "license": "MIT OR Apache-2.0",
+   "repository": "https://github.com/mullvad/system-configuration-rs",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE",
+     "id": "a60eea8175145316"
+    },
+    {
+     "file": "LICENSE-MIT",
+     "id": "000cbb5bea6f2182"
+    }
+   ]
+  },
+  {
+   "name": "system-configuration-sys",
+   "version": "0.6.0",
+   "license": "MIT OR Apache-2.0",
+   "repository": "https://github.com/mullvad/system-configuration-rs",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE",
+     "id": "a60eea8175145316"
+    },
+    {
+     "file": "LICENSE-MIT",
+     "id": "000cbb5bea6f2182"
+    }
+   ]
+  },
+  {
    "name": "tao",
    "version": "0.37.3",
    "license": "Apache-2.0",
    "repository": "https://github.com/tauri-apps/tao",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -3690,10 +5461,33 @@
    ]
   },
   {
+   "name": "tar",
+   "version": "0.4.46",
+   "license": "MIT OR Apache-2.0",
+   "repository": "https://github.com/composefs/tar-rs",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE",
+     "id": "a60eea8175145316"
+    },
+    {
+     "file": "LICENSE-MIT",
+     "id": "8ca6b96cea9e67c6"
+    }
+   ]
+  },
+  {
    "name": "tauri",
    "version": "2.12.7",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/tauri-apps/tauri",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE-2.0",
@@ -3710,6 +5504,10 @@
    "version": "2.7.6",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/tauri-apps/tauri",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE-2.0",
@@ -3726,6 +5524,10 @@
    "version": "2.7.6",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/tauri-apps/tauri",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE-2.0",
@@ -3742,6 +5544,10 @@
    "version": "2.7.0",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/tauri-apps/plugins-workspace",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE.spdx",
@@ -3762,6 +5568,10 @@
    "version": "2.8.4",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/tauri-apps/plugins-workspace",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE.spdx",
@@ -3782,6 +5592,10 @@
    "version": "2.7.1",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/tauri-apps/plugins-workspace",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE.spdx",
@@ -3802,6 +5616,10 @@
    "version": "2.8.1",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/tauri-apps/plugins-workspace",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE.spdx",
@@ -3822,6 +5640,10 @@
    "version": "2.7.3",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/tauri-apps/plugins-workspace",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE.spdx",
@@ -3842,6 +5664,10 @@
    "version": "2.4.0",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/tauri-apps/plugins-workspace",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE.spdx",
@@ -3862,6 +5688,10 @@
    "version": "2.5.5",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/tauri-apps/plugins-workspace",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE.spdx",
@@ -3882,6 +5712,10 @@
    "version": "2.14.1",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/tauri-apps/plugins-workspace",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE.spdx",
@@ -3902,6 +5736,10 @@
    "version": "2.12.4",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/tauri-apps/tauri",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE-2.0",
@@ -3918,6 +5756,10 @@
    "version": "2.12.5",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/tauri-apps/tauri",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE-2.0",
@@ -3934,6 +5776,10 @@
    "version": "2.10.4",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/tauri-apps/tauri",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE-2.0",
@@ -3950,6 +5796,9 @@
    "version": "0.8.1",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/tauri-apps/winrt-notification",
+   "platforms": [
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE.spdx",
@@ -3970,6 +5819,10 @@
    "version": "3.27.0",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/Stebalien/tempfile",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -3986,6 +5839,10 @@
    "version": "0.5.1",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/servo/html5ever",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -4002,6 +5859,10 @@
    "version": "2.0.21",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/dtolnay/thiserror",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -4018,6 +5879,10 @@
    "version": "2.0.21",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/dtolnay/thiserror",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -4034,6 +5899,10 @@
    "version": "0.3.55",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/time-rs/time",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-Apache",
@@ -4050,6 +5919,10 @@
    "version": "0.1.9",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/time-rs/time",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-Apache",
@@ -4066,6 +5939,10 @@
    "version": "0.2.32",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/time-rs/time",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-Apache",
@@ -4082,6 +5959,10 @@
    "version": "0.8.5",
    "license": "Unicode-3.0",
    "repository": "https://github.com/unicode-org/icu4x",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -4094,6 +5975,10 @@
    "version": "1.13.3",
    "license": "Zlib OR Apache-2.0 OR MIT",
    "repository": "https://github.com/Lokathor/tinyvec",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE.md",
@@ -4114,6 +5999,10 @@
    "version": "1.54.1",
    "license": "MIT",
    "repository": "https://github.com/tokio-rs/tokio",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -4126,6 +6015,10 @@
    "version": "2.7.2",
    "license": "MIT",
    "repository": "https://github.com/tokio-rs/tokio",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -4138,6 +6031,10 @@
    "version": "0.26.6",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/rustls/tokio-rustls",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -4154,6 +6051,10 @@
    "version": "0.7.20",
    "license": "MIT",
    "repository": "https://github.com/tokio-rs/tokio",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -4166,6 +6067,10 @@
    "version": "1.2.2+spec-1.1.0",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/toml-rs/toml",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -4182,6 +6087,10 @@
    "version": "1.1.3+spec-1.1.0",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/toml-rs/toml",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -4198,6 +6107,10 @@
    "version": "1.1.6+spec-1.1.0",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/toml-rs/toml",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -4214,6 +6127,10 @@
    "version": "1.2.0+spec-1.1.0",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/toml-rs/toml",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -4230,6 +6147,10 @@
    "version": "0.5.3",
    "license": "MIT",
    "repository": "https://github.com/tower-rs/tower",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -4242,6 +6163,10 @@
    "version": "0.6.11",
    "license": "MIT",
    "repository": "https://github.com/tower-rs/tower-http",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -4254,6 +6179,10 @@
    "version": "0.3.3",
    "license": "MIT",
    "repository": "https://github.com/tower-rs/tower",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -4266,6 +6195,10 @@
    "version": "0.3.3",
    "license": "MIT",
    "repository": "https://github.com/tower-rs/tower",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -4278,6 +6211,10 @@
    "version": "0.1.44",
    "license": "MIT",
    "repository": "https://github.com/tokio-rs/tracing",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -4290,6 +6227,10 @@
    "version": "0.1.31",
    "license": "MIT",
    "repository": "https://github.com/tokio-rs/tracing",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -4302,6 +6243,10 @@
    "version": "0.1.36",
    "license": "MIT",
    "repository": "https://github.com/tokio-rs/tracing",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -4314,6 +6259,10 @@
    "version": "0.25.1",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/tauri-apps/tray-icon",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -4334,6 +6283,10 @@
    "version": "0.2.5",
    "license": "MIT",
    "repository": "https://github.com/seanmonstar/try-lock",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -4346,6 +6299,10 @@
    "version": "0.13.0",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/chipsenkbeil/typed-path",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -4362,6 +6319,10 @@
    "version": "1.0.3",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/dtolnay/typeid",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -4378,6 +6339,10 @@
    "version": "1.20.1",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/paholg/typenum",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -4398,6 +6363,10 @@
    "version": "1.0.27",
    "license": "(MIT OR Apache-2.0) AND Unicode-3.0",
    "repository": "https://github.com/dtolnay/unicode-ident",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -4418,6 +6387,9 @@
    "version": "1.13.3",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/unicode-rs/unicode-segmentation",
+   "platforms": [
+    "windows"
+   ],
    "texts": [
     {
      "file": "COPYRIGHT",
@@ -4438,6 +6410,10 @@
    "version": "0.2.3",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/unicode-rs/unicode-width",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "COPYRIGHT",
@@ -4458,6 +6434,10 @@
    "version": "0.9.0",
    "license": "ISC",
    "repository": "https://github.com/briansmith/untrusted",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE.txt",
@@ -4470,6 +6450,10 @@
    "version": "2.5.9",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/servo/rust-url",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -4486,6 +6470,10 @@
    "version": "0.6.0",
    "license": "MIT",
    "repository": "https://github.com/denoland/rust-urlpattern",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -4498,6 +6486,10 @@
    "version": "1.1.0",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/hsivonen/utf8_iter",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "COPYRIGHT",
@@ -4518,6 +6510,10 @@
    "version": "1.0.0",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/hsivonen/utf_types",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "COPYRIGHT",
@@ -4538,6 +6534,10 @@
    "version": "1.29.3",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/uuid-rs/uuid",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -4554,6 +6554,10 @@
    "version": "2.5.1",
    "license": "Unlicense/MIT",
    "repository": "https://github.com/BurntSushi/walkdir",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "COPYING",
@@ -4574,6 +6578,10 @@
    "version": "0.3.2",
    "license": "MIT",
    "repository": "https://github.com/seanmonstar/want",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -4586,6 +6594,10 @@
    "version": "1.1.0",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/daxpedda/web-time",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -4602,6 +6614,10 @@
    "version": "0.2.6",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/servo/html5ever",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -4618,6 +6634,10 @@
    "version": "0.3.0",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/servo/html5ever",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -4634,6 +6654,10 @@
    "version": "1.0.12",
    "license": "CDLA-Permissive-2.0",
    "repository": "https://github.com/rustls/webpki-roots",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -4646,45 +6670,57 @@
    "version": "0.39.1",
    "license": "MIT",
    "repository": "https://github.com/wravery/webview2-rs",
+   "platforms": [
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
-     "id": "0dcf41516e608bbc"
+     "id": "0dcf41516e608bbc",
+     "source": "https://github.com/wravery/webview2-rs/blob/main/LICENSE"
     }
-   ],
-   "textSource": "https://github.com/wravery/webview2-rs/blob/main/LICENSE"
+   ]
   },
   {
    "name": "webview2-com-macros",
    "version": "0.8.1",
    "license": "MIT",
    "repository": "https://github.com/wravery/webview2-rs",
+   "platforms": [
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
-     "id": "0dcf41516e608bbc"
+     "id": "0dcf41516e608bbc",
+     "source": "https://github.com/wravery/webview2-rs/blob/main/LICENSE"
     }
-   ],
-   "textSource": "https://github.com/wravery/webview2-rs/blob/main/LICENSE"
+   ]
   },
   {
    "name": "webview2-com-sys",
    "version": "0.39.1",
    "license": "MIT",
    "repository": "https://github.com/wravery/webview2-rs",
+   "platforms": [
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
-     "id": "0dcf41516e608bbc"
+     "id": "0dcf41516e608bbc",
+     "source": "https://github.com/wravery/webview2-rs/blob/main/LICENSE"
     }
-   ],
-   "textSource": "https://github.com/wravery/webview2-rs/blob/main/LICENSE"
+   ]
   },
   {
    "name": "winapi-util",
    "version": "0.1.11",
    "license": "Unlicense OR MIT",
    "repository": "https://github.com/BurntSushi/winapi-util",
+   "platforms": [
+    "windows"
+   ],
    "texts": [
     {
      "file": "COPYING",
@@ -4705,6 +6741,10 @@
    "version": "0.8.1",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/tauri-apps/tauri-plugin-vibrancy",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -4725,6 +6765,9 @@
    "version": "0.62.2",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/microsoft/windows-rs",
+   "platforms": [
+    "windows"
+   ],
    "texts": [
     {
      "file": "license-apache-2.0",
@@ -4741,6 +6784,9 @@
    "version": "0.3.2",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/microsoft/windows-rs",
+   "platforms": [
+    "windows"
+   ],
    "texts": [
     {
      "file": "license-apache-2.0",
@@ -4757,6 +6803,9 @@
    "version": "0.62.2",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/microsoft/windows-rs",
+   "platforms": [
+    "windows"
+   ],
    "texts": [
     {
      "file": "license-apache-2.0",
@@ -4773,6 +6822,9 @@
    "version": "0.3.2",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/microsoft/windows-rs",
+   "platforms": [
+    "windows"
+   ],
    "texts": [
     {
      "file": "license-apache-2.0",
@@ -4789,6 +6841,9 @@
    "version": "0.60.2",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/microsoft/windows-rs",
+   "platforms": [
+    "windows"
+   ],
    "texts": [
     {
      "file": "license-apache-2.0",
@@ -4805,6 +6860,9 @@
    "version": "0.59.3",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/microsoft/windows-rs",
+   "platforms": [
+    "windows"
+   ],
    "texts": [
     {
      "file": "license-apache-2.0",
@@ -4821,6 +6879,9 @@
    "version": "0.2.1",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/microsoft/windows-rs",
+   "platforms": [
+    "windows"
+   ],
    "texts": [
     {
      "file": "license-apache-2.0",
@@ -4837,6 +6898,9 @@
    "version": "0.3.1",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/microsoft/windows-rs",
+   "platforms": [
+    "windows"
+   ],
    "texts": [
     {
      "file": "license-apache-2.0",
@@ -4853,6 +6917,9 @@
    "version": "0.6.1",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/microsoft/windows-rs",
+   "platforms": [
+    "windows"
+   ],
    "texts": [
     {
      "file": "license-apache-2.0",
@@ -4869,6 +6936,9 @@
    "version": "0.4.1",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/microsoft/windows-rs",
+   "platforms": [
+    "windows"
+   ],
    "texts": [
     {
      "file": "license-apache-2.0",
@@ -4885,6 +6955,9 @@
    "version": "0.5.1",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/microsoft/windows-rs",
+   "platforms": [
+    "windows"
+   ],
    "texts": [
     {
      "file": "license-apache-2.0",
@@ -4901,6 +6974,9 @@
    "version": "0.60.2",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/microsoft/windows-rs",
+   "platforms": [
+    "windows"
+   ],
    "texts": [
     {
      "file": "license-apache-2.0",
@@ -4917,6 +6993,9 @@
    "version": "0.61.2",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/microsoft/windows-rs",
+   "platforms": [
+    "windows"
+   ],
    "texts": [
     {
      "file": "license-apache-2.0",
@@ -4933,6 +7012,9 @@
    "version": "0.53.5",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/microsoft/windows-rs",
+   "platforms": [
+    "windows"
+   ],
    "texts": [
     {
      "file": "license-apache-2.0",
@@ -4949,6 +7031,9 @@
    "version": "0.2.1",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/microsoft/windows-rs",
+   "platforms": [
+    "windows"
+   ],
    "texts": [
     {
      "file": "license-apache-2.0",
@@ -4965,6 +7050,9 @@
    "version": "0.1.7",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/microsoft/windows-rs",
+   "platforms": [
+    "windows"
+   ],
    "texts": [
     {
      "file": "license-apache-2.0",
@@ -4981,6 +7069,9 @@
    "version": "0.53.1",
    "license": "MIT OR Apache-2.0",
    "repository": "https://github.com/microsoft/windows-rs",
+   "platforms": [
+    "windows"
+   ],
    "texts": [
     {
      "file": "license-apache-2.0",
@@ -4997,6 +7088,10 @@
    "version": "1.0.5",
    "license": "MIT",
    "repository": "https://github.com/winnow-rs/winnow",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-MIT",
@@ -5009,6 +7104,10 @@
    "version": "0.6.4",
    "license": "Unicode-3.0",
    "repository": "https://github.com/unicode-org/icu4x",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -5021,6 +7120,10 @@
    "version": "0.57.3",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/tauri-apps/wry",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -5037,10 +7140,33 @@
    ]
   },
   {
+   "name": "xattr",
+   "version": "1.7.0",
+   "license": "MIT OR Apache-2.0",
+   "repository": "https://github.com/Stebalien/xattr",
+   "platforms": [
+    "macos"
+   ],
+   "texts": [
+    {
+     "file": "LICENSE-APACHE",
+     "id": "a60eea8175145316"
+    },
+    {
+     "file": "LICENSE-MIT",
+     "id": "8b427f5bc5017645"
+    }
+   ]
+  },
+  {
    "name": "yoke",
    "version": "0.8.4",
    "license": "Unicode-3.0",
    "repository": "https://github.com/unicode-org/icu4x",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -5053,6 +7179,10 @@
    "version": "0.8.4",
    "license": "Unicode-3.0",
    "repository": "https://github.com/unicode-org/icu4x",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -5065,6 +7195,10 @@
    "version": "0.1.8",
    "license": "Unicode-3.0",
    "repository": "https://github.com/unicode-org/icu4x",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -5077,6 +7211,10 @@
    "version": "0.1.8",
    "license": "Unicode-3.0",
    "repository": "https://github.com/unicode-org/icu4x",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -5089,6 +7227,10 @@
    "version": "1.9.2",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/RustCrypto/utils",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -5105,6 +7247,10 @@
    "version": "1.5.0",
    "license": "Apache-2.0 OR MIT",
    "repository": "https://github.com/RustCrypto/utils",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-APACHE",
@@ -5121,6 +7267,10 @@
    "version": "0.2.5",
    "license": "Unicode-3.0",
    "repository": "https://github.com/unicode-org/icu4x",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -5133,6 +7283,10 @@
    "version": "0.11.9",
    "license": "Unicode-3.0",
    "repository": "https://github.com/unicode-org/icu4x",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -5145,6 +7299,10 @@
    "version": "0.11.7",
    "license": "Unicode-3.0",
    "repository": "https://github.com/unicode-org/icu4x",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -5157,6 +7315,10 @@
    "version": "9.8.1",
    "license": "MIT",
    "repository": "https://github.com/zip-rs/zip2",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -5169,6 +7331,10 @@
    "version": "0.6.8",
    "license": "Zlib",
    "repository": "https://github.com/trifectatechfoundation/zlib-rs",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE",
@@ -5181,6 +7347,10 @@
    "version": "1.0.23",
    "license": "MIT",
    "repository": "https://github.com/dtolnay/zmij",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "LICENSE-MIT",
@@ -5193,6 +7363,10 @@
    "version": "0.8.4",
    "license": "Apache-2.0",
    "repository": "https://github.com/zopfli-rs/zopfli",
+   "platforms": [
+    "macos",
+    "windows"
+   ],
    "texts": [
     {
      "file": "COPYING",
