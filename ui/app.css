@@ -1,7 +1,7 @@
 /* Fluent 2 / Windows 11 look. No external fonts or libraries. */
 :root {
   --font-text: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
-  --font-display: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   --font-icon: "Segoe Fluent Icons", "Segoe MDL2 Assets";
   --ease: cubic-bezier(0.1, 0.9, 0.2, 1);
 

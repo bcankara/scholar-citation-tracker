@@ -178,6 +178,11 @@ jobs:
           SUMS_NAME: ${{ matrix.sums_name }}
         run: |
           set -euo pipefail
+          # A re-run of a failed job finds the file from the first run, and GitHub answers
+          # 422 already_exists for a second asset of the same name, so remove the old one first.
+          for id in $(gh api "repos/$REPO/releases/$RELEASE_ID" --jq '.assets[] | select(.name==env.SUMS_NAME) | .id'); do
+            gh api --method DELETE "repos/$REPO/releases/assets/$id"
+          done
           # Drafts have no tag yet, so upload by release id through the API.
           gh api --method POST \
             "https://uploads.github.com/repos/$REPO/releases/$RELEASE_ID/assets?name=$SUMS_NAME" \
