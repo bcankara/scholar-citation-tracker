@@ -8,14 +8,132 @@ A small Windows desktop app (Rust + Tauri 2) that tracks the citation counts on 
 
 The interface is available in **English** and **Turkish**. On first launch the language follows the Windows display language; you can change it at any time in Settings.
 
-## Screenshots
+## Highlights
+
+- Reads your public Scholar profile at a low rate and keeps the history (total, h-index, i10-index, per-article counts) in a local SQLite database.
+- A dashboard that says in one sentence what changed since your last visit.
+- A calendar of Scholar changes and, with historical data on, of citing works by exact publication date, plus a heatmap of all years.
+- A continuous trend line with a year-end forecast range and a goal, the fastest-rising articles, and h / i10 over time.
+- A "Citing works" analysis by country (world map), institution, venue and publisher, field, publication type, open access and language, who cites you (self, co-author, external) and influential citations.
+- A filterable list of the citing works (title linked to DOI/OpenAlex); each article and each Scholar change links to that article's cited-by list on Scholar.
+- A PDF report with selectable charts, an Excel export and a weekly summary notification.
+- English and Turkish interface, light and dark theme, in-app signed updates.
+
+## Tour
+
+All screenshots show invented demonstration data.
+
+### Dashboard
+
+One sentence says what changed since your last visit. Below it: the four totals, the latest changes grouped by day and a 12-month history.
+
+<img src="docs/images/en-panel.png" alt="Dashboard with a sentence on what changed, four totals, recent changes and a 12-month history" width="100%">
+
+### Analysis: Calendar and heatmap
+
+A month grid marks the days on which Scholar showed a change and, with historical data, the days on which citing works were published. Selecting a day lists the articles and the citing works behind it. The heatmap shows all years at once.
 
 <table>
-<tr><td width="50%"><img src="docs/images/en-panel.png" alt="Dashboard: one sentence on what changed, totals, recent changes, a 12-month history"><br><sub>Dashboard: one sentence on what changed, totals, recent changes, a 12-month history</sub></td><td width="50%"><img src="docs/images/en-calendar.png" alt="Analysis > Calendar: a day selected, Scholar changes with probable OpenAlex works"><br><sub>Analysis > Calendar: a day selected, Scholar changes with probable OpenAlex works</sub></td></tr>
-<tr><td width="50%"><img src="docs/images/en-analysis-trend.png" alt="Analysis > Trend: one continuous line, forecast with a range, goal"><br><sub>Analysis > Trend: one continuous line, forecast with a range, goal</sub></td><td width="50%"><img src="docs/images/en-analysis-articles.png" alt="Analysis > Articles: fastest rising, Scholar against identified citing works"><br><sub>Analysis > Articles: fastest rising, Scholar against identified citing works</sub></td></tr>
-<tr><td width="50%"><img src="docs/images/en-analysis-indices.png" alt="Analysis > Indices: h and i10 over time and the closest articles"><br><sub>Analysis > Indices: h and i10 over time and the closest articles</sub></td><td width="50%"><img src="docs/images/en-citing.png" alt="Citing works: click a bar to filter the list, removable chips"><br><sub>Citing works: click a bar to filter the list, removable chips</sub></td></tr>
-<tr><td width="50%"><img src="docs/images/en-articles.png" alt="Articles: per-article history, matched record, Scholar and identified counts"><br><sub>Articles: per-article history, matched record, Scholar and identified counts</sub></td><td width="50%"><img src="docs/images/en-report.png" alt="Report: choose the charts for the PDF and see a live preview"><br><sub>Report: choose the charts for the PDF and see a live preview</sub></td></tr>
+<tr>
+<td width="50%"><img src="docs/images/en-calendar.png" alt="Calendar card showing November 2026 with one day selected and its Scholar changes listed" width="100%"></td>
+<td width="50%"><img src="docs/images/en-heatmap.png" alt="Heatmap of busy days, year by year, for all years" width="100%"></td>
+</tr>
 </table>
+
+### Analysis: Trend
+
+One continuous cumulative line, a forecast to the end of the year drawn as a range, your goal, and citations per period.
+
+<img src="docs/images/en-trend.png" alt="Analysis Trend tab with a continuous line, forecast range, goal and citations per period" width="100%">
+
+### Analysis: Articles
+
+The fastest-rising articles, the gap per article between Scholar and identified citing works, and monthly citations stacked by article.
+
+<img src="docs/images/en-analysis-articles.png" alt="Analysis Articles tab with fastest rising articles, Scholar against identified citations and a stacked monthly chart" width="100%">
+
+### Analysis: Indices
+
+The h-index and i10-index as step lines over time, and the articles closest to the next step.
+
+<img src="docs/images/en-indices.png" alt="Analysis Indices tab with h and i10 over time and the articles closest to the next step" width="100%">
+
+### Analysis: Citing works
+
+This tab answers "who is citing me?" with one card per category. One period selector, publication filter and "Exclude self-citations" switch apply to the whole tab, and each chart states for how many works the data is missing.
+
+#### Countries
+
+World map, top 10 countries, countries per year and countries citing for the first time.
+
+<img src="docs/images/en-citers-countries.png" alt="Citing works tab with a filter bar and a Countries card showing a world map and the top 10 countries" width="100%">
+
+#### Institutions
+
+Top 10 institutions, with new ones highlighted.
+
+<img src="docs/images/en-citers-institutions.png" alt="Institutions card with the top 10 institutions and those new this year" width="100%">
+
+#### Venues and publishers
+
+The journals and publishers of the citing works.
+
+<img src="docs/images/en-citers-venues.png" alt="Venues and publishers card" width="100%">
+
+#### Fields
+
+A treemap of fields and a heatmap of your publications against fields.
+
+<img src="docs/images/en-citers-fields.png" alt="Fields card with a treemap and a publication by field heatmap" width="100%">
+
+#### Publication types
+
+Type, open access and language of the citing works.
+
+<img src="docs/images/en-citers-types.png" alt="Publication types card with bars for type, open access and language" width="100%">
+
+#### Who is citing you
+
+The share of self-citations (matched by ORCID and name), co-author citations and external citations, and the most frequent citing authors.
+
+<img src="docs/images/en-citers-who.png" alt="Card separating self, co-author and external citations, with frequent authors" width="100%">
+
+#### Influential citations
+
+A table of the influential citing works.
+
+<img src="docs/images/en-citers-influential.png" alt="Influential citations table" width="100%">
+
+### Citing works list
+
+Clicking a bar in a chart filters the list. Active filters appear as chips that can be removed one by one or all at once.
+
+<img src="docs/images/en-citing.png" alt="Citing works page with charts by country and venue, removable filter chips and a list of 11 of 200 works" width="100%">
+
+### Articles
+
+Each article opens to its history chart and every change in its count, the matched OpenAlex record (with a way to correct the DOI) and the works citing it.
+
+<img src="docs/images/en-articles.png" alt="Articles page with the first article expanded: history chart, change history, OpenAlex match and citing works" width="100%">
+
+### Report (PDF) and Excel
+
+Choose the range, the language and the charts for a PDF; a live preview shows them. The Citing-works sections (countries and institutions, fields, self-citation) are optional. The Excel export is in Settings.
+
+<img src="docs/images/en-report.png" alt="Report page with the optional Citing-works sections ticked and shown in the live preview" width="100%">
+
+### Settings and updates
+
+Settings holds the profile, interval, language, data folder, API keys, historical data and export. About shows the version and checks for updates; the result is always shown.
+
+<img src="docs/images/en-settings-about.png" alt="Settings scrolled to About, showing that the app is up to date" width="100%">
+
+### Dark theme
+
+The interface follows the Windows light/dark setting.
+
+<img src="docs/images/en-dark-citers.png" alt="Dark theme showing the Countries card with a world map" width="100%">
+
 
 ## What it does
 
@@ -99,6 +217,12 @@ Each Scholar row, and each article in the Articles tab, has **View on Scholar**.
 - **PDF report (Report tab).** Choose a date range, the report language (Turkish or English) and whether to include the citing-works list and the charts, then **Create PDF**. The A4 PDF with page numbers contains a title page (profile name, ORCID iD, range, generation date), summary metrics (total, since-year, h, i10, change in the range), a table per article (citations at the end of the range, gained in the range), charts (total over time, per year), optionally the citing works of the range (date, title, venue, cited article) and a sources-and-method note. The report is an HTML page (`ui/report.html`) rendered in a hidden window and printed to PDF by WebView2's own `PrintToPdf`, so Turkish characters come from the system font.
 - **Excel export (Settings > Export).** One .xlsx with the sheets Summary (snapshot history), Articles (latest values with today / 7 / 30-day changes), Article history (long format), Citing works and Yearly. Header rows are bold and filled, frozen and filtered; dates are real Excel dates; sheet names and headers follow the interface language. The two CSV exports remain.
 - **Weekly summary.** On the first start on Monday at or after 09:00 (local time), once per ISO week, a notification says "This week +N citations; most: <article> (+k)". It is skipped when the week has no data. Switch: **Settings > Weekly summary notification** (on by default; it also needs "Notifications").
+
+### Citing works tab (Analysis)
+
+The last Analysis tab, **Citing works**, answers "who cites me?" one category per card: countries (world map, top 10, countries per year, first-time countries), institutions (new ones highlighted), venues and publishers, fields (treemap and a publication x field heatmap), publication types (type, open access, language), who (self-citation share by ORCID with a name fallback, co-author and external citations, top authors) and influential citing works. The period selector, an article filter and "Exclude self-citations" apply to the whole tab; each chart states how many works lack the data. The data comes from the same OpenAlex requests as before (extra `select` fields); rows stored earlier are filled at the next refresh. Each card has a small "view in list" link; the list page gained type, open-access, field and self-citation filters. The PDF report has three optional sections (countries and institutions, fields, self-citation) and the Excel sheet has 13 new columns.
+
+The year heat map in Analysis > Calendar now shows every year at once.
 
 ## API keys (optional)
 
@@ -212,6 +336,8 @@ This is an unofficial, independent project. It is not affiliated with, endorsed 
 The application icon is based on Fluent UI System Icons by Microsoft (MIT License).
 
 Charts are drawn with [Apache ECharts](https://echarts.apache.org/) 5.5.1 (Apache License 2.0), bundled in `ui/vendor/` with its license and notice (`echarts.min.js`, SHA-256 `e84270bd0cd5bdf60fefc26d00c2a391cb2e81f4d26a7a9ee16185a54773a3cf`, from the npm registry package `echarts@5.5.1`); it works offline and nothing is loaded from a CDN.
+
+World map: [Natural Earth](https://www.naturalearthdata.com/) 1:110m country boundaries (public domain), tag `v5.1.2` of `nvkelso/natural-earth-vector`, reduced to `ui/vendor/world.geo.json` (SHA-256 `5639a2568f0f14a602ba21da1310e9aebcc3dc6afb21417e4c96af7d64931e31`; source file `6866c877d39cba9c357620878839b336d569f8c662d3cfab4cb1dbe2d39c977f`); notice in `ui/vendor/LICENSE-natural-earth.txt`.
 
 ## License
 

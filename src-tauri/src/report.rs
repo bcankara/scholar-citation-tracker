@@ -17,13 +17,23 @@ pub struct ReportOptions {
     pub to: String,
     pub lang: String,
     pub include_citing: bool,
-    /// Charts to print: "trend", "period", "article", "index", "calendar", "dist".
+    /// Charts to print: "trend", "period", "article", "index", "calendar", "dist"; and the optional
+    /// citing-works sections "citgeo" (countries and institutions), "citfields", "citself".
     #[serde(default)]
     pub charts: Vec<String>,
 }
 
 /// Chart ids the report knows.
-pub const CHART_IDS: [&str; 6] = ["trend", "period", "article", "index", "calendar", "dist"];
+pub const CHART_IDS: [&str; 9] = ["trend", "period", "article", "index", "calendar", "dist", "citgeo", "citfields", "citself"];
+
+/// The citing-works sections of the report (made with the report's own period, all articles, self-citations counted).
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct CitersReport {
+    pub countries: Option<crate::citers::EntityReport>,
+    pub institutions: Option<crate::citers::EntityReport>,
+    pub fields: Option<crate::citers::Fields>,
+    pub who: Option<crate::citers::Who>,
+}
 
 #[derive(Debug)]
 pub enum ReportError {
@@ -96,6 +106,8 @@ pub struct ReportData {
     pub citing_total: usize,
     /// The data of the Analysis page (same builders), only when charts were asked for.
     pub analysis: Option<crate::insights::Analysis>,
+    /// The data of the optional citing-works sections, only when one was asked for.
+    pub citers: Option<CitersReport>,
 }
 
 pub fn parse_day(s: &str) -> Option<NaiveDate> {
@@ -197,7 +209,21 @@ pub fn build(
     }
     let charts: Vec<String> =
         CHART_IDS.iter().filter(|id| opts.charts.iter().any(|c| c == **id)).map(|id| id.to_string()).collect();
-    let analysis = if charts.is_empty() {
+    let wants = |id: &str| charts.iter().any(|c| c == id);
+    let citers = if wants("citgeo") || wants("citfields") || wants("citself") {
+        use chrono::Datelike;
+        let year = chrono::Local::now().year();
+        let f = || crate::citers::Filter { from: opts.from.trim().to_string(), to: opts.to.trim().to_string(), article: String::new(), exclude_self: false };
+        Some(CitersReport {
+            countries: if wants("citgeo") { Some(crate::citers::build_countries(conn, orcid, year, f())?) } else { None },
+            institutions: if wants("citgeo") { Some(crate::citers::build_institutions(conn, orcid, year, f())?) } else { None },
+            fields: if wants("citfields") { Some(crate::citers::build_fields(conn, orcid, year, f())?) } else { None },
+            who: if wants("citself") { Some(crate::citers::build_who(conn, orcid, year, f())?) } else { None },
+        })
+    } else {
+        None
+    };
+    let analysis = if charts.iter().all(|c| c.starts_with("cit")) {
         None
     } else {
         Some(crate::insights::build_analysis(conn, chrono::Utc::now(), chrono::Local::now().date_naive(), Some((from, to)))?)
@@ -218,6 +244,7 @@ pub fn build(
         citing,
         citing_total,
         analysis,
+        citers,
     })
 }
 
@@ -309,10 +336,18 @@ mod tests {
         assert_eq!(r.charts, vec!["trend".to_string(), "dist".to_string()]);
         assert!(r.analysis.as_ref().is_some_and(|a| a.trend.has_data));
 
+        // the citing-works sections need no analysis data and come with their own block
+        let only_cit = ReportOptions { charts: vec!["citself".into(), "citgeo".into()], ..opts.clone() };
+        let rc = build(&conn, &only_cit, "0000-0002-1825-0097", "x").expect("report");
+        assert_eq!(rc.charts, vec!["citgeo".to_string(), "citself".to_string()]);
+        assert!(rc.analysis.is_none());
+        let cit = rc.citers.expect("citers");
+        assert!(cit.countries.is_some() && cit.institutions.is_some() && cit.who.is_some() && cit.fields.is_none());
+
         // a range that starts before every snapshot: the first snapshot is the baseline
         let early = ReportOptions { from: "2025-01-01".into(), to: "2026-04-01".into(), charts: Vec::new(), ..opts.clone() };
         let r2 = build(&conn, &early, "", "x").expect("report");
-        assert!(r2.analysis.is_none() && r2.charts.is_empty());
+        assert!(r2.analysis.is_none() && r2.charts.is_empty() && r2.citers.is_none());
         assert!(r2.summary.baseline_is_first);
         assert_eq!(r2.summary.cit_all, 20);
         assert_eq!(r2.summary.change_all, 20 - 15);

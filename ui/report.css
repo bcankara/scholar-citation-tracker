@@ -106,3 +106,16 @@ section h2 + .chart { margin-top: 4pt; }
 .chart + h2 { margin-top: 14pt; }
 
 h2, h3 { break-after: avoid; page-break-after: avoid; }
+
+/* citing-works sections */
+p b { font-weight: 600; color: var(--ink); }
+.ci-figs { display: flex; gap: 6pt 24pt; margin: 4pt 0 6pt; }
+.ci-fig-n { font-size: 20pt; font-weight: 600; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.ci-fig-c { font-size: 8pt; color: var(--ink-3); }
+.sb { display: flex; width: 100%; height: 18pt; border-radius: 3pt; overflow: hidden; gap: 1.5pt; background: #eee; }
+.sb-seg { display: block; height: 100%; }
+.sb-legend { list-style: none; margin: 4pt 0 10pt; padding: 0; display: flex; flex-wrap: wrap; gap: 2pt 12pt; font-size: 8.5pt; color: var(--ink-2); }
+.sb-legend li { display: inline-flex; align-items: center; gap: 4pt; }
+.sb-legend i { width: 7pt; height: 7pt; border-radius: 1.5pt; display: inline-block; }
+.sb-legend b { color: var(--ink); }
+.chart svg.tm { width: 100%; height: auto; }

@@ -5,11 +5,11 @@
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use chrono::{DateTime, Local, NaiveDate, Utc};
+use chrono::{DateTime, Datelike, Local, NaiveDate, Utc};
 use rusqlite::Connection;
 use rust_xlsxwriter::{Color, ExcelDateTime, Format, FormatAlign, FormatBorder, Workbook, Worksheet};
 
-use crate::{db, i18n};
+use crate::{citers, db, i18n};
 
 const HEADER_FILL: u32 = 0x00D9E6F5;
 
@@ -40,6 +40,39 @@ fn citing_excel(date: &str, precision: &str) -> Option<(ExcelDateTime, &'static 
     ExcelDateTime::parse_from_str(&full).ok().map(|d| (d, fmt))
 }
 
+/// The "who cites you" cells of one citing work, columns 10..=22 of the citing sheet (column 19, the
+/// citing work's own citation count, is a number written by the caller and is empty here).
+/// Unknown values stay empty; institutions and ORCID iDs are separated by `; `.
+fn citing_extra(c: &db::CitingRow, is_self: bool, is_co: bool, yes: &str, no: &str) -> Vec<String> {
+    let inst: Vec<String> = serde_json::from_str::<Vec<serde_json::Value>>(&c.institutions)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|i| i.get("n").and_then(|n| n.as_str()).filter(|n| !n.is_empty()).map(str::to_string))
+        .collect();
+    let list = |s: &str| s.split(',').map(str::trim).filter(|x| !x.is_empty()).collect::<Vec<_>>().join("; ");
+    let flag = |b: bool| if c.enriched || b { (if b { yes } else { no }).to_string() } else { String::new() };
+    vec![
+        c.work_type.clone(),
+        c.language.clone(),
+        c.oa_status.clone(),
+        c.topic_domain.clone(),
+        c.topic_field.clone(),
+        c.topic.clone(),
+        inst.join("; "),
+        c.publisher.clone(),
+        c.source_type.clone(),
+        String::new(),
+        flag(is_self),
+        flag(is_co),
+        list(&c.author_orcids),
+    ]
+}
+
+/// Country codes as `TR; US`, the same separator as the other list cells.
+fn countries_list(s: &str) -> String {
+    s.split(',').map(str::trim).filter(|x| !x.is_empty()).collect::<Vec<_>>().join("; ")
+}
+
 fn write_headers(ws: &mut Worksheet, headers: &[&str], widths: &[f64], rows: u32) -> Result<()> {
     let hf = header_format();
     for (c, h) in headers.iter().enumerate() {
@@ -52,7 +85,8 @@ fn write_headers(ws: &mut Worksheet, headers: &[&str], widths: &[f64], rows: u32
 }
 
 /// Writes the workbook to `path`.
-pub fn write_xlsx(conn: &Connection, path: &Path, lang: &str) -> Result<()> {
+/// `orcid` is the user's ORCID iD (settings), used to flag self-citations.
+pub fn write_xlsx(conn: &Connection, path: &Path, lang: &str, orcid: &str) -> Result<()> {
     let tr = |k: &str| i18n::tr(lang, k);
     let mut wb = Workbook::new();
     let dt_fmt = Format::new().set_num_format("yyyy-mm-dd hh:mm");
@@ -139,7 +173,8 @@ pub fn write_xlsx(conn: &Connection, path: &Path, lang: &str) -> Result<()> {
         let ws = wb.add_worksheet();
         ws.set_name(tr("xl.sheet.citing"))?;
         let rows = db::citing_works(conn)?;
-        let headers: Vec<&str> = (0..10).map(|i| tr(&format!("xl.c.{i}"))).collect();
+        let flags = citers::flags(conn, orcid, Local::now().year())?;
+        let headers: Vec<&str> = (0..23).map(|i| tr(&format!("xl.c.{i}"))).collect();
         for (i, c) in rows.iter().enumerate() {
             let n = i as u32 + 1;
             match citing_excel(&c.date, &c.precision) {
@@ -157,14 +192,27 @@ pub fn write_xlsx(conn: &Connection, path: &Path, lang: &str) -> Result<()> {
             ws.write_string(n, 4, &c.doi)?;
             ws.write_string(n, 5, &c.url)?;
             ws.write_string(n, 6, &c.authors)?;
-            ws.write_string(n, 7, &c.countries)?;
+            ws.write_string(n, 7, countries_list(&c.countries))?;
             ws.write_string(n, 8, &c.article_title)?;
             ws.write_string(n, 9, &c.citing_id)?;
+            // who cites you; empty cells where OpenAlex (or an unrefreshed row) has nothing
+            let (is_self, is_co) = flags.get(&c.citing_id).copied().unwrap_or((false, false));
+            for (col, v) in citing_extra(c, is_self, is_co, tr("xl.yes"), tr("xl.no")).iter().enumerate() {
+                if !v.is_empty() {
+                    ws.write_string(n, 10 + col as u16, v)?;
+                }
+            }
+            if let Some(cb) = c.cited_by {
+                ws.write_number(n, 19, cb as f64)?;
+            }
         }
         write_headers(
             ws,
             &headers,
-            &[12.0, 14.0, 70.0, 34.0, 28.0, 40.0, 40.0, 12.0, 60.0, 22.0],
+            &[
+                12.0, 14.0, 70.0, 34.0, 28.0, 40.0, 40.0, 12.0, 60.0, 22.0, 18.0, 8.0, 16.0, 20.0, 24.0, 30.0, 40.0, 26.0,
+                14.0, 10.0, 10.0, 12.0, 40.0,
+            ],
             rows.len() as u32,
         )?;
     }
@@ -219,6 +267,25 @@ mod tests {
     }
 
     #[test]
+    fn who_cites_cells_are_empty_when_unknown() {
+        let mut c = db::CitingRow::default();
+        let e = citing_extra(&c, false, false, "Yes", "No");
+        assert_eq!(e.len(), 13);
+        assert!(e.iter().all(String::is_empty), "an unrefreshed row has no placeholders: {e:?}");
+        c.enriched = true;
+        c.work_type = "article".into();
+        c.institutions = r#"[{"i":"I1","n":"Alpha University","c":"TR"},{"i":"I2","n":"Beta Institute","c":"US"}]"#.into();
+        c.countries = "TR,US".into();
+        c.author_orcids = "0000-0002-1825-0097,0000-0001-0000-0001".into();
+        let e = citing_extra(&c, true, false, "Yes", "No");
+        assert_eq!(e[0], "article");
+        assert_eq!(e[6], "Alpha University; Beta Institute");
+        assert_eq!(countries_list(&c.countries), "TR; US");
+        assert_eq!((e[10].as_str(), e[11].as_str()), ("Yes", "No"));
+        assert_eq!(e[12], "0000-0002-1825-0097; 0000-0001-0000-0001");
+    }
+
+    #[test]
     fn sheet_names_fit_excel_limits() {
         for lang in [i18n::TR, i18n::EN] {
             for k in ["xl.sheet.summary", "xl.sheet.articles", "xl.sheet.history", "xl.sheet.citing", "xl.sheet.yearly"] {
@@ -238,7 +305,7 @@ mod tests {
         let path = dir.join("out.xlsx");
         let db_path = dir.join("t.db");
         let c = db::open(&db_path).expect("open");
-        write_xlsx(&c, &path, "tr").expect("xlsx");
+        write_xlsx(&c, &path, "tr", "").expect("xlsx");
         assert!(std::fs::metadata(&path).map(|m| m.len() > 1000).unwrap_or(false));
         drop(conn);
         let _ = std::fs::remove_dir_all(&dir);

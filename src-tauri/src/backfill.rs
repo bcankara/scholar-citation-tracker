@@ -326,6 +326,29 @@ struct OaWork {
     primary_location: Option<OaLocation>,
     #[serde(default)]
     authorships: Vec<OaAuthorship>,
+    #[serde(rename = "type")]
+    work_type: Option<String>,
+    language: Option<String>,
+    open_access: Option<OaOpenAccess>,
+    cited_by_count: Option<i64>,
+    primary_topic: Option<OaTopic>,
+}
+
+#[derive(Deserialize, Default)]
+struct OaOpenAccess {
+    oa_status: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+struct OaNamed {
+    display_name: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+struct OaTopic {
+    display_name: Option<String>,
+    field: Option<OaNamed>,
+    domain: Option<OaNamed>,
 }
 
 #[derive(Deserialize, Default)]
@@ -340,6 +363,9 @@ struct OaSource {
     issn_l: Option<String>,
     #[serde(default)]
     issn: Option<Vec<String>>,
+    host_organization_name: Option<String>,
+    #[serde(rename = "type")]
+    source_type: Option<String>,
 }
 
 #[derive(Deserialize, Default)]
@@ -352,11 +378,67 @@ struct OaAuthorship {
 #[derive(Deserialize, Default)]
 struct OaAuthorRef {
     display_name: Option<String>,
+    orcid: Option<String>,
 }
 
 #[derive(Deserialize, Default)]
 struct OaInstitution {
+    id: Option<String>,
+    display_name: Option<String>,
     country_code: Option<String>,
+}
+
+/// Authorships kept per citing work (some papers have thousands of authors).
+pub const MAX_AUTHORSHIPS: usize = 200;
+
+/// Bare ORCID iD (`0000-0002-1825-0097`) from the URL form OpenAlex uses; empty when it is not one.
+pub fn bare_orcid(s: &str) -> String {
+    let t = s.trim().trim_end_matches('/');
+    let id = t.rsplit('/').next().unwrap_or("").to_ascii_uppercase();
+    if crate::settings::valid_orcid(&id) {
+        id
+    } else {
+        String::new()
+    }
+}
+
+/// The JSON strings and the ORCID list stored for one citing work's authorships:
+/// (institutions, authorships, author_orcids). Empty strings when there is nothing to store.
+fn authorship_fields(list: &[OaAuthorship]) -> (String, String, String) {
+    use serde_json::json;
+    let mut insts: Vec<serde_json::Value> = Vec::new();
+    let mut seen_inst: HashSet<String> = HashSet::new();
+    let mut auths: Vec<serde_json::Value> = Vec::new();
+    let mut orcids: Vec<String> = Vec::new();
+    for a in list {
+        let mut ids: Vec<String> = Vec::new();
+        for i in &a.institutions {
+            let id = short_id(i.id.as_deref().unwrap_or(""), "https://openalex.org/");
+            let name = i.display_name.clone().unwrap_or_default().trim().to_string();
+            if id.is_empty() && name.is_empty() {
+                continue;
+            }
+            let key = if id.is_empty() { format!("n:{}", name.to_lowercase()) } else { id.clone() };
+            if !ids.contains(&key) {
+                ids.push(key.clone());
+            }
+            let key_for_json = key.clone();
+            if seen_inst.insert(key) {
+                let cc = i.country_code.clone().unwrap_or_default().trim().to_ascii_uppercase();
+                insts.push(json!({"i": key_for_json, "n": name, "c": cc}));
+            }
+        }
+        let name = a.author.as_ref().and_then(|x| x.display_name.clone()).unwrap_or_default().trim().to_string();
+        let orcid = a.author.as_ref().and_then(|x| x.orcid.as_deref()).map(bare_orcid).unwrap_or_default();
+        if !orcid.is_empty() && !orcids.contains(&orcid) {
+            orcids.push(orcid.clone());
+        }
+        if (!name.is_empty() || !orcid.is_empty()) && auths.len() < MAX_AUTHORSHIPS {
+            auths.push(json!({"n": name, "o": orcid, "i": ids}));
+        }
+    }
+    let to_s = |v: &[serde_json::Value]| if v.is_empty() { String::new() } else { serde_json::Value::Array(v.to_vec()).to_string() };
+    (to_s(&insts), to_s(&auths), orcids.join(","))
 }
 
 /// ISSN as 8 characters without a hyphen, `X` upper case; `None` when it is not an ISSN.
@@ -603,6 +685,8 @@ pub fn parse_oa_citing(json: &str) -> Result<(Vec<CitingRecord>, Option<String>)
             let loc = w.primary_location.unwrap_or_default();
             let src = loc.source.unwrap_or_default();
             let venue = src.display_name.clone().unwrap_or_default().trim().to_string();
+            let publisher = src.host_organization_name.clone().unwrap_or_default().trim().to_string();
+            let source_type = src.source_type.clone().unwrap_or_default().trim().to_ascii_lowercase();
             let issn_list = join_issns(src.issn_l.into_iter().chain(src.issn.into_iter().flatten()));
             let doi = w
                 .doi
@@ -619,6 +703,9 @@ pub fn parse_oa_citing(json: &str) -> Result<(Vec<CitingRecord>, Option<String>)
                     .iter()
                     .flat_map(|a| a.institutions.iter().filter_map(|i| i.country_code.clone())),
             );
+            let (institutions, authorships, author_orcids) = authorship_fields(&w.authorships);
+            let topic = w.primary_topic.unwrap_or_default();
+            let named = |n: Option<OaNamed>| n.and_then(|x| x.display_name).unwrap_or_default().trim().to_string();
             Some(CitingRecord {
                 citing_id: id,
                 citing_title: w.title.unwrap_or_default(),
@@ -630,6 +717,18 @@ pub fn parse_oa_citing(json: &str) -> Result<(Vec<CitingRecord>, Option<String>)
                 authors,
                 countries,
                 issn_list,
+                institutions,
+                authorships,
+                author_orcids,
+                topic: topic.display_name.unwrap_or_default().trim().to_string(),
+                topic_field: named(topic.field),
+                topic_domain: named(topic.domain),
+                work_type: w.work_type.unwrap_or_default().trim().to_ascii_lowercase(),
+                language: w.language.unwrap_or_default().trim().to_ascii_lowercase(),
+                oa_status: w.open_access.and_then(|o| o.oa_status).unwrap_or_default().trim().to_ascii_lowercase(),
+                publisher,
+                source_type,
+                cited_by: w.cited_by_count.filter(|n| *n >= 0),
             })
         })
         .collect();
@@ -1068,6 +1167,10 @@ async fn load_author_set(http: &Http, orcid: &str, say: Say<'_>, lang: &str) -> 
     Ok(set)
 }
 
+/// Fields asked for every citing work: the list fields plus what "who cites you" needs.
+/// (host organization and source type come inside primary_location.source.)
+pub const OA_CITING_SELECT: &str = "id,doi,title,publication_date,publication_year,primary_location,authorships,type,language,open_access,cited_by_count,primary_topic";
+
 /// All dated citing works of one OpenAlex work.
 async fn oa_citing(http: &Http, work_id: &str, say: Say<'_>, lang: &str) -> Result<Vec<CitingRecord>, String> {
     let filter = format!("cites:{work_id}");
@@ -1080,7 +1183,7 @@ async fn oa_citing(http: &Http, work_id: &str, say: Say<'_>, lang: &str) -> Resu
                 &[
                     ("filter", filter.as_str()),
                     ("per-page", "200"),
-                    ("select", "id,doi,title,publication_date,publication_year,primary_location,authorships"),
+                    ("select", OA_CITING_SELECT),
                     ("cursor", cursor.as_str()),
                 ],
                 Req { say, what: What::Citing, page, records: all.len() },
@@ -1942,6 +2045,54 @@ pub fn refresh_due(
     enabled && has_matches && last.is_none_or(|l| now - l >= chrono::Duration::hours(REFRESH_EVERY_HOURS))
 }
 
+/// Gap between two refreshes that were started only to fill the 1.3.0 "who cites you" fields of
+/// older rows (a failed or paused run is retried after this, not every ten minutes).
+pub const ENRICH_RETRY_HOURS: i64 = 6;
+
+/// The last refresh run that could have filled older rows.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct EnrichTry {
+    pub at: chrono::DateTime<Utc>,
+    pub before: i64,
+    pub after: i64,
+}
+
+impl EnrichTry {
+    pub fn encode(&self) -> String {
+        format!("{}|{}|{}", db::ts(self.at), self.before, self.after)
+    }
+    pub fn decode(s: &str) -> Option<EnrichTry> {
+        let mut p = s.split('|');
+        let at = db::parse_ts(p.next()?)?;
+        Some(EnrichTry { at, before: p.next()?.parse().ok()?, after: p.next()?.parse().ok()? })
+    }
+}
+
+/// `refresh_due`, plus: rows stored before 1.3.0 still miss the new fields, so the refresh also
+/// runs when the last attempt (successful or not, see `EnrichTry`) is `ENRICH_RETRY_HOURS` old
+/// and the last one made progress or the row count has changed since. A run that filled nothing
+/// and left the same rows (an article that keeps failing) does not repeat every six hours; the
+/// 24 hour rule still applies. The refresh itself is paced as always (the same OpenAlex budget
+/// and pauses); articles with such rows are read first.
+pub fn refresh_due_enriching(
+    enabled: bool,
+    last: Option<chrono::DateTime<Utc>>,
+    now: chrono::DateTime<Utc>,
+    has_matches: bool,
+    unenriched_rows: i64,
+    attempt: Option<EnrichTry>,
+) -> bool {
+    if refresh_due(enabled, last, now, has_matches) {
+        return true;
+    }
+    if !(enabled && has_matches && unenriched_rows > 0) {
+        return false;
+    }
+    let newest = [last, attempt.map(|a| a.at)].into_iter().flatten().max();
+    let stuck = attempt.is_some_and(|a| a.after >= a.before && a.after == unenriched_rows);
+    !stuck && newest.is_none_or(|l| now - l >= chrono::Duration::hours(ENRICH_RETRY_HOURS))
+}
+
 /// Background loop: every ten minutes, starts the light refresh when it is due.
 pub async fn refresh_loop(app: AppHandle) {
     tokio::time::sleep(Duration::from_secs(120)).await;
@@ -1972,7 +2123,8 @@ async fn refresh_if_due(app: &AppHandle) {
             return Ok(false);
         }
         let last = db::get_state(&conn, db::STATE_REFRESH)?.and_then(|s| db::parse_ts(&s));
-        Ok(refresh_due(true, last, Utc::now(), db::has_refresh_targets(&conn)?))
+        let attempt = db::get_state(&conn, db::STATE_ENRICH_TRY)?.and_then(|s| EnrichTry::decode(&s));
+        Ok(refresh_due_enriching(true, last, Utc::now(), db::has_refresh_targets(&conn)?, db::unenriched_rows(&conn)?, attempt))
     })
     .await;
     if matches!(due, Ok(Ok(true))) {
@@ -2168,6 +2320,7 @@ pub fn start_as(app: &AppHandle, sh: &Arc<Shared>, mode: Mode, user: bool) -> St
             ..Progress::default()
         });
         let stores_citing = !matches!(mode, Mode::Article(_));
+        let unenriched_before = db::open(&path).and_then(|c| db::unenriched_rows(&c)).unwrap_or(0);
         let result = run_articles(&path, mode, &http, &lang, &settings.orcid, &on_progress).await;
         if let Err(e) = &result {
             eprintln!("backfill failed: {}", secrets::redact(&format!("{e:#}"), &[]));
@@ -2186,6 +2339,18 @@ pub fn start_as(app: &AppHandle, sh: &Arc<Shared>, mode: Mode, user: bool) -> St
                 }
             }
             Err(_) => {}
+        }
+        if stores_citing && unenriched_before > 0 && !matches!(&result, Ok(Some(sum)) if sum.cancelled || sum.paused_budget) {
+            // an attempt to fill older rows, whether or not it got through (a pause has its own gate)
+            let p = path.clone();
+            let _ = tauri::async_runtime::spawn_blocking(move || {
+                db::open(&p).and_then(|c| {
+                    let after = db::unenriched_rows(&c)?;
+                    let t = EnrichTry { at: Utc::now(), before: unenriched_before, after };
+                    db::set_state(&c, db::STATE_ENRICH_TRY, &t.encode())
+                })
+            })
+            .await;
         }
         if let Ok(Some(sum)) = &result {
             if stores_citing && !sum.cancelled && !sum.paused_budget && sum.failed < sum.total {
@@ -2582,6 +2747,118 @@ mod tests {
         assert_eq!(r.countries, "TR,US");
         let bare = &recs[1];
         assert_eq!((bare.venue.as_str(), bare.doi.as_str(), bare.countries.as_str()), ("", "", ""));
+    }
+
+    const OA_WHO: &str = r#"{"meta":{"next_cursor":null},"results":[
+      {"id":"https://openalex.org/W20","doi":null,"title":"Who cites study","publication_date":"2026-01-15","publication_year":2026,
+       "type":"Article","language":"EN","cited_by_count":132,
+       "open_access":{"is_oa":true,"oa_status":"Gold"},
+       "primary_topic":{"id":"https://openalex.org/T1","display_name":"Remote sensing data","subfield":{"display_name":"Geophysics"},
+                        "field":{"display_name":"Earth and Planetary Sciences"},"domain":{"display_name":"Physical Sciences"}},
+       "primary_location":{"landing_page_url":null,"source":{"display_name":"Invented Letters","type":"Journal",
+                           "host_organization_name":"Invented Press","issn_l":"1234-5679"}},
+       "authorships":[
+         {"author":{"display_name":"Ada Example","orcid":"https://orcid.org/0000-0002-1825-0097"},
+          "institutions":[{"id":"https://openalex.org/I111","display_name":"Alpha University","country_code":"tr"},
+                          {"id":null,"display_name":"Nameless Lab","country_code":null}]},
+         {"author":{"display_name":"Bo Sample","orcid":null},
+          "institutions":[{"id":"https://openalex.org/I111","display_name":"Alpha University","country_code":"TR"}]},
+         {"author":{"display_name":"Cy Bad","orcid":"not an orcid"},"institutions":[]}
+       ]},
+      {"id":"https://openalex.org/W21","title":"Sparse","publication_date":"2026-02-01","publication_year":2026,
+       "type":null,"language":null,"open_access":null,"cited_by_count":null,"primary_topic":null,
+       "primary_location":{"source":null},"authorships":[]}
+    ]}"#;
+
+    #[test]
+    fn openalex_citing_keeps_who_cites_you_fields() {
+        let (recs, _) = parse_oa_citing(OA_WHO).expect("who");
+        let r = &recs[0];
+        assert_eq!((r.work_type.as_str(), r.language.as_str(), r.oa_status.as_str()), ("article", "en", "gold"));
+        assert_eq!(r.cited_by, Some(132));
+        assert_eq!(
+            (r.topic.as_str(), r.topic_field.as_str(), r.topic_domain.as_str()),
+            ("Remote sensing data", "Earth and Planetary Sciences", "Physical Sciences")
+        );
+        assert_eq!((r.publisher.as_str(), r.source_type.as_str()), ("Invented Press", "journal"));
+        assert_eq!(r.author_orcids, "0000-0002-1825-0097", "only a valid ORCID iD is kept, as the bare iD");
+        let insts: serde_json::Value = serde_json::from_str(&r.institutions).expect("json");
+        assert_eq!(insts.as_array().map(Vec::len), Some(2), "Alpha University once, plus the one without an id");
+        assert_eq!(insts[0]["i"], "I111");
+        assert_eq!(insts[0]["c"], "TR");
+        assert_eq!(insts[1]["i"], "n:nameless lab");
+        let auths: serde_json::Value = serde_json::from_str(&r.authorships).expect("json");
+        assert_eq!(auths.as_array().map(Vec::len), Some(3));
+        assert_eq!(auths[0]["o"], "0000-0002-1825-0097");
+        assert_eq!(auths[0]["i"], serde_json::json!(["I111", "n:nameless lab"]));
+        assert_eq!(auths[1]["o"], "");
+        // a work with nothing: empty strings and None, not placeholders
+        let s = &recs[1];
+        assert_eq!((s.work_type.as_str(), s.language.as_str(), s.oa_status.as_str(), s.topic_field.as_str()), ("", "", "", ""));
+        assert_eq!((s.institutions.as_str(), s.authorships.as_str(), s.publisher.as_str()), ("", "", ""));
+        assert_eq!(s.cited_by, None);
+    }
+
+    #[test]
+    fn the_select_asks_for_every_field_the_parser_reads() {
+        for f in ["type", "language", "open_access", "cited_by_count", "primary_topic", "primary_location", "authorships"] {
+            assert!(OA_CITING_SELECT.split(',').any(|x| x == f), "{f}");
+        }
+    }
+
+    /// Live check (run by hand): `SCT_LIVE_JSON=<saved works page> cargo test live_page -- --ignored`.
+    #[test]
+    #[ignore = "needs a saved OpenAlex response"]
+    fn live_page_parses_with_the_new_fields() {
+        let Ok(path) = std::env::var("SCT_LIVE_JSON") else { return };
+        let (recs, _) = parse_oa_citing(&std::fs::read_to_string(path).expect("file")).expect("parse");
+        assert!(!recs.is_empty());
+        let with = |f: &dyn Fn(&CitingRecord) -> bool| recs.iter().filter(|r| f(r)).count();
+        eprintln!(
+            "works={} type={} lang={} oa={} cited_by={} topic_field={} domain={} publisher={} source_type={} inst={} authorships={} orcids={} countries={}",
+            recs.len(),
+            with(&|r| !r.work_type.is_empty()),
+            with(&|r| !r.language.is_empty()),
+            with(&|r| !r.oa_status.is_empty()),
+            with(&|r| r.cited_by.is_some()),
+            with(&|r| !r.topic_field.is_empty()),
+            with(&|r| !r.topic_domain.is_empty()),
+            with(&|r| !r.publisher.is_empty()),
+            with(&|r| !r.source_type.is_empty()),
+            with(&|r| !r.institutions.is_empty()),
+            with(&|r| !r.authorships.is_empty()),
+            with(&|r| !r.author_orcids.is_empty()),
+            with(&|r| !r.countries.is_empty()),
+        );
+        assert!(recs.iter().all(|r| r.work_type.is_empty() || r.work_type == r.work_type.to_lowercase()));
+    }
+
+    #[test]
+    fn bare_orcid_forms() {
+        assert_eq!(bare_orcid("https://orcid.org/0000-0002-1825-0097"), "0000-0002-1825-0097");
+        assert_eq!(bare_orcid("0000-0002-1825-0097"), "0000-0002-1825-0097");
+        assert_eq!(bare_orcid("https://orcid.org/0000-0002-1825-0098"), "", "bad check digit");
+        assert_eq!(bare_orcid(""), "");
+    }
+
+    #[test]
+    fn refresh_also_runs_to_fill_old_rows() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-11-22T10:00:00Z").expect("t").with_timezone(&Utc);
+        let ago = |h: i64| Some(now - chrono::Duration::hours(h));
+        assert!(refresh_due_enriching(true, ago(7), now, true, 5, None), "old rows: retried after six hours");
+        assert!(!refresh_due_enriching(true, ago(5), now, true, 5, None), "not every ten minutes");
+        assert!(!refresh_due_enriching(true, ago(7), now, true, 0, None), "nothing to fill: the 24 hour rule only");
+        assert!(refresh_due_enriching(true, ago(25), now, true, 0, None));
+        assert!(!refresh_due_enriching(false, ago(30), now, true, 5, None));
+        assert!(!refresh_due_enriching(true, None, now, false, 5, None));
+        let tried = |h: i64, before: i64, after: i64| Some(EnrichTry { at: now - chrono::Duration::hours(h), before, after });
+        // a failed run (nothing stamped as refreshed) is still an attempt: not retried for six hours
+        assert!(!refresh_due_enriching(true, ago(7), now, true, 5, tried(1, 5, 4)));
+        assert!(refresh_due_enriching(true, ago(7), now, true, 5, tried(7, 9, 5)), "progress was made: go on");
+        assert!(!refresh_due_enriching(true, ago(7), now, true, 5, tried(7, 5, 5)), "stuck rows: back off to the 24 hour rule");
+        assert!(refresh_due_enriching(true, ago(25), now, true, 5, tried(7, 5, 5)));
+        let t = EnrichTry { at: now, before: 5, after: 3 };
+        assert_eq!(EnrichTry::decode(&t.encode()).map(|x| (x.before, x.after)), Some((5, 3)));
     }
 
     #[test]

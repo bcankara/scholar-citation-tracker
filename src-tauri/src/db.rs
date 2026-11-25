@@ -85,6 +85,19 @@ CREATE TABLE IF NOT EXISTS backfill_citations(
     authors TEXT NOT NULL DEFAULT '',
     countries TEXT NOT NULL DEFAULT '',
     issn_list TEXT NOT NULL DEFAULT '',
+    institutions TEXT NOT NULL DEFAULT '',
+    authorships TEXT NOT NULL DEFAULT '',
+    author_orcids TEXT NOT NULL DEFAULT '',
+    topic TEXT NOT NULL DEFAULT '',
+    topic_field TEXT NOT NULL DEFAULT '',
+    topic_domain TEXT NOT NULL DEFAULT '',
+    work_type TEXT NOT NULL DEFAULT '',
+    language TEXT NOT NULL DEFAULT '',
+    oa_status TEXT NOT NULL DEFAULT '',
+    publisher TEXT NOT NULL DEFAULT '',
+    source_type TEXT NOT NULL DEFAULT '',
+    cited_by INTEGER,
+    enriched INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY(article_key, citing_id)
 );
 CREATE INDEX IF NOT EXISTS idx_backfill_date ON backfill_citations(citing_date);
@@ -162,7 +175,7 @@ pub fn open(path: &Path) -> Result<Connection> {
 
 /// Columns added after a table first existed: (table, column, definition). Databases created
 /// with the older column set get them here (idempotent: a column is only added when missing).
-const EXTRA_COLUMNS: [(&str, &str, &str); 7] = [
+const EXTRA_COLUMNS: [(&str, &str, &str); 20] = [
     ("backfill_citations", "venue", "TEXT NOT NULL DEFAULT ''"),
     ("backfill_citations", "doi", "TEXT NOT NULL DEFAULT ''"),
     ("backfill_citations", "url", "TEXT NOT NULL DEFAULT ''"),
@@ -170,6 +183,22 @@ const EXTRA_COLUMNS: [(&str, &str, &str); 7] = [
     ("backfill_citations", "countries", "TEXT NOT NULL DEFAULT ''"),
     ("backfill_citations", "issn_list", "TEXT NOT NULL DEFAULT ''"),
     ("articles", "cites_ids", "TEXT NOT NULL DEFAULT ''"),
+    // 1.3.0: who cites you (OpenAlex citing-work details). `enriched` is 1 once a row was written
+    // from a response that carried these fields, so rows that are empty because OpenAlex has
+    // no data can be told apart from old rows that were never asked.
+    ("backfill_citations", "institutions", "TEXT NOT NULL DEFAULT ''"),
+    ("backfill_citations", "authorships", "TEXT NOT NULL DEFAULT ''"),
+    ("backfill_citations", "author_orcids", "TEXT NOT NULL DEFAULT ''"),
+    ("backfill_citations", "topic", "TEXT NOT NULL DEFAULT ''"),
+    ("backfill_citations", "topic_field", "TEXT NOT NULL DEFAULT ''"),
+    ("backfill_citations", "topic_domain", "TEXT NOT NULL DEFAULT ''"),
+    ("backfill_citations", "work_type", "TEXT NOT NULL DEFAULT ''"),
+    ("backfill_citations", "language", "TEXT NOT NULL DEFAULT ''"),
+    ("backfill_citations", "oa_status", "TEXT NOT NULL DEFAULT ''"),
+    ("backfill_citations", "publisher", "TEXT NOT NULL DEFAULT ''"),
+    ("backfill_citations", "source_type", "TEXT NOT NULL DEFAULT ''"),
+    ("backfill_citations", "cited_by", "INTEGER"),
+    ("backfill_citations", "enriched", "INTEGER NOT NULL DEFAULT 0"),
 ];
 
 pub fn migrate(conn: &Connection) -> Result<()> {
@@ -834,6 +863,29 @@ pub struct CitingRecord {
     pub countries: String,
     /// Normalized ISSNs of the venue (8 characters, no hyphen), comma-separated.
     pub issn_list: String,
+    /// Distinct institutions of all authors, JSON: `[{"i":"I123","n":"Name","c":"TR"}]` (empty when unknown).
+    pub institutions: String,
+    /// Authorships, JSON: `[{"n":"Ada Example","o":"0000-0002-1825-0097","i":["I123"]}]` (at most
+    /// `MAX_AUTHORSHIPS`; `o` is the bare ORCID iD, `i` the institution ids).
+    pub authorships: String,
+    /// Bare ORCID iDs of the authors, comma-separated.
+    pub author_orcids: String,
+    /// Primary topic, its field and its domain (empty when unknown).
+    pub topic: String,
+    pub topic_field: String,
+    pub topic_domain: String,
+    /// OpenAlex work type: article, review, preprint, book-chapter, dissertation, ...
+    pub work_type: String,
+    /// ISO 639-1 language code (empty when unknown).
+    pub language: String,
+    /// gold, green, hybrid, bronze, diamond, closed (empty when unknown).
+    pub oa_status: String,
+    /// Host organization of the venue (publisher).
+    pub publisher: String,
+    /// OpenAlex source type: journal, conference, repository, ... (empty when unknown).
+    pub source_type: String,
+    /// How often the citing work itself is cited (`None` when unknown).
+    pub cited_by: Option<i64>,
 }
 
 /// Inserts the citing rows of one article (the caller has removed the old ones).
@@ -841,8 +893,10 @@ fn insert_citing_rows(tx: &rusqlite::Transaction, key: &str, source: &str, citin
     let mut ins = tx.prepare(
         "INSERT OR REPLACE INTO backfill_citations
            (article_key, source, citing_id, citing_title, citing_date, date_precision,
-            venue, doi, url, authors, countries, issn_list)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
+            venue, doi, url, authors, countries, issn_list,
+            institutions, authorships, author_orcids, topic, topic_field, topic_domain, work_type,
+            language, oa_status, publisher, source_type, cited_by, enriched)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,1)",
     )?;
     for c in citing {
         ins.execute(params![
@@ -857,7 +911,19 @@ fn insert_citing_rows(tx: &rusqlite::Transaction, key: &str, source: &str, citin
             c.url,
             c.authors,
             c.countries,
-            c.issn_list
+            c.issn_list,
+            c.institutions,
+            c.authorships,
+            c.author_orcids,
+            c.topic,
+            c.topic_field,
+            c.topic_domain,
+            c.work_type,
+            c.language,
+            c.oa_status,
+            c.publisher,
+            c.source_type,
+            c.cited_by
         ])?;
     }
     Ok(())
@@ -956,7 +1022,9 @@ pub fn refresh_targets(conn: &Connection) -> Result<Vec<RefreshTarget>> {
          JOIN articles a ON a.article_key=c.article_key
          JOIN article_matches m ON m.article_key=a.article_key
          WHERE c.snapshot_id=?1 AND m.source='openalex' AND m.external_id IS NOT NULL
-         ORDER BY c.citations DESC, a.title ASC",
+         ORDER BY EXISTS(SELECT 1 FROM backfill_citations b
+                         WHERE b.article_key=a.article_key AND b.enriched=0) DESC,
+                  c.citations DESC, a.title ASC",
     )?;
     let rows = st.query_map(params![latest.id], |r| {
         Ok(RefreshTarget {
@@ -988,6 +1056,24 @@ pub fn refresh_citing(
     let fresh = new_citing(Some(source), Some(source), &before, citing);
     tx.commit()?;
     Ok(fresh)
+}
+
+/// Stored citing rows that were written before 1.3.0 and still lack the "who cites you" fields.
+/// The daily refresh fills them (articles with such rows are read first). Only rows the refresh
+/// can reach count: articles matched in OpenAlex that are in the latest snapshot.
+pub fn unenriched_rows(conn: &Connection) -> Result<i64> {
+    let Some(latest) = latest_snapshot(conn)? else {
+        return Ok(0);
+    };
+    Ok(conn.query_row(
+        "SELECT COUNT(*) FROM backfill_citations b
+         WHERE b.enriched=0
+           AND b.article_key IN (SELECT article_key FROM article_citations WHERE snapshot_id=?1)
+           AND b.article_key IN (SELECT article_key FROM article_matches
+                                 WHERE source='openalex' AND external_id IS NOT NULL)",
+        params![latest.id],
+        |r| r.get(0),
+    )?)
 }
 
 /// True when at least one article is matched (the refresh has work to do).
@@ -1425,6 +1511,8 @@ pub fn article_backfill(conn: &Connection, key: &str) -> Result<ArticleBackfill>
 pub const STATE_GOAL: &str = "goal_citations";
 pub const STATE_WEEKLY: &str = "weekly_summary_week";
 pub const STATE_REFRESH: &str = "last_citing_refresh";
+/// Last refresh run that tried to fill older rows: `timestamp|unenriched before|unenriched after`.
+pub const STATE_ENRICH_TRY: &str = "last_enrich_attempt";
 /// Set once the 1.1.1 clean-up (matches made with the retired second source) has run.
 pub const STATE_LEGACY_SOURCE_DROPPED: &str = "legacy_source_dropped_v111";
 
@@ -1454,7 +1542,7 @@ pub fn drop_legacy_source_matches(conn: &mut Connection) -> Result<usize> {
 }
 
 /// One stored citing work of one article.
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
 pub struct CitingRow {
     pub article_key: String,
     pub article_title: String,
@@ -1469,13 +1557,32 @@ pub struct CitingRow {
     pub authors: String,
     pub countries: String,
     pub issn_list: String,
+    pub institutions: String,
+    pub author_orcids: String,
+    pub topic: String,
+    pub topic_field: String,
+    pub topic_domain: String,
+    pub work_type: String,
+    pub language: String,
+    pub oa_status: String,
+    pub publisher: String,
+    pub source_type: String,
+    pub cited_by: Option<i64>,
+    /// False for rows stored before 1.3.0 that the next refresh has not filled yet.
+    pub enriched: bool,
+    /// Set by the command (needs the user's ORCID and name): the citing work is a self-citation.
+    pub self_cite: bool,
+    /// Set by the command: not a self-citation, but an author is a co-author of one of the user's works.
+    pub coauthor_cite: bool,
 }
 
 /// Every stored citing work, newest first (one row per article and citing work).
 pub fn citing_works(conn: &Connection) -> Result<Vec<CitingRow>> {
     let mut st = conn.prepare(
         "SELECT b.article_key, COALESCE(a.title,''), b.source, b.citing_id, b.citing_title, b.citing_date,
-                b.date_precision, b.venue, b.doi, b.url, b.authors, b.countries, b.issn_list
+                b.date_precision, b.venue, b.doi, b.url, b.authors, b.countries, b.issn_list,
+                b.institutions, b.author_orcids, b.topic, b.topic_field, b.topic_domain, b.work_type,
+                b.language, b.oa_status, b.publisher, b.source_type, b.cited_by, b.enriched
          FROM backfill_citations b LEFT JOIN articles a ON a.article_key=b.article_key
          ORDER BY b.citing_date DESC, b.citing_id ASC",
     )?;
@@ -1494,6 +1601,20 @@ pub fn citing_works(conn: &Connection) -> Result<Vec<CitingRow>> {
             authors: r.get(10)?,
             countries: r.get(11)?,
             issn_list: r.get(12)?,
+            institutions: r.get(13)?,
+            author_orcids: r.get(14)?,
+            topic: r.get(15)?,
+            topic_field: r.get(16)?,
+            topic_domain: r.get(17)?,
+            work_type: r.get(18)?,
+            language: r.get(19)?,
+            oa_status: r.get(20)?,
+            publisher: r.get(21)?,
+            source_type: r.get(22)?,
+            cited_by: r.get(23)?,
+            enriched: r.get::<_, i64>(24)? != 0,
+            self_cite: false,
+            coauthor_cite: false,
         })
     })?;
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
@@ -2359,7 +2480,7 @@ mod tests {
         let cols: i64 = conn
             .query_row("SELECT COUNT(*) FROM pragma_table_info('backfill_citations')", [], |r| r.get(0))
             .expect("cols");
-        assert_eq!(cols, 12);
+        assert_eq!(cols, 12 + 13, "the six 1.2.0 columns' table plus the 1.3.0 ones");
         let issn: String = conn
             .query_row("SELECT issn_list FROM backfill_citations WHERE citing_id='W1'", [], |r| r.get(0))
             .expect("issn column");

@@ -170,6 +170,12 @@
           <div id="distCaption" class="caption secondary dist-caption"></div>
           <div class="card table-card">
             <div id="citingChips" class="filter-chips" hidden></div>
+            <div id="citingFilters" class="toolbar cw-extra" hidden>
+              <select id="citingType" class="input select citing-select" data-i18n-aria="cw.f_type" aria-label="Type"></select>
+              <select id="citingOa" class="input select citing-select" data-i18n-aria="cw.f_oa" aria-label="Open access"></select>
+              <select id="citingField" class="input select citing-select" data-i18n-aria="cw.f_field" aria-label="Field"></select>
+              <label class="check"><input type="checkbox" id="citingNoSelf"><span class="check-box"></span><span data-i18n="cw.f_excl_self"></span></label>
+            </div>
             <div class="toolbar">
               <label class="search"><span class="icon">&#xE721;</span><input id="citingSearch" type="search" data-i18n-placeholder="cw.search" autocomplete="off"></label>
               <select id="citingArticle" class="input select citing-select" data-i18n-aria="cw.article_filter" aria-label="Article"></select>
@@ -221,6 +227,7 @@
             <button class="tab" role="tab" data-tab="trend" id="tab-trend" aria-controls="anTab-trend" data-i18n="an.tab_trend"></button>
             <button class="tab" role="tab" data-tab="articles" id="tab-articles" aria-controls="anTab-articles" data-i18n="an.tab_articles"></button>
             <button class="tab" role="tab" data-tab="indices" id="tab-indices" aria-controls="anTab-indices" data-i18n="an.tab_indices"></button>
+            <button class="tab" role="tab" data-tab="citers" id="tab-citers" aria-controls="anTab-citers" data-i18n="an.tab_citers"></button>
           </div>
 
           <div class="an-tab" id="anTab-trend" role="tabpanel" aria-labelledby="tab-trend" hidden>
@@ -351,15 +358,8 @@
               <div id="cuList" class="tl"></div>
             </div>
             <div class="card chart-card">
-              <div class="card-head">
-                <h2 class="body-strong an-q" data-i18n="cal.q_year"></h2>
-                <div class="year-nav">
-                  <button id="calPrev" class="btn btn-icon" type="button" data-i18n-aria="an.year_prev" aria-label="Previous year"><span class="icon">&#xE76B;</span></button>
-                  <span id="calYear" class="body-strong year-label"></span>
-                  <button id="calNext" class="btn btn-icon" type="button" data-i18n-aria="an.year_next" aria-label="Next year"><span class="icon">&#xE76C;</span></button>
-                </div>
-              </div>
-              <div id="chCalendar" class="chart-area an-chart-cal"></div>
+              <div class="card-head"><h2 class="body-strong an-q" data-i18n="cal.q_year"></h2></div>
+              <div id="yearHeat" class="yh" aria-label="" data-i18n-aria="cal.q_year"></div>
               <div id="calCaption" class="caption secondary an-caption"></div>
             </div>
             <div class="card chart-card">
@@ -367,6 +367,29 @@
               <div id="chCalTrend" class="chart-area an-chart-sm"></div>
               <div id="calTrendCaption" class="caption secondary an-caption"></div>
             </div>
+          </div>
+
+          <div class="an-tab ci-tab" id="anTab-citers" role="tabpanel" aria-labelledby="tab-citers" hidden>
+            <div class="ci-sticky" id="ciSticky">
+              <div class="ci-filters" id="ciFilters">
+                <span id="ciRangeSlot" class="ci-range-slot"></span>
+                <select id="ciArticle" class="input select ci-article" data-i18n-aria="ci.article_aria" aria-label="Publication"></select>
+                <label class="check"><input type="checkbox" id="ciExclude"><span class="check-box"></span><span data-i18n="ci.exclude_self"></span></label>
+                <span class="an-spacer"></span>
+                <span id="ciCount" class="caption secondary ci-count" aria-live="polite"></span>
+              </div>
+              <nav class="ci-index" id="ciIndex" data-i18n-aria="ci.index_aria" aria-label="Categories">
+                <button type="button" data-sec="countries" data-i18n="ci.idx_countries"></button>
+                <button type="button" data-sec="institutions" data-i18n="ci.idx_institutions"></button>
+                <button type="button" data-sec="venues" data-i18n="ci.idx_venues"></button>
+                <button type="button" data-sec="fields" data-i18n="ci.idx_fields"></button>
+                <button type="button" data-sec="types" data-i18n="ci.idx_types"></button>
+                <button type="button" data-sec="who" data-i18n="ci.idx_who"></button>
+                <button type="button" data-sec="influential" data-i18n="ci.idx_influential"></button>
+              </nav>
+            </div>
+            <div id="ciMsg" class="card empty ci-msg" hidden></div>
+            <div id="ciSections" class="ci-sections"></div>
           </div>
         </div>
       </section>
@@ -419,6 +442,18 @@
                 <label class="check"><input type="checkbox" data-chart="index" checked><span class="check-box"></span><span data-i18n="rep.c_index"></span></label>
                 <label class="check"><input type="checkbox" data-chart="calendar"><span class="check-box"></span><span data-i18n="rep.c_calendar"></span></label>
                 <label class="check"><input type="checkbox" data-chart="dist"><span class="check-box"></span><span data-i18n="rep.c_dist"></span></label>
+              </div>
+            </div>
+          </div>
+          <div class="scard rep-charts-card">
+            <span class="icon sicon">&#xE716;</span>
+            <div class="stext">
+              <div class="body" data-i18n="rep.group_citers"></div>
+              <div class="caption secondary" data-i18n="rep.citers_sub"></div>
+              <div class="rep-checks" id="repCiters" role="group" data-i18n-aria="rep.group_citers" aria-label="Citing works">
+                <label class="check"><input type="checkbox" data-chart="citgeo"><span class="check-box"></span><span data-i18n="rep.c_citgeo"></span></label>
+                <label class="check"><input type="checkbox" data-chart="citfields"><span class="check-box"></span><span data-i18n="rep.c_citfields"></span></label>
+                <label class="check"><input type="checkbox" data-chart="citself"><span class="check-box"></span><span data-i18n="rep.c_citself"></span></label>
               </div>
             </div>
           </div>
@@ -583,7 +618,7 @@
           <div class="caption secondary hint" data-i18n="keys.storage_note"></div>
 
           <div class="sgroup-title body-strong" data-i18n="settings.group_about"></div>
-          <div class="scard">
+          <div class="scard about-card">
             <span class="icon sicon">&#xE946;</span>
             <div class="stext">
               <div class="body" id="aboutTitle"></div>
@@ -594,6 +629,15 @@
             <div class="sbtns">
               <button id="checkUpdateBtn" class="btn"><span class="icon">&#xE72C;</span><span id="checkUpdateText" data-i18n="about.check"></span></button>
               <button id="uninstallBtn" class="btn" data-i18n-title="about.uninstall_hint"><span class="icon">&#xE74D;</span><span data-i18n="about.uninstall"></span></button>
+            </div>
+            <div id="aboutResult" class="about-result" role="status" aria-live="polite" hidden>
+              <span id="aboutResultIcon" class="icon ar-icon"></span>
+              <div class="ar-body">
+                <div id="aboutResultText" class="body-strong"></div>
+                <details id="aboutNotesWrap" class="update-notes" hidden><summary class="caption secondary" data-i18n="update.notes"></summary><div id="aboutNotes" class="caption"></div></details>
+                <div id="aboutProgress" class="bf-progress" hidden><div class="bar-track"><div class="bar-fill" id="aboutBarFill"></div></div></div>
+              </div>
+              <button id="aboutInstall" class="btn btn-primary" hidden><span class="icon">&#xE896;</span><span data-i18n="update.now"></span></button>
             </div>
           </div>
         </div>
@@ -662,6 +706,9 @@
   <script src="countries.js"></script>
   <script src="vendor/echarts.min.js"></script>
   <script src="charts.js"></script>
+  <script src="citers-lib.js"></script>
+  <script src="yearheat.js"></script>
+  <script src="citers.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

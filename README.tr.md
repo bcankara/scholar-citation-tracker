@@ -8,14 +8,132 @@ Herkese açık bir Google Scholar profilindeki atıf sayılarını zaman içinde
 
 Arayüz **Türkçe** ve **İngilizce** olarak sunulur. İlk açılışta dil, Windows görüntüleme diline göre seçilir; Ayarlar'dan istediğiniz zaman değiştirebilirsiniz.
 
-## Ekran görüntüleri
+## Öne çıkanlar
+
+- Herkese açık Scholar profilinizi düşük sıklıkla okur; geçmişi (toplam, h-indeksi, i10-indeksi, makale bazlı sayılar) yerel bir SQLite veritabanında saklar.
+- Son ziyaretinizden beri neyin değiştiğini tek cümleyle söyleyen bir panel.
+- Scholar değişikliklerinin, geçmiş veriler açıksa atıf yapan yayınların kesin yayın tarihine göre takvimi ve tüm yılların ısı haritası.
+- Yıl sonu tahmin aralığı ve hedefle birlikte kesintisiz eğilim çizgisi, en hızlı yükselen makaleler, zaman içinde h ve i10.
+- Atıf yapanların ülke (dünya haritası), kurum, yayın yeri ve yayıncı, alan, yayın türü, açık erişim ve dile göre çözümlemesi; kimlerin atıf yaptığı (öz, ortak yazar, dış) ve etkili atıflar.
+- Atıf yapan yayınların süzülebilir listesi (başlık DOI/OpenAlex kaydına bağlanır); her makale ve her Scholar değişikliğinden o makalenin Scholar'daki atıf listesine bağlantı.
+- Seçilebilir grafiklerle PDF rapor, Excel dışa aktarma ve haftalık özet bildirimi.
+- Türkçe ve İngilizce arayüz, açık ve koyu tema, uygulama içi imzalı güncellemeler.
+
+## Tur
+
+Tüm ekran görüntülerinde uydurma gösterim verisi vardır.
+
+### Panel
+
+Tek bir cümle, son ziyaretinizden beri neyin değiştiğini söyler. Altında dört toplam, güne göre gruplanmış son değişiklikler ve 12 aylık geçmiş yer alır.
+
+<img src="docs/images/tr-panel.png" alt="Neyin değiştiğini söyleyen cümle, dört toplam, son değişiklikler ve 12 aylık geçmişle Panel" width="100%">
+
+### Analiz: Takvim ve ısı haritası
+
+Ay ızgarası, Scholar'ın değişiklik gösterdiği günleri ve geçmiş veriler açıksa atıf yapan yayınların yayımlandığı günleri işaretler. Bir günü seçince o günün makaleleri ve atıf yapan yayınları listelenir. Isı haritası tüm yılları birlikte gösterir.
 
 <table>
-<tr><td width="50%"><img src="docs/images/tr-panel.png" alt="Panel: neyin değiştiğini söyleyen tek cümle, toplamlar, son değişiklikler, 12 aylık geçmiş"><br><sub>Panel: neyin değiştiğini söyleyen tek cümle, toplamlar, son değişiklikler, 12 aylık geçmiş</sub></td><td width="50%"><img src="docs/images/tr-calendar.png" alt="Analiz > Takvim: seçili bir gün, Scholar değişiklikleri ve muhtemel OpenAlex yayınları"><br><sub>Analiz > Takvim: seçili bir gün, Scholar değişiklikleri ve muhtemel OpenAlex yayınları</sub></td></tr>
-<tr><td width="50%"><img src="docs/images/tr-analysis-trend.png" alt="Analiz > Eğilim: tek kesintisiz çizgi, aralıklı tahmin, hedef"><br><sub>Analiz > Eğilim: tek kesintisiz çizgi, aralıklı tahmin, hedef</sub></td><td width="50%"><img src="docs/images/tr-analysis-articles.png" alt="Analiz > Makaleler: en hızlı yükselenler, Scholar ve tanımlı atıf yapan yayınlar"><br><sub>Analiz > Makaleler: en hızlı yükselenler, Scholar ve tanımlı atıf yapan yayınlar</sub></td></tr>
-<tr><td width="50%"><img src="docs/images/tr-analysis-indices.png" alt="Analiz > Endeksler: zaman içinde h ve i10, en yakın makaleler"><br><sub>Analiz > Endeksler: zaman içinde h ve i10, en yakın makaleler</sub></td><td width="50%"><img src="docs/images/tr-citing.png" alt="Atıf yapanlar: bir çubuğa tıklayınca liste süzülür, kaldırılabilir çipler"><br><sub>Atıf yapanlar: bir çubuğa tıklayınca liste süzülür, kaldırılabilir çipler</sub></td></tr>
-<tr><td width="50%"><img src="docs/images/tr-articles.png" alt="Makaleler: makale geçmişi, eşleşen kayıt, Scholar ve tanımlı sayılar"><br><sub>Makaleler: makale geçmişi, eşleşen kayıt, Scholar ve tanımlı sayılar</sub></td><td width="50%"><img src="docs/images/tr-report.png" alt="Rapor: PDF için grafikleri seçin ve canlı önizlemeyi görün"><br><sub>Rapor: PDF için grafikleri seçin ve canlı önizlemeyi görün</sub></td></tr>
+<tr>
+<td width="50%"><img src="docs/images/tr-calendar.png" alt="Kasım 2026'nın göründüğü, bir günün seçili olduğu ve Scholar değişikliklerinin listelendiği takvim kartı" width="100%"></td>
+<td width="50%"><img src="docs/images/tr-heatmap.png" alt="Yıllara göre hangi günlerin dolu olduğunu gösteren, tüm yılları kapsayan ısı haritası" width="100%"></td>
+</tr>
 </table>
+
+### Analiz: Eğilim
+
+Tek kesintisiz birikimli çizgi, yıl sonuna aralık olarak çizilen tahmin, hedefiniz ve dönem başına atıf.
+
+<img src="docs/images/tr-trend.png" alt="Kesintisiz çizgi, tahmin aralığı, hedef ve dönem başına atıfın göründüğü Analiz Eğilim sekmesi" width="100%">
+
+### Analiz: Makaleler
+
+En hızlı yükselen makaleler, makale başına Scholar ile tanımlı atıf yapan yayınlar arasındaki fark ve makaleye göre yığılmış aylık atıflar.
+
+<img src="docs/images/tr-analysis-articles.png" alt="En hızlı yükselenler, Scholar ve tanımlı atıfların karşılaştırması ve yığılmış aylık grafikle Analiz Makaleler sekmesi" width="100%">
+
+### Analiz: Endeksler
+
+Zaman içinde h ve i10 basamak çizgileri ile sonraki basamağa en yakın makaleler.
+
+<img src="docs/images/tr-indices.png" alt="Zaman içinde h ve i10 ile sonraki basamağa en yakın makalelerin göründüğü Analiz Endeksler sekmesi" width="100%">
+
+### Analiz: Atıf yapanlar
+
+Bu sekme "bana kim atıf yapıyor?" sorusunu her kategori için ayrı bir kartla yanıtlar. Dönem seçici, yayın süzgeci ve "Öz atıfları hariç tut" tüm sekmeye uygulanır; her grafik verinin kaç yayında eksik olduğunu yazar.
+
+#### Ülkeler
+
+Dünya haritası, ilk 10 ülke, yıllara göre ülkeler ve ilk kez atıf yapan ülkeler.
+
+<img src="docs/images/tr-citers-countries.png" alt="Süzgeç çubuğu ile dünya haritası ve ilk 10 ülkenin göründüğü Atıf yapanlar sekmesi, Ülkeler kartı" width="100%">
+
+#### Kurumlar
+
+İlk 10 kurum; yeniler vurgulanır.
+
+<img src="docs/images/tr-citers-institutions.png" alt="İlk 10 kurumu ve bu yıl yeni olanları gösteren Kurumlar kartı" width="100%">
+
+#### Yayın yerleri ve yayıncılar
+
+Atıf yapan yayınların dergileri ve yayıncıları.
+
+<img src="docs/images/tr-citers-venues.png" alt="Yayın yerleri ve yayıncılar kartı" width="100%">
+
+#### Alanlar
+
+Alanların treemap görünümü ve yayınlarınız ile alanlar arasında ısı haritası.
+
+<img src="docs/images/tr-citers-fields.png" alt="Treemap ve yayın x alan ısı haritasıyla Alanlar kartı" width="100%">
+
+#### Yayın türleri
+
+Atıf yapan yayınların türü, açık erişim durumu ve dili.
+
+<img src="docs/images/tr-citers-types.png" alt="Tür, açık erişim ve dil çubuklarıyla Yayın türleri kartı" width="100%">
+
+#### Kimler atıf yapıyor
+
+Öz atıfların (ORCID ve ad eşleşmesiyle), ortak yazar atıflarının ve dış atıfların payı ile en sık atıf yapan yazarlar.
+
+<img src="docs/images/tr-citers-who.png" alt="Öz, ortak yazar ve dış atıfları ayıran, sık atıf yapan yazarları gösteren kart" width="100%">
+
+#### Etkili atıflar
+
+Etkili atıf yapan yayınların tablosu.
+
+<img src="docs/images/tr-citers-influential.png" alt="Etkili atıflar tablosu" width="100%">
+
+### Atıf yapanlar listesi
+
+Bir grafikte çubuğa tıklayınca liste süzülür. Etkin süzgeçler, tek tek ya da hepsi birden kaldırılabilen çipler olarak görünür.
+
+<img src="docs/images/tr-citing.png" alt="Ülke ve yayın yeri grafikleri, kaldırılabilir süzgeç çipleri ve 200 yayından 11'inin listelendiği Atıf yapanlar sayfası" width="100%">
+
+### Makaleler
+
+Her makale; geçmiş grafiği ve sayısındaki her değişiklik, eşleşen OpenAlex kaydı (DOI düzeltme yoluyla) ve ona atıf yapan yayınlarla açılır.
+
+<img src="docs/images/tr-articles.png" alt="İlk makalenin açık olduğu Makaleler sayfası: geçmiş grafiği, değişiklik geçmişi, OpenAlex eşleşmesi ve atıf yapan yayınlar" width="100%">
+
+### Rapor (PDF) ve Excel
+
+PDF için aralığı, dili ve grafikleri seçin; canlı önizleme bunları gösterir. Atıf yapanlar bölümleri (ülkeler ve kurumlar, alanlar, öz atıf) isteğe bağlıdır. Excel dışa aktarma Ayarlar'dadır.
+
+<img src="docs/images/tr-report.png" alt="İsteğe bağlı Atıf yapanlar bölümleri işaretli ve canlı önizlemede görünen Rapor sayfası" width="100%">
+
+### Ayarlar ve güncellemeler
+
+Ayarlar; profil, aralık, dil, veri klasörü, API anahtarları, geçmiş veriler ve dışa aktarmayı içerir. Hakkında bölümü sürümü gösterir ve güncellemeleri denetler; sonuç her zaman gösterilir.
+
+<img src="docs/images/tr-settings-about.png" alt="Uygulamanın güncel olduğunu gösteren, Hakkında bölümüne kaydırılmış Ayarlar" width="100%">
+
+### Koyu tema
+
+Arayüz, Windows'un açık/koyu ayarını izler.
+
+<img src="docs/images/tr-dark-citers.png" alt="Dünya haritalı Ülkeler kartını gösteren koyu tema" width="100%">
+
 
 ## Ne yapar?
 
@@ -99,6 +217,12 @@ Her Scholar satırında ve Makaleler sekmesindeki her makalede **Scholar'da gör
 - **PDF rapor (Rapor sekmesi).** Bir tarih aralığı, rapor dili (Türkçe ya da İngilizce) ve atıf yapanlar listesi ile grafiklerin eklenip eklenmeyeceği seçilir, ardından **PDF oluştur**. Sayfa numaralı A4 PDF; kapak sayfası (profil adı, ORCID kimliği, aralık, oluşturma tarihi), özet göstergeler (toplam, başlangıç yılından beri, h, i10, aralıktaki değişim), makale tablosu (aralık sonunda atıf, aralıkta kazanılan), grafikler (zaman içinde toplam, yıllara göre), isteğe bağlı olarak aralıktaki atıf yapanlar (tarih, başlık, dergi, atıf yapılan makale) ve kaynaklar-ve-yöntem notunu içerir. Rapor bir HTML sayfasıdır (`ui/report.html`); gizli bir pencerede çizilir ve WebView2'nin kendi `PrintToPdf` işleviyle PDF'e yazdırılır, bu yüzden Türkçe karakterler sistem yazı tipinden gelir.
 - **Excel'e aktarma (Ayarlar > Dışa aktar).** Özet (anlık görüntü geçmişi), Makaleler (bugün / 7 / 30 günlük değişimlerle en son değerler), Makale geçmişi (uzun biçim), Atıf yapanlar ve Yıllık sayfalarını içeren tek bir .xlsx. Başlık satırları kalın ve renkli, sabitlenmiş ve süzülebilir; tarihler gerçek Excel tarihleridir; sayfa adları ve başlıklar arayüz diline göredir. İki CSV dışa aktarması da durur.
 - **Haftalık özet.** Pazartesi günü saat 09:00'da ya da sonrasındaki ilk açılışta (yerel saat), ISO haftasında bir kez, "Bu hafta +N atıf; en çok: <makale> (+k)" bildirimi gösterilir. Haftada veri yoksa atlanır. Anahtar: **Ayarlar > Haftalık özet bildirimi** (varsayılan açık; "Bildirimler" de açık olmalı).
+
+### Atıf yapanlar sekmesi (Analiz)
+
+Analiz'in son sekmesi **Atıf yapanlar** "bana kim atıf yapıyor?" sorusunu kategori kategori, her biri kendi kartında yanıtlar: ülkeler (dünya haritası, ilk 10, yıllara göre ülke sayısı, ilk kez atıf yapan ülkeler), kurumlar (yeniler vurgulu), yayın yerleri ve yayıncılar, alanlar (treemap ve yayın x alan ısı haritası), yayın türleri (tür, açık erişim, dil), kimler (ORCID ve ad eşleşmesiyle öz atıf payı, ortak yazar ve dış atıflar, en çok atıf yapan yazarlar) ve etkili atıflar. Dönem seçici, yayın süzgeci ve "Öz atıfları hariç tut" tüm sekmeye uygulanır; her grafik verinin kaç yayında eksik olduğunu yazar. Veri, önceki OpenAlex isteklerinden gelir (ek `select` alanları); daha önce kaydedilen satırlar bir sonraki yenilemede tamamlanır. Her kartta küçük bir "listede gör" bağlantısı vardır; liste sayfasına tür, açık erişim, alan ve öz atıf süzgeçleri eklendi. PDF raporda üç isteğe bağlı bölüm (ülkeler ve kurumlar, alanlar, öz atıf), Excel sayfasında 13 yeni sütun vardır.
+
+Analiz > Takvim'deki yıl ısı haritası artık tüm yılları aynı anda gösterir.
 
 ## API anahtarları (isteğe bağlı)
 
@@ -212,6 +336,8 @@ Bu, resmî olmayan ve bağımsız bir projedir; Google ile bağlantılı değild
 Uygulama simgesi, Microsoft'un Fluent UI System Icons (MIT Lisansı) çalışmasını temel alır.
 
 Grafikler [Apache ECharts](https://echarts.apache.org/) 5.5.1 (Apache Lisansı 2.0) ile çizilir; lisansı ve bildirimiyle birlikte `ui/vendor/` içinde paketlidir (`echarts.min.js`, SHA-256 `e84270bd0cd5bdf60fefc26d00c2a391cb2e81f4d26a7a9ee16185a54773a3cf`, npm kayıt defterindeki `echarts@5.5.1` paketinden); çevrimdışı çalışır, hiçbir şey CDN'den yüklenmez.
+
+Dünya haritası: [Natural Earth](https://www.naturalearthdata.com/) 1:110m ülke sınırları (kamu malı), `nvkelso/natural-earth-vector` deposunun `v5.1.2` etiketi; `ui/vendor/world.geo.json` olarak sadeleştirildi (SHA-256 `5639a2568f0f14a602ba21da1310e9aebcc3dc6afb21417e4c96af7d64931e31`; özgün dosya `6866c877d39cba9c357620878839b336d569f8c662d3cfab4cb1dbe2d39c977f`); bildirim `ui/vendor/LICENSE-natural-earth.txt` içinde.
 
 ## Lisans
 

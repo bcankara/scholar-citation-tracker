@@ -1724,6 +1724,7 @@ mod tests {
             authors: String::new(),
             countries: String::new(),
             issn_list: String::new(),
+            ..Default::default()
         }
     }
 
@@ -1840,6 +1841,7 @@ mod tests {
             authors: String::new(),
             countries: String::new(),
             issn_list: String::new(),
+            ..Default::default()
         }
     }
 

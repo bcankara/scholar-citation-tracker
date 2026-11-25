@@ -25,7 +25,7 @@
     analysis: null,
     recentAll: false,
     an: { range: "12m", from: "", to: "", tab: "calendar", gran: "month" },
-    cal: { month: "", sel: null, focus: "", source: "all", article: "", days: new Map(), key: "", detail: [], detailKey: "", shown: 120, year: null, yearDays: [], yearKey: "", undatedOpen: false },
+    cal: { month: "", sel: null, focus: "", source: "all", article: "", days: new Map(), key: "", detail: [], detailKey: "", shown: 120, year: null, yearDays: new Map(), yearKey: "", undatedOpen: false },
     sort: { key: "citations", dir: -1 },
     query: "",
     open: new Set(),
@@ -50,7 +50,7 @@
     citing: [],
     citingGroups: [],
     citingLoaded: false,
-    cw: { query: "", article: "", dir: -1, shown: 200, country: "", venue: "", date: "", period: null },
+    cw: { query: "", article: "", dir: -1, shown: 200, country: "", venue: "", date: "", period: null, type: "", oa: "", field: "", noSelf: false, sort: "date" },
     dist: null,
     recent: [],
     scan: null,
@@ -165,6 +165,7 @@
     renderHealth();
     renderUpdate();
     renderAbout();
+    renderAboutResult();
     renderAnalysis();
     renderCiting();
     renderKeys();
@@ -209,41 +210,93 @@
     $("#updateLater").disabled = state.updating;
   }
 
+  /** Progress of the update download: the top bar and the About card show the same text. */
+  function updateProgressUi(text, pct) {
+    $("#updateText").textContent = text;
+    $("#aboutResultText").textContent = text;
+    $("#updateProgress").hidden = false;
+    $("#aboutProgress").hidden = false;
+    if (pct !== null && pct !== undefined) {
+      $("#updateBarFill").style.width = pct + "%";
+      $("#aboutBarFill").style.width = pct + "%";
+    }
+  }
+
   async function installUpdate() {
     if (!state.update || state.updating) return;
     state.updating = true;
-    $("#updateProgress").hidden = false;
-    $("#updateBarFill").style.width = "0%";
-    $("#updateText").textContent = t("update.downloading", { percent: "0%" });
+    updateProgressUi(t("update.downloading", { percent: "0%" }), 0);
     renderUpdate();
+    renderAboutResult();
     try {
       await invoke("install_update");
       // On Windows the installer ends this process; if we are still here, restart explicitly.
-      $("#updateText").textContent = t("update.installing");
+      updateProgressUi(t("update.installing"), 100);
       await window.__TAURI__.process.relaunch();
     } catch (e) {
       state.updating = false;
+      state.aboutRes = { kind: "failed", text: t("update.failed", { error: String(e) }) };
       renderUpdate();
       $("#updateText").textContent = t("update.failed", { error: String(e) });
+      renderAboutResult();
     }
+  }
+
+  /** The result of "Check for updates" inside the About card, right under the button. */
+  function renderAboutResult() {
+    const r = state.aboutRes;
+    const box = $("#aboutResult");
+    box.hidden = !r;
+    if (!r) return;
+    const u = state.update;
+    const avail = r.kind === "available" && !!u;
+    box.className = "about-result " + (r.kind === "error" || r.kind === "failed" ? "err" : avail ? "avail" : "ok");
+    $("#aboutResultIcon").textContent = r.kind === "error" || r.kind === "failed" ? "" : avail ? "" : "";
+    if (!state.updating) {
+      $("#aboutResultText").textContent = avail ? t("about.available_here", { version: u.version }) : r.text;
+      $("#aboutProgress").hidden = true;
+    }
+    $("#aboutNotes").textContent = avail ? u.notes || "" : "";
+    $("#aboutNotesWrap").hidden = !(avail && u.notes);
+    $("#aboutInstall").hidden = !avail;
+    $("#aboutInstall").disabled = state.updating;
   }
 
   async function checkUpdatesManually() {
     const btn = $("#checkUpdateBtn");
     btn.disabled = true;
     $("#checkUpdateText").textContent = t("about.checking");
+    state.aboutRes = { kind: "checking", text: t("about.checking") };
+    renderAboutResult();
+    let msg, err = false;
     try {
       const r = await invoke("check_for_updates");
-      if (r.status === "available") { state.update = r.info; renderUpdate(); showInfo(t("about.available", { version: r.info.version }), false); }
-      else if (r.status === "current") showInfo(t("about.current", { version: state.version }), false);
-      else if (r.status === "not_found") showInfo(t("about.not_found"), false);
-      else showInfo(t("about.error", { error: r.error || "?" }), true);
+      if (r.status === "available") {
+        state.update = r.info; renderUpdate();
+        state.aboutRes = { kind: "available", text: "" };
+        msg = t("about.available_toast", { version: r.info.version });
+      } else if (r.status === "current") {
+        state.aboutRes = { kind: "current", text: t("about.current", { version: state.version }) };
+        msg = state.aboutRes.text;
+      } else if (r.status === "not_found") {
+        state.aboutRes = { kind: "not_found", text: t("about.not_found") };
+        msg = state.aboutRes.text;
+      } else {
+        err = true;
+        state.aboutRes = { kind: "error", text: t("about.error", { error: r.error || "?" }) };
+        msg = state.aboutRes.text;
+      }
     } catch (e) {
-      showInfo(t("about.error", { error: String(e) }), true);
+      err = true;
+      state.aboutRes = { kind: "error", text: t("about.error", { error: String(e) }) };
+      msg = state.aboutRes.text;
     } finally {
       btn.disabled = false;
       $("#checkUpdateText").textContent = t("about.check");
     }
+    renderAboutResult();
+    toast(msg, err);
+    $("#aboutResult").scrollIntoView({ block: "nearest", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   }
 
   function renderAbout() {
@@ -1314,8 +1367,11 @@
       if (!on) Charts.disposeIn(p);
       p.hidden = !on;
     });
+    Citers.mountRange(state.an.tab === "citers");
+    if (state.an.tab !== "citers") Citers.leave();
+    if (state.an.tab !== "calendar") window.YearHeat.dispose($("#yearHeat"));
     if (!state.citingLoaded) loadCiting();
-    ({ trend: renderTrendTab, articles: renderArticlesTab, indices: renderIndicesTab, calendar: renderCalendarTab }[state.an.tab])();
+    ({ trend: renderTrendTab, articles: renderArticlesTab, indices: renderIndicesTab, calendar: renderCalendarTab, citers: () => Citers.render() }[state.an.tab])();
   }
 
   // ---- trend tab
@@ -1549,7 +1605,7 @@
   const calSig = () => `${state.cal.source}|${state.cal.article}`;
 
   /** Forget what was fetched for the calendar (data changed): it is fetched again when shown. */
-  function calInvalidate() { Object.assign(state.cal, { key: "", detailKey: "", yearKey: "" }); }
+  function calInvalidate() { Object.assign(state.cal, { key: "", detailKey: "", yearKey: "" }); if (window.Citers) window.Citers.invalidate(); }
 
   function renderCalendarTab() {
     const cal = state.cal;
@@ -1798,7 +1854,7 @@
   function openCitingFromDetail() {
     const s = state.cal.sel;
     if (!s) return;
-    Object.assign(state.cw, { article: state.cal.article, country: "", venue: "", query: "", shown: 200, date: "", period: null });
+    Object.assign(state.cw, { article: state.cal.article, country: "", venue: "", query: "", shown: 200, date: "", period: null, type: "", oa: "", field: "", noSelf: false, sort: "date" });
     if (s.from === s.to) state.cw.date = s.from;
     else state.cw.period = { from: keyMsOf(s.from), to: keyMsOf(s.to) + DAY_MS - 1, label: s.whole ? monthLabel(s.from.slice(0, 7), true) : `${shortDay(s.from)} – ${shortDay(s.to)}` };
     $("#citingSearch").value = "";
@@ -1833,36 +1889,78 @@
       <div class="tl-sub">${g.venue ? esc(g.venue) + " " : ""}<span class="tl-arrow">→</span> ${arts}</div></div>`;
   }
 
-  // ---- year heat map and the cumulative line, below the month
-  const calYearNow = () => state.cal.year ?? Number(state.cal.month.slice(0, 4));
+  // ---- year heat map: every year with data at once (one row per year), cells shrink to fit
+  const mondayIdx = (ms) => (new Date(ms).getUTCDay() + 6) % 7;
+  const heatMonthYear = (ms) => new Date(ms).toLocaleDateString(loc(), { month: "short", year: "numeric", timeZone: "UTC" });
+
+  /** What the period selector asks the year heat map to show: the rolling 53 weeks, all years, or the years the range covers. */
+  function heatPlan() {
+    const today = todayIso();
+    const curY = Number(today.slice(0, 4));
+    const r = state.an.range;
+    if (r === "12m") {
+      const end = keyMsOf(today);
+      const start = end - mondayIdx(end) * DAY_MS - 52 * 7 * DAY_MS;
+      return { mode: "roll", start, end, y0: new Date(start).getUTCFullYear(), y1: curY, clip: null };
+    }
+    if (r === "all") {
+      const snapY = state.series[0]?.t ? new Date(state.series[0].t).getFullYear() : curY;
+      return { mode: "years", y0: Math.min(state.analysis?.calendar.years[0] ?? curY, snapY, curY), y1: curY, clip: null, trim: true };
+    }
+    const a = anRange();
+    const from = a.from == null ? Date.now() - 365 * DAY_MS : a.from;
+    return { mode: "years", y0: new Date(from).getFullYear(), y1: new Date(a.to ?? Date.now()).getFullYear(), clip: { from: isoDay(new Date(from)), to: a.to == null ? today : isoDay(new Date(a.to)) }, trim: false };
+  }
+  const heatKey = (p) => `${p.mode}|${p.y0}|${p.y1}|${calSig()}`;
 
   async function loadYear() {
     const cal = state.cal;
-    const y = calYearNow();
-    const key = `${y}|${calSig()}`;
+    if (!state.analysis) return;
+    const plan = heatPlan();
+    const key = heatKey(plan);
     if (cal.yearKey === key) return;
-    const res = await safe(() => invoke("get_calendar_days", { from: `${y}-01-01`, to: `${y}-12-31`, source: cal.source, article: cal.article }), null);
-    if (!res || key !== `${calYearNow()}|${calSig()}`) return;
+    const res = await safe(() => invoke("get_calendar_days", { from: `${plan.y0}-01-01`, to: `${plan.y1}-12-31`, source: cal.source, article: cal.article }), null);
+    if (!res || key !== heatKey(heatPlan())) return;
     cal.yearKey = key;
-    cal.yearDays = res.days.map((d) => [d.date, d.scholar_up + d.openalex]).filter((d) => d[1] > 0);
+    cal.yearDays = new Map(res.days.map((d) => [d.date, d.scholar_up + d.openalex]).filter((d) => d[1] > 0));
     renderYearHeat();
   }
 
   function renderYearHeat() {
     if (state.page !== "analysis" || state.an.tab !== "calendar" || !state.analysis) return;
     const cal = state.cal;
-    const y = calYearNow();
-    $("#calYear").textContent = String(y);
-    const c = Charts.ctx({
-      year: y, days: cal.yearDays, selected: cal.sel && cal.sel.from === cal.sel.to ? cal.sel.from : "", dayInfo: dayInfo(),
-      onPick: (d) => { selectDay(d); cal.month = d.slice(0, 7); renderCalendarTab(); }, oaLatest: state.analysis.trend.oa_latest,
+    const plan = heatPlan();
+    const el = $("#yearHeat");
+    if (cal.yearKey !== heatKey(plan)) { return; }
+    let days = cal.yearDays;
+    if (plan.clip) days = new Map(Array.from(days).filter(([d]) => d >= plan.clip.from && d <= plan.clip.to));
+    const sumIn = (a, b) => { let n = 0; for (const [d, c] of days) if (d >= a && d <= b) n += c; return n; };
+    let rows = [];
+    if (plan.mode === "roll") {
+      const a = isoDay0(plan.start), b = isoDay0(plan.end);
+      rows = [{ label: t("cal.heat_roll"), sub: nf.format(sumIn(a, b)), caption: `${heatMonthYear(plan.start)} – ${heatMonthYear(plan.end)}`, start: plan.start, end: plan.end }];
+    } else {
+      let y0 = plan.y0, y1 = plan.y1;
+      if (plan.trim) {
+        const ys = Array.from(days.keys()).map((d) => Number(d.slice(0, 4)));
+        if (ys.length) { y0 = Math.min(...ys); y1 = Math.max(...ys); } else { y0 = 1; y1 = 0; }
+      }
+      for (let y = y1; y >= y0; y--) rows.push({ label: String(y), sub: nf.format(sumIn(`${y}-01-01`, `${y}-12-31`)), start: Date.UTC(y, 0, 1), end: Date.UTC(y, 11, 31) });
+    }
+    if (!days.size) rows = [];
+    const pal = window.CitersLib.palette(Charts.ctx());
+    const oaLatest = state.analysis.trend.oa_latest;
+    const tailFrom = cal.source !== "scholar" && oaLatest && oaLatest.length >= 10 ? addDays(oaLatest.slice(0, 10), 1) : "";
+    window.YearHeat.mount(el, {
+      rows, days, selected: cal.sel && cal.sel.from === cal.sel.to ? cal.sel.from : "", today: todayIso(), tailFrom, t, loc: loc(),
+      palette: { seq: pal.seq, cell: pal.cell }, emptyText: t("cal.heat_empty"),
+      onPick: (d) => { selectDay(d); cal.month = d.slice(0, 7); renderCalendarTab(); const m = $("#calDetail"); if (m) m.scrollIntoView({ block: "nearest", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }); },
     });
-    const built = Charts.build.calendar(state.analysis, c);
-    Charts.mount($("#chCalendar"), built, { emptyText: t("chart.no_data_range") });
     let text = t("cal.cap_year");
-    if (built && built.meta.tail > 0) text += " " + t("an.lag_tail_note", { date: fmtDayMonth(state.analysis.trend.oa_latest) });
+    if (tailFrom && rows.length && tailFrom <= todayIso()) text += " " + t("an.lag_tail_note", { date: fmtDayMonth(oaLatest) });
     $("#calCaption").textContent = text;
   }
+  const isoDay0 = (ms) => Charts.util.ymd(ms);
 
   function renderCalTrend() {
     const a = state.analysis;
@@ -1918,7 +2016,11 @@
     for (const r of rows || []) {
       let g = map.get(r.citing_id);
       if (!g) {
-        g = { id: r.citing_id, title: r.title, date: r.date, precision: r.precision, venue: r.venue, doi: r.doi, countries: r.countries, authors: r.authors, articles: [] };
+        g = {
+          id: r.citing_id, title: r.title, date: r.date, precision: r.precision, venue: r.venue, doi: r.doi, countries: r.countries, authors: r.authors, articles: [],
+          type: r.work_type || "", language: r.language || "", oa: r.oa_status || "", field: r.topic_field || "", domain: r.topic_domain || "", cited: r.cited_by ?? null,
+          self: !!r.self_cite, co: !!r.coauthor_cite, url: r.url || "",
+        };
         map.set(r.citing_id, g);
       }
       if (!g.articles.some((a) => a.key === r.article_key)) g.articles.push({ key: r.article_key, title: r.article_title });
@@ -1935,6 +2037,7 @@
       : { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
   }
 
+  const L = window.CitersLib;
   const sameText = (a, b) => String(a || "").trim().toLocaleLowerCase(loc()) === String(b || "").trim().toLocaleLowerCase(loc());
 
   function filteredCiting() {
@@ -1946,9 +2049,14 @@
       (!cw.venue || sameText(g.venue, cw.venue)) &&
       (!cw.date || (g.precision === "day" && g.date === cw.date)) &&
       (!cw.period || spanTouches(g, cw.period.from, cw.period.to)) &&
+      (!cw.type || (L.names.typeKey(g.type) || g.type) === cw.type) &&
+      (!cw.oa || L.names.oaKey(g.oa) === cw.oa) &&
+      (!cw.field || g.field === cw.field) &&
+      (!cw.noSelf || !g.self) &&
       (!q || `${g.title} ${g.venue} ${g.authors} ${g.articles.map((a) => a.title).join(" ")}`.toLocaleLowerCase(loc()).includes(q)));
     const dir = cw.dir;
-    rows = rows.slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0) * dir || a.title.localeCompare(b.title, loc()));
+    if (cw.sort === "cited") rows = rows.slice().sort((a, b) => (b.cited ?? -1) - (a.cited ?? -1) || (a.date < b.date ? 1 : -1));
+    else rows = rows.slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0) * dir || a.title.localeCompare(b.title, loc()));
     return rows;
   }
 
@@ -1963,6 +2071,30 @@
   }
 
   /** Removable chips of the active filters (country / venue from the charts, date / period from the calendar). */
+  /** Options of the new list filters (type, open access, field) from what the stored citing works carry. */
+  function fillCitingFilters() {
+    const groups = state.citingGroups || [];
+    const types = new Map(), fields = new Set(), oas = new Set();
+    for (const g of groups) {
+      const k = L.names.typeKey(g.type) || g.type;
+      if (k) types.set(k, L.names.typeName(g.type));
+      if (g.field) fields.add(g.field);
+      if (g.oa) oas.add(L.names.oaKey(g.oa));
+    }
+    const fill = (sel, allKey, entries, cur) => {
+      const el = $(sel);
+      el.innerHTML = `<option value="">${esc(t(allKey))}</option>` + entries.map(([v, label]) => `<option value="${esc(v)}">${esc(label)}</option>`).join("");
+      el.value = entries.some(([v]) => v === cur) ? cur : "";
+    };
+    fill("#citingType", "cw.f_all_types", Array.from(types).sort((a, b) => a[1].localeCompare(b[1], loc())), state.cw.type);
+    const order = ["gold", "green", "hybrid", "bronze", "closed"];
+    fill("#citingOa", "cw.f_all_oa", order.filter((k) => oas.has(k)).map((k) => [k, t("ci.oa_" + k)]), state.cw.oa);
+    fill("#citingField", "cw.f_all_fields", Array.from(fields).map((f) => [f, L.names.fieldName(f)]).sort((a, b) => a[1].localeCompare(b[1], loc())), state.cw.field);
+    $("#citingNoSelf").checked = state.cw.noSelf;
+    $("#citingFilters").hidden = !(types.size || fields.size || oas.size);
+  }
+  function syncCitingToolbar() { if (state.page === "citing") fillCitingFilters(); }
+
   function renderCitingChips() {
     const cw = state.cw;
     const lang = window.I18N.lang;
@@ -1971,6 +2103,11 @@
     if (cw.venue) chips.push(["venue", t("cw.chip_venue", { name: shortText(cw.venue, 60) })]);
     if (cw.date) chips.push(["date", t("cw.chip_date", { date: fmtCitingDate(cw.date, "day") })]);
     if (cw.period) chips.push(["period", t("an.chip_period", { label: cw.period.label })]);
+    if (cw.type) chips.push(["type", t("cw.chip_type", { name: L.names.typeName(cw.type) })]);
+    if (cw.oa) chips.push(["oa", t("cw.chip_oa", { name: t("ci.oa_" + cw.oa) })]);
+    if (cw.field) chips.push(["field", t("cw.chip_field", { name: L.names.fieldName(cw.field) })]);
+    if (cw.noSelf) chips.push(["noSelf", t("cw.chip_self")]);
+    if (cw.sort === "cited") chips.push(["sort", t("cw.chip_sort")]);
     const box = $("#citingChips");
     box.hidden = !chips.length;
     box.innerHTML = chips.map(([k, label]) => `<span class="fchip"><span>${esc(label)}</span><button type="button" data-clear="${k}" aria-label="${esc(t("cw.chip_remove"))}" title="${esc(t("cw.chip_remove"))}"><span class="icon">&#xE711;</span></button></span>`).join("")
@@ -1985,6 +2122,7 @@
     renderDist();
     if (!has) return;
     fillArticleFilter();
+    fillCitingFilters();
     renderCitingChips();
     const th = $("#citingTable th[data-csort]");
     const old = $(".sort", th); if (old) old.remove();
@@ -2001,11 +2139,36 @@
       return `<tr>
         <td class="num cw-date" style="text-align:left">${esc(fmtCitingDate(g.date, g.precision))}</td>
         <td><a href="#" class="title-link" data-url="${esc(citingUrl(g))}">${esc(g.title || "—")}</a>
-          <div class="title-meta">${esc(shortText(g.authors, 110))}</div>${countries ? `<div class="chips cw-countries">${countries}</div>` : ""}</td>
+          <div class="title-meta">${esc(shortText(g.authors, 110))}${g.cited != null ? ` · ${esc((g.cited === 1 ? t("cw.cited_meta.one", { n: nf.format(g.cited) }) : t("cw.cited_meta.many", { n: nf.format(g.cited) })))}` : ""}</div>${countries ? `<div class="chips cw-countries">${countries}</div>` : ""}</td>
         <td>${esc(g.venue || "—")}</td>
         <td class="cw-arts">${arts}</td></tr>`;
     }).join("") : `<tr><td colspan="4" class="empty-row">${esc(t("cw.none_match"))}</td></tr>`;
     $("#citingMoreRow").hidden = rows.length <= shown.length;
+  }
+
+  /** Label of the period selector of the Analysis page (for the chip on the list page). */
+  function anPeriodLabel() {
+    const r = state.an.range;
+    if (r === "custom") return `${state.an.from || "…"} – ${state.an.to || "…"}`;
+    return t("an.r_" + r);
+  }
+  /** UTC midnight (ms) of the local calendar day of a timestamp: the Citing works list compares UTC day spans, like the backend. */
+  const utcDayMs = (ms) => keyMsOf(isoDay(new Date(ms)));
+  /** "view in list": the Citing works list with the period, article and self-citation state of the Analysis tab. */
+  function openCitersList(o) {
+    const r = anRange();
+    Object.assign(state.cw, {
+      article: o.article || "", query: "", shown: 200, country: "", venue: "", date: "", type: "", oa: "", field: "",
+      noSelf: !!o.excludeSelf, sort: o.sort === "cited" ? "cited" : "date", dir: -1,
+      period: r.from == null && r.to == null ? null : { from: r.from == null ? null : utcDayMs(r.from), to: r.to == null ? null : utcDayMs(r.to), label: anPeriodLabel() },
+    });
+    $("#citingSearch").value = "";
+    showPage("citing");
+  }
+  /** Range of the Analysis period selector as local days for the get_citers_* commands (empty = open). */
+  function anRangeDays() {
+    const r = anRange();
+    return { from: r.from == null ? "" : isoDay(new Date(r.from)), to: r.to == null ? "" : isoDay(new Date(r.to)) };
   }
 
   function setCitingFilter(key, value) {
@@ -2073,7 +2236,7 @@
     bar.hidden = !text;
   }
 
-  const reportCharts = () => $$("#repCharts input[data-chart]").filter((i) => i.checked).map((i) => i.dataset.chart);
+  const reportCharts = () => $$("#repCharts input[data-chart], #repCiters input[data-chart]").filter((i) => i.checked).map((i) => i.dataset.chart);
 
   async function createReport() {
     const from = $("#repFrom").value, to = $("#repTo").value;
@@ -2151,6 +2314,13 @@
       },
     };
     for (const id of charts) {
+      if (id.startsWith("cit")) {
+        const tile = document.createElement("div");
+        tile.className = "prev-tile";
+        tile.innerHTML = `<div class="prev-t">${esc(t("rep.c_" + id))}</div><div class="prev-chart"><div class="prev-empty">${esc(t("rep.preview_cit"))}</div></div>`;
+        grid.appendChild(tile);
+        continue;
+      }
       const tile = document.createElement("div");
       tile.className = "prev-tile";
       const box = document.createElement("div");
@@ -2264,7 +2434,7 @@
 
   /** Opens the Citing works page filtered to one article. */
   function showCitingFor(key) {
-    Object.assign(state.cw, { article: key, query: "", shown: 200, country: "", venue: "", date: "", period: null });
+    Object.assign(state.cw, { article: key, query: "", shown: 200, country: "", venue: "", date: "", period: null, type: "", oa: "", field: "", noSelf: false, sort: "date" });
     $("#citingSearch").value = "";
     showPage("citing");
   }
@@ -2274,8 +2444,10 @@
       const b = e.target.closest("button[data-clear]");
       if (!b) return;
       const k = b.dataset.clear;
-      if (k === "all") { st.country = ""; st.venue = ""; st.date = ""; st.period = null; }
+      if (k === "all") { st.country = ""; st.venue = ""; st.date = ""; st.period = null; if (kinds === "cw") Object.assign(st, { type: "", oa: "", field: "", noSelf: false, sort: "date" }); }
       else if (k === "period") st.period = null;
+      else if (k === "noSelf") st.noSelf = false;
+      else if (k === "sort") st.sort = "date";
       else st[k] = "";
       if (kinds === "cw") { state.cw.shown = 200; renderCiting(); }
       else { state.an.tlShown = 100; renderCalendarTab(); }
@@ -2357,9 +2529,12 @@
     $("#fcGoalSave").addEventListener("click", saveGoal);
     $("#fcGoal").addEventListener("keydown", (e) => { if (e.key === "Enter") saveGoal(); });
     $("#anReport").addEventListener("click", reportThisPeriod);
+    window.Citers.init({
+      invoke, range: anRangeDays, openList: openCitersList, refresh: refreshNow,
+      resetRange: () => { state.an.range = "all"; renderAnalysis(); },
+      articleTitle: (k) => (state.articles.find((a) => a.key === k) || {}).title || "",
+    });
     // calendar
-    $("#calPrev").addEventListener("click", () => { state.cal.year = calYearNow() - 1; renderYearHeat(); loadYear(); });
-    $("#calNext").addEventListener("click", () => { state.cal.year = calYearNow() + 1; renderYearHeat(); loadYear(); });
     $("#calSource").addEventListener("click", (e) => {
       const b = e.target.closest("button[data-source]");
       if (!b) return;
@@ -2460,11 +2635,14 @@
     $("#updateNow").addEventListener("click", installUpdate);
     $("#updateLater").addEventListener("click", () => { $("#updateBar").hidden = true; });
     $("#checkUpdateBtn").addEventListener("click", checkUpdatesManually);
+    $("#aboutInstall").addEventListener("click", installUpdate);
     $("#uninstallBtn").addEventListener("click", () => safe(() => invoke("open_url", { url: "ms-settings:appsfeatures" })));
     $("#healthOpenLog").addEventListener("click", () => showPage("log"));
     // citing works
     $("#citingSearch").addEventListener("input", (e) => { state.cw.query = e.target.value; state.cw.shown = 200; renderCiting(); });
     $("#citingArticle").addEventListener("change", (e) => { state.cw.article = e.target.value; state.cw.shown = 200; renderCiting(); });
+    for (const [sel, key] of [["#citingType", "type"], ["#citingOa", "oa"], ["#citingField", "field"]]) $(sel).addEventListener("change", (e) => { state.cw[key] = e.target.value; state.cw.shown = 200; renderCiting(); });
+    $("#citingNoSelf").addEventListener("change", (e) => { state.cw.noSelf = e.target.checked; state.cw.shown = 200; renderCiting(); });
     $("#citingMore").addEventListener("click", () => { state.cw.shown += 300; renderCiting(); });
     $("#citingTable th[data-csort]").addEventListener("click", () => { state.cw.dir = -state.cw.dir; renderCiting(); });
     $("#citingBody").addEventListener("click", (e) => {
@@ -2477,6 +2655,7 @@
     $$("#repPresets button").forEach((b) => b.addEventListener("click", () => setReportRange(b.dataset.preset)));
     $("#repCreate").addEventListener("click", createReport);
     $("#repCharts").addEventListener("change", scheduleReportPreview);
+    $("#repCiters").addEventListener("change", scheduleReportPreview);
     $("#repFrom").addEventListener("change", scheduleReportPreview);
     $("#repTo").addEventListener("change", scheduleReportPreview);
     $("#exportXlsx").addEventListener("click", exportXlsx);
@@ -2531,10 +2710,9 @@
     await listen("update-available", (e) => { state.update = e.payload; renderUpdate(); });
     await listen("update-progress", (e) => {
       const p = e.payload;
-      if (p.done) { $("#updateText").textContent = t("update.installing"); $("#updateBarFill").style.width = "100%"; return; }
+      if (p.done) { updateProgressUi(t("update.installing"), 100); return; }
       const pct = p.total ? Math.min(100, Math.round((p.downloaded / p.total) * 100)) : null;
-      $("#updateText").textContent = t("update.downloading", { percent: pct === null ? nf.format(Math.round(p.downloaded / 1024)) + " KB" : pct + "%" });
-      if (pct !== null) $("#updateBarFill").style.width = pct + "%";
+      updateProgressUi(t("update.downloading", { percent: pct === null ? nf.format(Math.round(p.downloaded / 1024)) + " KB" : pct + "%" }), pct);
     });
     await listen("data-updated", refreshAll);
     await listen("openalex-budget", (e) => { state.budget = e.payload; state.budgetDismissed = ""; renderBudget(); });

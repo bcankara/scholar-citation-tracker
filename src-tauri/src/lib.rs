@@ -1,6 +1,7 @@
 //! Scholar Citation Tracker: personal Google Scholar citation tracker (Tauri 2).
 
 mod backfill;
+mod citers;
 mod db;
 mod export;
 mod i18n;
@@ -647,10 +648,79 @@ async fn export_csv(
 
 // ------------------------------------------------- citing works and insights
 
+/// All citing works for the list page; `self_cite` / `coauthor_cite` follow the user's ORCID iD and profile name.
 #[tauri::command]
 async fn get_citing_works(state: State<'_, AppState>) -> CmdResult<Vec<db::CitingRow>> {
-    with_db(&state, |conn| db::citing_works(conn)).await
+    let orcid = lock(&state.settings).orcid.clone();
+    with_db(&state, move |conn| {
+        let mut rows = db::citing_works(conn)?;
+        let flags = citers::flags(conn, &orcid, Local::now().year())?;
+        for r in &mut rows {
+            if let Some((s, c)) = flags.get(&r.citing_id) {
+                r.self_cite = *s;
+                r.coauthor_cite = *c;
+            }
+        }
+        Ok(rows)
+    })
+    .await
 }
+
+/// The period / article filter of the "Citing works" tab of the Analysis page: `from` / `to` are
+/// local days (`YYYY-MM-DD`, inclusive, empty = open), `article` an article key or empty.
+fn citers_filter(from: String, to: String, article: String, exclude_self: bool) -> Result<citers::Filter, String> {
+    for d in [&from, &to] {
+        if !d.is_empty() && !valid_day(d) {
+            return Err("invalid date".into());
+        }
+    }
+    Ok(citers::Filter { from, to, article, exclude_self })
+}
+
+macro_rules! citers_command {
+    ($(#[$m:meta])* $name:ident, $build:path, $ret:ty) => {
+        $(#[$m])*
+        #[tauri::command]
+        async fn $name(state: State<'_, AppState>, from: String, to: String, article: String, exclude_self: bool) -> CmdResult<$ret> {
+            let filter = citers_filter(from, to, article, exclude_self)?;
+            let orcid = lock(&state.settings).orcid.clone();
+            with_db(&state, move |conn| $build(conn, &orcid, Local::now().year(), filter)).await
+        }
+    };
+}
+
+citers_command!(
+    /// Filter bar of the tab: filtered count, article dropdown, ORCID / enrichment state.
+    get_citers_meta, citers::build_meta, citers::Meta
+);
+citers_command!(
+    /// Countries: all countries with counts, the year-by-year first-time series, the new ones.
+    get_citers_countries, citers::build_countries, citers::EntityReport
+);
+citers_command!(
+    /// Institutions: all institutions with counts and country, the new ones, the year-by-year series.
+    get_citers_institutions, citers::build_institutions, citers::EntityReport
+);
+citers_command!(
+    /// Venues, publishers (with source types) and the source-type split.
+    get_citers_venues, citers::build_venues, citers::Venues
+);
+citers_command!(
+    /// Domain > field > topics tree and the article x field matrix.
+    get_citers_fields, citers::build_fields, citers::Fields
+);
+citers_command!(
+    /// Work types, languages and open-access status.
+    get_citers_types, citers::build_types, citers::Types
+);
+citers_command!(
+    /// Self / co-author / external split and the top citing authors.
+    get_citers_who, citers::build_who, citers::Who
+);
+citers_command!(
+    /// The most cited citing works.
+    get_citers_influential, citers::build_influential, citers::Influential
+);
 
 /// The merged trend line (history scaled to the first snapshot, snapshots, forecast).
 #[tauri::command]
@@ -895,7 +965,8 @@ async fn export_xlsx(app: AppHandle, state: State<'_, AppState>) -> CmdResult<Op
         return Ok(None);
     };
     let target = path.clone();
-    with_db(&state, move |conn| export::write_xlsx(conn, &target, &lang)).await?;
+    let orcid = lock(&state.settings).orcid.clone();
+    with_db(&state, move |conn| export::write_xlsx(conn, &target, &lang, &orcid)).await?;
     Ok(Some(path.to_string_lossy().to_string()))
 }
 
@@ -1172,6 +1243,14 @@ pub fn run() {
             reset_article_override,
             get_health,
             get_citing_works,
+            get_citers_meta,
+            get_citers_countries,
+            get_citers_institutions,
+            get_citers_venues,
+            get_citers_fields,
+            get_citers_types,
+            get_citers_who,
+            get_citers_influential,
             get_trend,
             get_analysis,
             get_visit_summary,

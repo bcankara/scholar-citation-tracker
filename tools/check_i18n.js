@@ -15,7 +15,7 @@ for (const k of Object.keys(dict.tr)) if (!(k in dict.en)) fail(`key only in tr:
 for (const k of Object.keys(dict.en)) if (!(k in dict.tr)) fail(`key only in en: ${k}`);
 
 const used = new Set();
-for (const f of ["app.js", "charts.js", "report.js", "index.html"]) {
+for (const f of ["app.js", "charts.js", "citers.js", "citers-lib.js", "yearheat.js", "report.js", "index.html"]) {
   const text = fs.readFileSync(path.join(ui, f), "utf8");
   for (const m of text.matchAll(/\bt\(\s*["'`]([a-z0-9_.]+)["'`]/g)) used.add(m[1]);
   for (const m of text.matchAll(/data-i18n(?:-[a-z]+)?="([a-z0-9_.]+)"/g)) used.add(m[1]);
@@ -24,7 +24,7 @@ for (const k of used) {
   if (k.endsWith(".") || k.endsWith("_")) continue; // built at run time: "rep.c_" + id, "main.g_" + gran
   for (const l of ["tr", "en"]) if (!(k in dict[l])) fail(`missing ${l} key: ${k}`);
 }
-for (const id of ["trend", "period", "article", "index", "calendar", "dist"]) for (const l of ["tr", "en"]) if (!dict[l]["rep.c_" + id]) fail(`missing ${l} rep.c_${id}`);
+for (const id of ["trend", "period", "article", "index", "calendar", "dist", "citgeo", "citfields", "citself"]) for (const l of ["tr", "en"]) if (!dict[l]["rep.c_" + id]) fail(`missing ${l} rep.c_${id}`);
 for (const g of ["day", "month", "year"]) for (const l of ["tr", "en"]) if (!dict[l]["main.g_" + g]) fail(`missing ${l} main.g_${g}`);
 
 const abbr = /^\s*\d+\s?[A-Za-zÇĞİÖŞÜçğıöşü]\s*$/; // 30G, 12A, 3Y, 12M

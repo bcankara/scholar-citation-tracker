@@ -1,0 +1,20 @@
+Natural Earth - world country boundaries (public domain)
+
+File:    world.geo.json
+Source:  Natural Earth, "Admin 0 - Countries", 1:110m scale
+         (ne_110m_admin_0_countries.geojson, repository nvkelso/natural-earth-vector, tag v5.1.2)
+         https://www.naturalearthdata.com/
+Changes: Antarctica removed; properties reduced to {iso, name}
+         (iso = ISO_A2_EH of the source, falling back to ISO_A2 and then to a fixed ADM0_A3 table
+         KOS=XK, FRA=FR, NOR=NO when that is -99; left empty for N. Cyprus and Somaliland;
+         name = NAME); coordinates rounded to 2 decimals.
+SHA-256 of the unmodified source file:   6866c877d39cba9c357620878839b336d569f8c662d3cfab4cb1dbe2d39c977f
+SHA-256 of world.geo.json (as bundled):  5639a2568f0f14a602ba21da1310e9aebcc3dc6afb21417e4c96af7d64931e31
+
+License: All versions of Natural Earth raster + vector map data are in the public domain.
+You may use the maps in any manner, including modifying the content and design, electronic
+dissemination, and offset printing. The primary authors, Tom Patterson and Nathaniel Vaughn Kelso,
+and all other contributors renounce all financial claim to the maps. No permission is needed to use
+Natural Earth and crediting the authors is unnecessary.
+Suggested citation: "Made with Natural Earth. Free vector and raster map data @ naturalearthdata.com."
+(Terms: https://www.naturalearthdata.com/about/terms-of-use/)

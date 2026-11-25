@@ -692,6 +692,19 @@
   const live = () => reg.size;
 
   /** Draws `built` (a builder result) into `el`. null clears the element and shows `emptyText` when given. */
+  /** ECharts time-axis month names ({MMM}) in the app language: registered once per language from Intl, the same names monthShort uses. */
+  const axisLocales = {};
+  function axisLocale() {
+    const lang = window.I18N.lang, loc = window.I18N.locale;
+    const name = "app-" + lang;
+    if (!axisLocales[name]) {
+      const fmt = (style) => Array.from({ length: 12 }, (_, i) => new Date(Date.UTC(2026, i, 1)).toLocaleDateString(loc, { month: style, timeZone: "UTC" }));
+      E.registerLocale(name, { time: { month: fmt("long"), monthAbbr: fmt("short"), dayOfWeek: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], dayOfWeekAbbr: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] } });
+      axisLocales[name] = true;
+    }
+    return name;
+  }
+
   function mount(el, built, o = {}) {
     dispose(el);
     if (!built) {
@@ -699,7 +712,7 @@
       return null;
     }
     el.innerHTML = "";
-    const chart = E.init(el, null, { renderer: o.renderer || "canvas", width: o.width, height: o.height });
+    const chart = E.init(el, null, { renderer: o.renderer || "canvas", width: o.width, height: o.height, locale: axisLocale() });
     chart.setOption(built.option);
     if (built.click) chart.on("click", built.click);
     if (built.yFor) {

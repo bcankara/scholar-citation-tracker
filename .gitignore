@@ -14,3 +14,6 @@ src-tauri/tests/fixtures/
 
 # Local release notes (pasted into the GitHub release by hand)
 RELEASE_NOTES_*.md
+
+# Local notes for upcoming versions
+BACKLOG.md

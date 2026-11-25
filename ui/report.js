@@ -142,6 +142,75 @@
     charts = `<section class="page-start">${parts.join("")}</section>`;
   }
 
+  // ------------------------------------------------------------ optional citing-works sections (the report's own period)
+  let citSections = "";
+  if (d.citers) {
+    const CI = window.CitersLib;
+    const cc = d.citers;
+    const pc = () => Charts.ctx({ print: true });
+    const capP = (text) => `<p class="small muted cap">${esc(text)}</p>`;
+    const none = `<div class="chart-empty">${esc(t("doc.ci_none"))}</div>`;
+    let k = 0;
+    const cbox = (height, title, build) => {
+      const id = "cit" + k++;
+      chartJobs.push({ id, build });
+      return `<div class="chart"><h3>${esc(title)}</h3><div class="chart-box" id="${id}" style="width:${CHART_W}px;height:${height}px"></div></div>`;
+    };
+    const parts = [];
+    if (cc.countries && cc.institutions) {
+      const cr = cc.countries, ir = cc.institutions;
+      let h = `<h2>${esc(t("doc.ci_geo"))}</h2>`;
+      if (!cr.items.length && !ir.items.length) h += none;
+      else {
+        if (cr.items.length) {
+          const top = cr.items.slice(0, 10).map((x) => ({ name: CI.names.countryName(x.key), n: x.n }));
+          h += `<p>${CI.sentences.countries(cr)}</p>` + cbox(Math.max(120, top.length * 24 + 24), t("ci.t_top_countries"), () => CI.hbars(top, Charts.ctx({ print: true }), { labelWidth: 170 }))
+            + capP(CI.caption(cr.cov.n, [{ what: "ci.w_country", missing: cr.cov.missing }]));
+        }
+        if (ir.items.length) {
+          const rows = ir.items.slice(0, 10).map((x) => `<tr><td>${esc(x.name)}${x.is_new ? ` <b class="pos">· ${esc(t("doc.ci_new"))}</b>` : ""}</td><td>${esc(x.country ? CI.names.countryName(x.country) : "—")}</td><td class="num"><b>${nf.format(x.n)}</b></td></tr>`).join("");
+          h += `<p>${CI.sentences.institutions(ir)}</p><div class="chart"><h3>${esc(t("ci.t_top_inst"))}</h3><table><thead><tr><th>${esc(t("ci.col_inst"))}</th><th>${esc(t("ci.col_country"))}</th><th class="num">${esc(t("ci.col_n"))}</th></tr></thead><tbody>${rows}</tbody></table></div>`
+            + capP(CI.caption(ir.cov.n, [{ what: "ci.w_institution", missing: ir.cov.missing }]));
+        }
+      }
+      parts.push(h);
+    }
+    if (cc.fields) {
+      const f = cc.fields;
+      let h = `<h2>${esc(t("doc.ci_fields"))}</h2>`;
+      if (!f.domains.length) h += none;
+      else {
+        const tm = CI.treemapSvg(f.domains, CHART_W, 300, pc());
+        const den = Math.max(1, f.cov.n - f.cov.missing);
+        const rows = f.fields.slice(0, 10).map((x) => `<tr><td>${esc(CI.names.fieldName(x.name))}</td><td class="num"><b>${nf.format(x.n)}</b></td><td class="num">${Math.round((x.n / den) * 100)}%</td></tr>`).join("");
+        h += `<p>${CI.sentences.fields(f)}</p><div class="chart"><h3>${esc(t("ci.t_field_dist"))}</h3>${tm.svg}</div>`
+          + `<div class="chart"><table><thead><tr><th>${esc(t("doc.ci_field_col"))}</th><th class="num">${esc(t("ci.col_n"))}</th><th class="num">${esc(t("doc.ci_share"))}</th></tr></thead><tbody>${rows}</tbody></table></div>`
+          + capP(CI.caption(f.cov.n, [{ what: "ci.w_topic", missing: f.cov.missing }]));
+      }
+      parts.push(h);
+    }
+    if (cc.who) {
+      const w = cc.who, sp = w.split;
+      let h = `<h2>${esc(t("doc.ci_self"))}</h2>`;
+      if (!sp.total) h += none;
+      else {
+        const pal = CI.palette(pc());
+        const bars = [
+          { label: t("ci.f_self"), n: sp.self_n, color: pal.orange },
+          { label: t("ci.f_co"), n: sp.coauthor, color: pal.purple },
+          { label: t("ci.f_ext"), n: sp.external, color: pal.accent },
+        ];
+        const figs = bars.map((x) => `<div class="ci-fig"><div class="ci-fig-n" style="color:${x.color}">${Math.round((x.n / sp.total) * 100)}%</div><div class="ci-fig-c">${nf.format(x.n)} · ${esc(x.label)}</div></div>`).join("");
+        const rows = w.authors.slice(0, 10).map((a) => `<tr><td>${esc(a.name)}${a.is_self ? ` <b class="pos">· ${esc(t("ci.badge_self"))}</b>` : a.is_coauthor ? ` <span class="muted">· ${esc(t("ci.badge_co"))}</span>` : ""}</td><td>${esc(a.institution || "—")}</td><td class="num"><b>${nf.format(a.n)}</b></td></tr>`).join("");
+        h += `<p>${CI.sentences.who(w)}</p><div class="ci-figs">${figs}</div>${CI.stackBar(bars, { big: true })}`
+          + (w.authors.length ? `<div class="chart"><h3>${esc(t("ci.t_authors"))}</h3><table><thead><tr><th>${esc(t("ci.col_author"))}</th><th>${esc(t("ci.col_inst"))}</th><th class="num">${esc(t("ci.col_n"))}</th></tr></thead><tbody>${rows}</tbody></table></div>` : "")
+          + `<p class="small muted cap">${esc(t("doc.ci_method", { a: nf.format(sp.by_orcid), b: nf.format(sp.by_name) }))}${w.orcid_set ? "" : " " + esc(t("ci.no_orcid"))}</p>`;
+      }
+      parts.push(h);
+    }
+    citSections = parts.map((x) => `<section class="page-start">${x}</section>`).join("");
+  }
+
   let citing = "";
   if (d.include_citing) {
     const shown = d.citing.slice(0, MAX_CITING);
@@ -169,7 +238,7 @@
   st.textContent = `@page { @bottom-left { content: ${q(t("doc.footer"))}; font: 8pt "Segoe UI", sans-serif; color: #7a7a7a; }
     @bottom-right { content: ${q(t("doc.page") + " ")} counter(page) "/" counter(pages); font: 8pt "Segoe UI", sans-serif; color: #7a7a7a; } }`;
   document.head.appendChild(st);
-  document.getElementById("doc").innerHTML = cover + summary + articles + charts + citing + method;
+  document.getElementById("doc").innerHTML = cover + summary + articles + charts + citSections + citing + method;
   for (const job of chartJobs) {
     const el = document.getElementById(job.id);
     const built = job.build();
