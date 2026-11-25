@@ -33,8 +33,11 @@ scraper = "0.29.0"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 sys-locale = "0.3.2"
-# macos-private-api: needed for the translucent (vibrancy) window on macOS; on Windows it is inert.
-tauri = { version = "2", features = ["tray-icon", "macos-private-api"] }
+# No "macos-private-api" feature: since Tauri 2.12.1 the feature and the matching macOSPrivateApi
+# config flag are no-ops (wry always clears the WKWebView background of a transparent window), and
+# tauri-build rejects a feature set that differs from the merged config of the platform being built,
+# so listing it here would break a plain `cargo build` on Windows.
+tauri = { version = "2.12.1", features = ["tray-icon"] }
 tauri-plugin-autostart = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
