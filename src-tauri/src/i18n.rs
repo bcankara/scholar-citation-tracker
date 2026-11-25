@@ -44,7 +44,7 @@ pub fn product_name(lang: &str) -> &'static str {
 pub const PLATFORM_TABLE: &[(&str, &str, &str)] = &[
     (
         "key.err_store",
-        "Anahtar Anahtar Zinciri'ne yazılamadı: {0}",
+        "API anahtarı Anahtar Zinciri'ne yazılamadı: {0}",
         "The key could not be saved to the Keychain: {0}",
     ),
 ];

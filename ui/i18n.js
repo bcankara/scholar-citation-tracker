@@ -2026,6 +2026,7 @@
         "about.uninstall_hint": "Kaldırmak için uygulamayı Applications klasöründen Çöp Kutusu'na taşıyın",
         "keys.storage_note": "Anahtarlar settings.json'a değil, Anahtar Zinciri'ne (\"scholar-citation-tracker\") yazılır; günlüklere ve hata iletilerine girmez. Anahtar reddedilirse uygulama bir kez uyarır ve anahtarsız devam eder.",
         "keys.stored": "Anahtar kayıtlı (Anahtar Zinciri).",
+        "cred.fonts_d": "Uygulama yazı tipi içermez; metin macOS'in sistem yazı tipiyle yazılır, simgeler ise uygulamanın kendi SVG çizimleridir.",
       },
       en: {
         "settings.autostart_title": "Run at login",
@@ -2035,6 +2036,7 @@
         "about.uninstall_hint": "To uninstall, drag the app from Applications to the Trash",
         "keys.storage_note": "Keys are stored in the Keychain (\"scholar-citation-tracker\"), not in settings.json, and never appear in logs or error messages. If a key is rejected the app warns once and continues without it.",
         "keys.stored": "A key is stored (the Keychain).",
+        "cred.fonts_d": "No fonts are bundled; text uses the macOS system font and the icons are the app's own SVG drawings.",
       },
     },
   };
