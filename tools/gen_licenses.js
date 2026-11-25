@@ -117,7 +117,8 @@ function build() {
       ...(textSource ? { textSource } : {}),
     };
   });
-  const lock = fs.readFileSync(path.join(TAURI, "Cargo.lock"));
+  // LF-normalised, so a CRLF checkout (core.autocrlf on the Windows CI runner) hashes the same
+  const lock = Buffer.from(fs.readFileSync(path.join(TAURI, "Cargo.lock"), "utf8").replace(/\r\n/g, "\n"), "utf8");
   const crateJson = JSON.stringify({ cargo_lock_sha256: sha256(lock), target: TARGET, crates }, null, 1) + "\n";
   const textJson = JSON.stringify(sortedObject(texts), null, 1) + "\n";
   const mit = norm(fs.readFileSync(path.join(ROOT, "LICENSE"), "utf8"));
@@ -132,7 +133,7 @@ if (process.argv.includes("--check")) {
   let bad = 0;
   for (const [name, content] of Object.entries(files)) {
     const p = path.join(OUT, name);
-    const have = fs.existsSync(p) ? fs.readFileSync(p, "utf8") : null;
+    const have = fs.existsSync(p) ? fs.readFileSync(p, "utf8").replace(/\r\n/g, "\n") : null;
     if (have !== content) {
       console.error(`${name}: out of date (run: node tools/gen_licenses.js)`);
       bad++;
