@@ -81,13 +81,49 @@ function textsOf(pkg) {
 // copyright line) is carried by another package. The borrowed file is named in the output ("textFrom").
 const BORROW = { selectors: { from: "cssparser", spdx: "MPL-2.0" } };
 
-// Packages whose published crate omits the licence file. The upstream repository's LICENSE was saved once
-// (read-only text) under ui/licenses/ and is used as their text; "textSource" names the file's URL.
+// Packages whose published crate omits the licence file. The upstream repository's licence files were saved
+// once (read-only text, fetched as text through the GitHub contents API) under ui/licenses/ and are used as
+// their texts. "name" is the file name shown on the Credits page, "url" the upstream file (pinned to a commit
+// or tag where the upstream has one), recorded per text in the output as "source". An override applies only
+// while the crate still declares exactly the SPDX expression given here.
+const WEBVIEW2_RS = [{ file: "webview2-rs-MIT.txt", name: "LICENSE", url: "https://github.com/wravery/webview2-rs/blob/main/LICENSE" }];
+// madsmtm/objc2: objc2, block2, objc2-foundation and objc2-encode are MIT; the other crates of the repository
+// are Zlib OR Apache-2.0 OR MIT (the repository's LICENSE.md). The texts were added upstream in ee9a7ada2131.
+const OBJC2_AT = "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/";
+const OBJC2_MIT = [{ file: "objc2-MIT.txt", name: "LICENSE-MIT.txt", url: OBJC2_AT + "LICENSE-MIT.txt" }];
+const OBJC2_TRIO = [
+  { file: "objc2-Apache-2.0.txt", name: "LICENSE-APACHE.txt", url: OBJC2_AT + "LICENSE-APACHE.txt" },
+  ...OBJC2_MIT,
+  { file: "objc2-Zlib.txt", name: "LICENSE-ZLIB.txt", url: OBJC2_AT + "LICENSE-ZLIB.txt" },
+];
+const TRIO = "Zlib OR Apache-2.0 OR MIT";
 const OVERRIDE = {
-  "webview2-com": { file: "webview2-rs-MIT.txt", spdx: "MIT", url: "https://github.com/wravery/webview2-rs/blob/main/LICENSE" },
-  "webview2-com-macros": { file: "webview2-rs-MIT.txt", spdx: "MIT", url: "https://github.com/wravery/webview2-rs/blob/main/LICENSE" },
-  "webview2-com-sys": { file: "webview2-rs-MIT.txt", spdx: "MIT", url: "https://github.com/wravery/webview2-rs/blob/main/LICENSE" },
-  "alloc-stdlib": { file: "alloc-stdlib-BSD-3-Clause.txt", spdx: "BSD-3-Clause", url: "https://github.com/dropbox/rust-alloc-no-stdlib/blob/master/LICENSE" },
+  "webview2-com": { spdx: "MIT", files: WEBVIEW2_RS },
+  "webview2-com-macros": { spdx: "MIT", files: WEBVIEW2_RS },
+  "webview2-com-sys": { spdx: "MIT", files: WEBVIEW2_RS },
+  "alloc-stdlib": { spdx: "BSD-3-Clause", files: [{ file: "alloc-stdlib-BSD-3-Clause.txt", name: "LICENSE", url: "https://github.com/dropbox/rust-alloc-no-stdlib/blob/master/LICENSE" }] },
+  "objc2": { spdx: "MIT", files: OBJC2_MIT },
+  "block2": { spdx: "MIT", files: OBJC2_MIT },
+  "objc2-encode": { spdx: "MIT", files: OBJC2_MIT },
+  "objc2-foundation": { spdx: "MIT", files: OBJC2_MIT },
+  "dispatch2": { spdx: TRIO, files: OBJC2_TRIO },
+  "objc2-app-kit": { spdx: TRIO, files: OBJC2_TRIO },
+  "objc2-core-foundation": { spdx: TRIO, files: OBJC2_TRIO },
+  "objc2-core-graphics": { spdx: TRIO, files: OBJC2_TRIO },
+  "objc2-exception-helper": { spdx: TRIO, files: OBJC2_TRIO },
+  "objc2-io-surface": { spdx: TRIO, files: OBJC2_TRIO },
+  "objc2-osa-kit": { spdx: TRIO, files: OBJC2_TRIO },
+  "objc2-quartz-core": { spdx: TRIO, files: OBJC2_TRIO },
+  "objc2-security": { spdx: TRIO, files: OBJC2_TRIO },
+  "objc2-service-management": { spdx: TRIO, files: OBJC2_TRIO },
+  "objc2-web-kit": { spdx: TRIO, files: OBJC2_TRIO },
+  "mac-notification-sys": {
+    spdx: "MIT/Apache-2.0",
+    files: [
+      { file: "mac-notification-sys-Apache-2.0.txt", name: "LICENSE-Apache", url: "https://github.com/h4llow3En/mac-notification-sys/blob/v0.6.15/LICENSE-Apache" },
+      { file: "mac-notification-sys-MIT.txt", name: "LICENSE-MIT", url: "https://github.com/h4llow3En/mac-notification-sys/blob/v0.6.15/LICENSE-MIT" },
+    ],
+  },
 };
 
 function sortedObject(o) {
@@ -121,12 +157,12 @@ function build() {
       const src = pkgs.find((q) => q.name === b.from && q.license === b.spdx);
       if (src) { t = textsOf(src); textFrom = src.name; }
     }
-    let textSource;
     const o = OVERRIDE[p.name];
     if (!t.length && o && p.license === o.spdx) {
-      const text = norm(fs.readFileSync(path.join(OUT, o.file), "utf8"));
-      t = [{ file: "LICENSE", id: sha256(Buffer.from(text, "utf8")).slice(0, 16), text }];
-      textSource = o.url;
+      t = o.files.map((f) => {
+        const text = norm(fs.readFileSync(path.join(OUT, f.file), "utf8"));
+        return { file: f.name, id: sha256(Buffer.from(text, "utf8")).slice(0, 16), text, source: f.url };
+      });
     }
     if (!t.length) noText++;
     for (const x of t) texts[x.id] = x.text;
@@ -136,9 +172,8 @@ function build() {
       license: p.license || (p.license_file ? "see licence file" : ""),
       repository: p.repository || "",
       platforms: platformsOf.get(`${p.name} ${p.version}`),
-      texts: t.map((x) => ({ file: x.file, id: x.id })),
+      texts: t.map((x) => ({ file: x.file, id: x.id, ...(x.source ? { source: x.source } : {}) })),
       ...(textFrom ? { textFrom } : {}),
-      ...(textSource ? { textSource } : {}),
     };
   });
   // LF-normalised, so a CRLF checkout (core.autocrlf on the Windows CI runner) hashes the same
