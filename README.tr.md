@@ -311,11 +311,16 @@ Kurulum dosyasını Dosya Gezgini'nde çift tıklayarak çalıştırın. Bir kor
 
 Disk görüntüsünü (`Scholar.Citation.Tracker_<sürüm>_universal.dmg`) **Releases** sayfasından indirin, açın ve uygulamayı **Applications** klasörüne sürükleyin. Tek bir evrensel (universal) derleme hem Apple Silicon hem Intel Mac'leri kapsar; macOS 11 Big Sur veya üstü gerekir.
 
-**Uygulama Apple Developer ID ile imzalı ve notarize edilmiş değildir**; bu yüzden Gatekeeper ilk açılışta reddeder (*"Apple ... içinde kötü amaçlı yazılım olmadığını doğrulayamadı"*). Ya Applications klasöründe uygulamaya sağ tıklayıp **Aç**'ı seçip onaylayın, ya da karantina işaretini bir kez kaldırın:
+**Uygulama Apple Developer ID ile imzalı değildir ve Apple tarafından notarize edilmemiştir**; bu yüzden Gatekeeper ilk açılışta engeller (*"Apple ... içinde kötü amaçlı yazılım olmadığını doğrulayamadı"*). İki yoldan biriyle bir kez izin verin:
 
-```
-xattr -dr com.apple.quarantine "/Applications/Scholar Citation Tracker.app"
-```
+- **Sistem Ayarları.** Uygulamayı bir kez açın ve uyarıyı kapatın (**Bitti**). Sonra **Sistem Ayarları > Gizlilik ve Güvenlik** bölümüne gidin, **Güvenlik** başlığına inin, Scholar Citation Tracker iletisinin yanındaki **Yine de Aç** düğmesine tıklayın ve parolanızla onaylayın. Düğme yalnızca engellenen bir açılıştan sonra görünür ve yaklaşık bir saat kalır. macOS 15 Sequoia ve sonrasında yol budur: sağ tık > **Aç** notarize edilmemiş bir uygulamayı artık geçirmez. Daha eski macOS sürümlerinde sağ tık > **Aç** ve onay da işe yarar.
+- **Terminal.** Tarayıcının indirilen dosyaya koyduğu karantina işaretini kaldırın:
+
+  ```
+  xattr -dr com.apple.quarantine "/Applications/Scholar Citation Tracker.app"
+  ```
+
+macOS uygulamanın *"hasarlı olduğunu ve açılamadığını"* söyleyip Çöp Kutusu'na taşımayı önerirse indirme bozuk değildir: Gatekeeper karantinadaki, notarize edilmemiş bir uygulamayı böyle bildirir; çözüm yukarıdaki `xattr` komutudur.
 
 Uygulama menü çubuğunda bir simge tutar; pencereyi kapatmak uygulamayı kapatmaz, oraya saklar. Çıkmak için menü çubuğu simgesini ya da Cmd-Q'yu kullanın.
 
@@ -346,7 +351,14 @@ Uyarıların nedeni: kod imzalama sertifikası (macOS'te ayrıca Apple Developer
 
 **Windows.** **Ayarlar → Uygulamalar → Yüklü uygulamalar → Scholar Atıf Takip → Kaldır** yolunu izleyin ya da Başlat menüsündeki girdiye sağ tıklayıp **Kaldır**'ı seçin; uygulamadaki **Ayarlar → Hakkında → Kaldır…** düğmesi o Windows sayfasını açar. Kaldırıcı uygulama verilerinin silinmesini önerir. Atıf veritabanı, o klasörü silmediğiniz sürece (ya da Ayarlar'da veri klasörünü değiştirmediyseniz) `Documents\ScholarTakip` içinde kalır; ayarlar `%APPDATA%\io.github.bcankara.scholarcitationtracker` içindedir.
 
-**macOS.** Önce Ayarlar'dan **Oturum açılışında çalıştır**'ı kapatın; böylece uygulama Launch Agent kaydını siler. Sonra menü çubuğu simgesinden çıkıp uygulamayı **Applications** klasöründen Çöp Kutusu'na taşıyın. Ev klasörünüzün dışına başka bir şey kurulmaz. Geride kalanlar: `~/Library/Application Support/io.github.bcankara.scholarcitationtracker` içindeki ayarlar ve `~/Documents/ScholarTakip` içindeki atıf veritabanı (ya da Ayarlar'da seçtiğiniz veri klasörü); tamamen silmek isterseniz ikisini de kaldırın.
+**macOS.** Kaldırıcı yoktur; uygulamayı elle kaldırın:
+
+1. Önce Ayarlar'dan **Oturum açılışında çalıştır**'ı kapatın; böylece uygulama Launch Agent dosyasını (`~/Library/LaunchAgents/Scholar Citation Tracker.plist`) siler. Uygulama zaten silindiyse bu dosyayı kendiniz silin.
+2. Bir OpenAlex API anahtarı kaydettiyseniz Ayarlar'dan kaldırın (ya da **Anahtar Zinciri Erişimi** uygulamasında `scholar-citation-tracker` öğesini silin veya Terminal'de `security delete-generic-password -s scholar-citation-tracker` komutunu çalıştırın).
+3. Menü çubuğu simgesinden çıkın ve uygulamayı **Applications** klasöründen Çöp Kutusu'na taşıyın.
+4. Tamamen silmek isterseniz ev klasörünüzde kalanları da silin: `~/Library/Application Support/io.github.bcankara.scholarcitationtracker` içindeki ayarlar, `~/Library/Caches/io.github.bcankara.scholarcitationtracker` ve `~/Library/WebKit/io.github.bcankara.scholarcitationtracker` içindeki web görünümü önbellekleri (varsa) ve `~/Documents/ScholarTakip` içindeki atıf veritabanı (ya da Ayarlar'da seçtiğiniz veri klasörü).
+
+Ev klasörünüzün dışına hiçbir şey kurulmaz.
 
 ## Kaynaktan derleme
 

@@ -311,11 +311,16 @@ Run the installer by double-clicking it in File Explorer. Running it from inside
 
 Download the disk image (`Scholar.Citation.Tracker_<version>_universal.dmg`) from the **Releases** page, open it and drag the app to **Applications**. One universal build covers both Apple Silicon and Intel Macs; macOS 11 Big Sur or newer is required.
 
-**The app is not signed with an Apple Developer ID and is not notarized**, so Gatekeeper refuses it on the first launch (*"Apple could not verify ... is free of malware"*). Either right-click the app in Applications and choose **Open**, then confirm, or clear the quarantine flag once:
+**The app is not signed with an Apple Developer ID and is not notarized by Apple**, so Gatekeeper blocks it on the first launch (*"Apple could not verify ... is free of malware"*). Allow it once, in either of two ways:
 
-```
-xattr -dr com.apple.quarantine "/Applications/Scholar Citation Tracker.app"
-```
+- **System Settings.** Open the app once and dismiss the warning (**Done**). Then go to **System Settings > Privacy & Security**, scroll down to **Security**, click **Open Anyway** next to the message about Scholar Citation Tracker, and confirm with your password. The button appears only after a blocked launch and stays for about an hour. On macOS 15 Sequoia and later this is the way: right-click > **Open** no longer lets an app that is not notarized through. On older macOS versions right-click > **Open** and confirming also works.
+- **Terminal.** Clear the quarantine flag that the browser set on the download:
+
+  ```
+  xattr -dr com.apple.quarantine "/Applications/Scholar Citation Tracker.app"
+  ```
+
+If macOS says the app *"is damaged and can't be opened"* and offers to move it to the Trash, the download is not broken: that is how Gatekeeper reports a quarantined app that is not notarized, and the `xattr` command above is the fix.
 
 The app keeps a menu-bar icon; closing the window hides it there rather than quitting. Quit from the menu-bar icon or with Cmd-Q.
 
@@ -346,7 +351,14 @@ After the first installation, updates are installed from inside the app. About a
 
 **Windows.** Use **Settings → Apps → Installed apps → Scholar Citation Tracker → Uninstall**, or right-click the Start menu entry and choose **Uninstall**; **Settings → About → Uninstall…** inside the app opens that Windows page. The uninstaller offers to delete the app data. The citation database stays in `Documents\ScholarTakip` unless you delete that folder (or you changed the data folder in Settings), and the settings are in `%APPDATA%\io.github.bcankara.scholarcitationtracker`.
 
-**macOS.** Turn **Run at login** off in Settings first, so the app removes its Launch Agent, then quit from the menu-bar icon and drag the app from **Applications** to the Trash. Nothing else is installed outside your home folder. What stays behind: the settings in `~/Library/Application Support/io.github.bcankara.scholarcitationtracker` and the citation database in `~/Documents/ScholarTakip` (or the data folder you chose in Settings); delete both if you want it gone completely.
+**macOS.** There is no uninstaller; remove the app by hand:
+
+1. Turn **Run at login** off in Settings first, so the app deletes its Launch Agent (`~/Library/LaunchAgents/Scholar Citation Tracker.plist`). If the app is already gone, delete that file yourself.
+2. If you stored an OpenAlex API key, remove it in Settings (or delete the `scholar-citation-tracker` item in the **Keychain Access** app, or run `security delete-generic-password -s scholar-citation-tracker` in Terminal).
+3. Quit from the menu-bar icon and drag the app from **Applications** to the Trash.
+4. Delete what stays behind in your home folder if you want it gone completely: the settings in `~/Library/Application Support/io.github.bcankara.scholarcitationtracker`, the web view's caches in `~/Library/Caches/io.github.bcankara.scholarcitationtracker` and `~/Library/WebKit/io.github.bcankara.scholarcitationtracker` (where present), and the citation database in `~/Documents/ScholarTakip` (or the data folder you chose in Settings).
+
+Nothing is installed outside your home folder.
 
 ## Build from source
 
