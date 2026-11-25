@@ -1,5 +1,5 @@
 {
- "cargo_lock_sha256": "69004ec2e47e58112bb4a11f179af247f8a1890b4cb1b275a09894524eb8cb3b",
+ "cargo_lock_sha256": "628796ce9b224a272191e87f66314bac8ece3d057cd9596f8c3b9c69341def03",
  "targets": [
   "x86_64-pc-windows-msvc",
   "aarch64-apple-darwin",

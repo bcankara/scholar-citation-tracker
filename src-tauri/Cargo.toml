@@ -1,6 +1,6 @@
 [package]
 name = "scholar-citation-tracker"
-version = "1.4.0"
+version = "1.0.0"
 description = "Google Scholar citation tracker (Windows and macOS desktop app)"
 license = "MIT"
 edition = "2021"
