@@ -3782,11 +3782,12 @@ dependencies = [
 
 [[package]]
 name = "scholar-citation-tracker"
-version = "1.3.0"
+version = "1.4.0"
 dependencies = [
  "anyhow",
  "chrono",
  "csv",
+ "flate2",
  "keyring",
  "reqwest 0.12.28",
  "rusqlite",

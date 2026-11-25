@@ -168,6 +168,7 @@
     renderAboutResult();
     renderAnalysis();
     renderCiting();
+    renderHk();
     renderKeys();
     renderRecent();
     renderScan();
@@ -2020,6 +2021,7 @@
           id: r.citing_id, title: r.title, date: r.date, precision: r.precision, venue: r.venue, doi: r.doi, countries: r.countries, authors: r.authors, articles: [],
           type: r.work_type || "", language: r.language || "", oa: r.oa_status || "", field: r.topic_field || "", domain: r.topic_domain || "", cited: r.cited_by ?? null,
           self: !!r.self_cite, co: !!r.coauthor_cite, url: r.url || "",
+          ojp: r.ojp ?? null, ojp_state: r.ojp_state || "no_journal", ojp_field: r.ojp_field || "", ojp_n: r.ojp_n || 0,
         };
         map.set(r.citing_id, g);
       }
@@ -2055,7 +2057,17 @@
       (!cw.noSelf || !g.self) &&
       (!q || `${g.title} ${g.venue} ${g.authors} ${g.articles.map((a) => a.title).join(" ")}`.toLocaleLowerCase(loc()).includes(q)));
     const dir = cw.dir;
-    if (cw.sort === "cited") rows = rows.slice().sort((a, b) => (b.cited ?? -1) - (a.cited ?? -1) || (a.date < b.date ? 1 : -1));
+    if (cw.sort === "ojp") {
+      // rows without a score are always last, in both directions; ties by date, newest first
+      const sc = (g) => (g.ojp_state === "ranked" && g.ojp != null ? g.ojp : null);
+      rows = rows.slice().sort((a, b) => {
+        const x = sc(a), y = sc(b);
+        if (x == null && y == null) return a.date < b.date ? 1 : a.date > b.date ? -1 : 0;
+        if (x == null) return 1;
+        if (y == null) return -1;
+        return (x - y) * dir || (a.date < b.date ? 1 : a.date > b.date ? -1 : 0);
+      });
+    } else if (cw.sort === "cited") rows = rows.slice().sort((a, b) => (b.cited ?? -1) - (a.cited ?? -1) || (a.date < b.date ? 1 : -1));
     else rows = rows.slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0) * dir || a.title.localeCompare(b.title, loc()));
     return rows;
   }
@@ -2108,6 +2120,7 @@
     if (cw.field) chips.push(["field", t("cw.chip_field", { name: L.names.fieldName(cw.field) })]);
     if (cw.noSelf) chips.push(["noSelf", t("cw.chip_self")]);
     if (cw.sort === "cited") chips.push(["sort", t("cw.chip_sort")]);
+    if (cw.sort === "ojp") chips.push(["sort", t("cw.chip_sort_ojp")]);
     const box = $("#citingChips");
     box.hidden = !chips.length;
     box.innerHTML = chips.map(([k, label]) => `<span class="fchip"><span>${esc(label)}</span><button type="button" data-clear="${k}" aria-label="${esc(t("cw.chip_remove"))}" title="${esc(t("cw.chip_remove"))}"><span class="icon">&#xE711;</span></button></span>`).join("")
@@ -2124,9 +2137,13 @@
     fillArticleFilter();
     fillCitingFilters();
     renderCitingChips();
-    const th = $("#citingTable th[data-csort]");
-    const old = $(".sort", th); if (old) old.remove();
-    th.insertAdjacentHTML("beforeend", `<span class="sort">${state.cw.dir > 0 ? "&#xE70E;" : "&#xE70D;"}</span>`);
+    $$("#citingTable th[data-csort]").forEach((th) => {
+      const old = $(".sort", th); if (old) old.remove();
+      const active = (state.cw.sort === "ojp" || state.cw.sort === "date") && state.cw.sort === th.dataset.csort;
+      th.setAttribute("aria-sort", active ? (state.cw.dir > 0 ? "ascending" : "descending") : "none");
+      if (active) th.insertAdjacentHTML("beforeend", `<span class="sort">${state.cw.dir > 0 ? "&#xE70E;" : "&#xE70D;"}</span>`);
+    });
+    renderOjpIntro();
     const rows = filteredCiting();
     const total = (state.citingGroups || []).length;
     $("#citingCount").textContent = t("cw.count", { n: nf.format(rows.length), total: nf.format(total) });
@@ -2141,8 +2158,9 @@
         <td><a href="#" class="title-link" data-url="${esc(citingUrl(g))}">${esc(g.title || "—")}</a>
           <div class="title-meta">${esc(shortText(g.authors, 110))}${g.cited != null ? ` · ${esc((g.cited === 1 ? t("cw.cited_meta.one", { n: nf.format(g.cited) }) : t("cw.cited_meta.many", { n: nf.format(g.cited) })))}` : ""}</div>${countries ? `<div class="chips cw-countries">${countries}</div>` : ""}</td>
         <td>${esc(g.venue || "—")}</td>
+        <td class="col-ojp">${L.ojp.badge(g)}</td>
         <td class="cw-arts">${arts}</td></tr>`;
-    }).join("") : `<tr><td colspan="4" class="empty-row">${esc(t("cw.none_match"))}</td></tr>`;
+    }).join("") : `<tr><td colspan="5" class="empty-row">${esc(t("cw.none_match"))}</td></tr>`;
     $("#citingMoreRow").hidden = rows.length <= shown.length;
   }
 
@@ -2159,7 +2177,7 @@
     const r = anRange();
     Object.assign(state.cw, {
       article: o.article || "", query: "", shown: 200, country: "", venue: "", date: "", type: "", oa: "", field: "",
-      noSelf: !!o.excludeSelf, sort: o.sort === "cited" ? "cited" : "date", dir: -1,
+      noSelf: !!o.excludeSelf, sort: o.sort === "cited" ? "cited" : o.sort === "ojp" ? "ojp" : "date", dir: -1,
       period: r.from == null && r.to == null ? null : { from: r.from == null ? null : utcDayMs(r.from), to: r.to == null ? null : utcDayMs(r.to), label: anPeriodLabel() },
     });
     $("#citingSearch").value = "";
@@ -2417,7 +2435,8 @@
     // charts are created per page and disposed when it is left
     if (prev !== name) Charts.disposeIn($("#page-" + prev));
     if (name === "settings") loadBfInfo();
-    $$(".nav-item").forEach((b) => b.classList.toggle("selected", b.dataset.page === name));
+    if (name === "credits" && prev !== "credits") state.credFrom = prev === "help" ? "help" : "settings";
+    $$(".nav-item").forEach((b) => b.classList.toggle("selected", b.dataset.page === name || (name === "credits" && b.dataset.page === "settings")));
     $$(".page").forEach((p) => { p.hidden = p.id !== "page-" + name; });
     hideTip();
     renderVisit();
@@ -2430,6 +2449,116 @@
     if (name === "analysis") { renderAnalysis(); loadAnalysis(); loadRisers(); }
     if (name === "report") { renderReportPage(); renderReportPreview(); }
     if (name === "settings") { $("#infoBar").hidden = true; fillSettings(); loadKeyStatus(); }
+    if (name === "help") renderHelp();
+    if (name === "credits") loadCredits();
+  }
+
+  // ------------------------------------------------------------ OJP intro bar, Help and Credits pages
+  const OJP_INTRO_KEY = "sct.ojp.intro_seen";
+  const ojpIntroSeen = () => { try { return localStorage.getItem(OJP_INTRO_KEY) === "1"; } catch { return false; } };
+  function renderOjpIntro() {
+    const bar = $("#ojpIntroBar");
+    if (bar) bar.hidden = state.page !== "citing" || ojpIntroSeen() || state.ojpIntroClosed;
+  }
+  function closeOjpIntro() {
+    state.ojpIntroClosed = true;
+    try { localStorage.setItem(OJP_INTRO_KEY, "1"); } catch { /* private window */ }
+    renderOjpIntro();
+  }
+  /** Opens the Help page and scrolls to one of its blocks. */
+  function openHelp(anchor) {
+    showPage("help");
+    const el = anchor ? document.getElementById(anchor) : null;
+    const sc = $(".content");
+    if (el && sc) requestAnimationFrame(() => { sc.scrollTo({ top: sc.scrollTop + el.getBoundingClientRect().top - sc.getBoundingClientRect().top - 8, behavior: "auto" }); });
+    else if (sc) sc.scrollTo({ top: 0, behavior: "auto" });
+  }
+  /** Fills every [data-hk] text (strings with {placeholders} from the OJP data edition) and the Help examples. */
+  function renderHk() {
+    const v = Object.assign(L.ojp.vars(), { version: state.version || "" });
+    $$("[data-hk]").forEach((el) => { el.textContent = t(el.dataset.hk, v); });
+    const ex = $("#helpOjpEx");
+    if (ex) {
+      ex.innerHTML = [12, 48, 76, 97].map((n) => `<span>${L.ojp.sample(n)}</span>`).join("")
+        + `<span><span class="ojp ojp-lg ojp-none" aria-hidden="true">NA</span>${esc(t("help.ojp_ex_none"))}</span>`
+        + `<span><span class="ojp-dash" aria-hidden="true">NA</span>${esc(t("help.ojp_ex_absent"))}</span>`;
+    }
+    $("#credAppT").textContent = t("cred.app_t", v);
+    $("#credOjpT").textContent = t("cred.ojp_t", v);
+    const doi = $("#credOjpDoi");
+    if (doi) { doi.dataset.url = "https://doi.org/" + (v.dataset_doi || ""); doi.textContent = "DOI " + (v.dataset_doi || ""); }
+    if (state.cred) renderCredRust();
+  }
+  function renderHelp() { renderHk(); }
+
+  async function fetchText(url) {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(url + " " + r.status);
+    return r.text();
+  }
+  /** Lazy: the Rust crate list is read the first time the Credits page opens. */
+  async function loadCredits() {
+    renderHk();
+    if (!state.credCopy) {
+      try {
+        const line = (await fetchText("licenses/app-MIT.txt")).split(/\r?\n/).find((l) => /^copyright/i.test(l.trim()));
+        state.credCopy = line ? line.trim() : " ";
+      } catch { state.credCopy = " "; }
+    }
+    $("#credAppCopy").textContent = state.credCopy;
+    if (!state.cred) {
+      try { state.cred = await (await fetch("licenses/rust-crates.json")).json(); } catch { state.cred = null; $("#credRustD").textContent = t("cred.load_fail"); return; }
+      renderCredRust();
+    }
+  }
+  function renderCredRust() {
+    const c = state.cred;
+    if (!c) return;
+    $("#credRustD").textContent = t("cred.rust_d", { n: nf.format(c.crates.length) });
+    const q = $("#credRustSearch").value.trim().toLowerCase();
+    const list = c.crates.map((x, i) => [x, i]).filter(([x]) => !q || `${x.name} ${x.license}`.toLowerCase().includes(q));
+    $("#credRustCount").textContent = q ? `${nf.format(list.length)} / ${nf.format(c.crates.length)}` : "";
+    $("#credRustTable tbody").innerHTML = list.length ? list.map(([x, i]) => {
+      const name = x.repository && /^https:\/\//.test(x.repository) ? `<a href="#" class="ext-link" data-url="${esc(x.repository)}">${esc(x.name)}</a>` : esc(x.name);
+      return `<tr><td>${name}</td><td>${esc(x.version)}</td><td>${esc(x.license || "—")}</td><td><button type="button" class="btn btn-link" data-crate="${i}">${esc(t("cred.view_licence"))}</button></td></tr>`;
+    }).join("") : `<tr><td colspan="4" class="empty-row">${esc(t("cred.rust_none"))}</td></tr>`;
+  }
+  let licOpener = null;
+  function showLic(title, meta, text, opener) {
+    licOpener = opener || null;
+    $("#licTitle").textContent = title;
+    $("#licMeta").textContent = meta || "";
+    $("#licText").textContent = text;
+    $("#licText").scrollTop = 0;
+    $("#licDialog").hidden = false;
+    $("#licClose").focus();
+  }
+  function closeLic() {
+    $("#licDialog").hidden = true;
+    if (licOpener && licOpener.isConnected) licOpener.focus();
+    licOpener = null;
+  }
+  const LIC_FILES = {
+    app: ["MIT", "licenses/app-MIT.txt"], icons: ["Fluent UI System Icons (MIT)", "licenses/fluentui-system-icons-MIT.txt"], ne: ["Natural Earth", "vendor/LICENSE-natural-earth.txt"],
+    echarts: ["Apache ECharts", "vendor/LICENSE-echarts.txt"], "echarts-notice": ["Apache ECharts", "vendor/NOTICE-echarts.txt"], "echarts-d3": ["d3 (BSD-3-Clause, in ECharts)", "vendor/LICENSE-d3.txt"],
+  };
+  async function openLicense(kind, opener) {
+    try {
+      if (kind === "ojp") { showLic(t("cred.ojp_t", L.ojp.vars()), "CC BY 4.0", await invoke("get_ojp_notice"), opener); return; }
+      const f = LIC_FILES[kind];
+      if (f) showLic(f[0], f[1], await fetchText(f[1]), opener);
+    } catch { toast(t("cred.load_fail"), true); }
+  }
+  async function openCrateLicense(i, opener) {
+    const x = state.cred && state.cred.crates[i];
+    if (!x) return;
+    const meta = `${x.version} · ${x.license || "—"}`;
+    if (!x.texts.length) { showLic(x.name, meta, t("cred.rust_notext", { license: x.license || "—" }) + (x.repository ? "\n" + x.repository : ""), opener); return; }
+    try {
+      if (!state.credTexts) state.credTexts = await (await fetch("licenses/rust-license-texts.json")).json();
+      const parts = x.texts.map((f) => (x.texts.length > 1 ? t("cred.file_sep", { file: f.file }) + "\n\n" : "") + (state.credTexts[f.id] || ""));
+      showLic(x.name, meta, parts.join("\n\n"), opener);
+    } catch { toast(t("cred.load_fail"), true); }
   }
 
   /** Opens the Citing works page filtered to one article. */
@@ -2444,10 +2573,10 @@
       const b = e.target.closest("button[data-clear]");
       if (!b) return;
       const k = b.dataset.clear;
-      if (k === "all") { st.country = ""; st.venue = ""; st.date = ""; st.period = null; if (kinds === "cw") Object.assign(st, { type: "", oa: "", field: "", noSelf: false, sort: "date" }); }
+      if (k === "all") { st.country = ""; st.venue = ""; st.date = ""; st.period = null; if (kinds === "cw") Object.assign(st, { type: "", oa: "", field: "", noSelf: false, sort: "date", dir: -1 }); }
       else if (k === "period") st.period = null;
       else if (k === "noSelf") st.noSelf = false;
-      else if (k === "sort") st.sort = "date";
+      else if (k === "sort") { st.sort = "date"; st.dir = -1; }
       else st[k] = "";
       if (kinds === "cw") { state.cw.shown = 200; renderCiting(); }
       else { state.an.tlShown = 100; renderCalendarTab(); }
@@ -2530,7 +2659,7 @@
     $("#fcGoal").addEventListener("keydown", (e) => { if (e.key === "Enter") saveGoal(); });
     $("#anReport").addEventListener("click", reportThisPeriod);
     window.Citers.init({
-      invoke, range: anRangeDays, openList: openCitersList, refresh: refreshNow,
+      invoke, range: anRangeDays, openList: openCitersList, refresh: refreshNow, openHelp,
       resetRange: () => { state.an.range = "all"; renderAnalysis(); },
       articleTitle: (k) => (state.articles.find((a) => a.key === k) || {}).title || "",
     });
@@ -2644,7 +2773,47 @@
     for (const [sel, key] of [["#citingType", "type"], ["#citingOa", "oa"], ["#citingField", "field"]]) $(sel).addEventListener("change", (e) => { state.cw[key] = e.target.value; state.cw.shown = 200; renderCiting(); });
     $("#citingNoSelf").addEventListener("change", (e) => { state.cw.noSelf = e.target.checked; state.cw.shown = 200; renderCiting(); });
     $("#citingMore").addEventListener("click", () => { state.cw.shown += 300; renderCiting(); });
-    $("#citingTable th[data-csort]").addEventListener("click", () => { state.cw.dir = -state.cw.dir; renderCiting(); });
+    $$("#citingTable th[data-csort]").forEach((th) => th.addEventListener("keydown", (e) => {
+      if ((e.key === "Enter" || e.key === " ") && e.target === th) { e.preventDefault(); th.click(); }
+    }));
+    $$("#citingTable th[data-csort]").forEach((th) => th.addEventListener("click", (e) => {
+      if (e.target.closest(".th-help")) return;
+      const k = th.dataset.csort;
+      if (state.cw.sort === k) state.cw.dir = -state.cw.dir; else { state.cw.sort = k; state.cw.dir = -1; }
+      state.cw.shown = 200;
+      renderCiting();
+    }));
+    $("#citingOjpHelp").addEventListener("click", (e) => { e.stopPropagation(); openHelp("help-ojp"); });
+    $("#ojpIntroMore").addEventListener("click", () => { closeOjpIntro(); openHelp("help-ojp"); });
+    $("#ojpIntroClose").addEventListener("click", closeOjpIntro);
+    $("#helpCredits").addEventListener("click", () => showPage("credits"));
+    $("#aboutCredits").addEventListener("click", (e) => { e.preventDefault(); showPage("credits"); });
+    $("#credBack").addEventListener("click", () => showPage(state.credFrom || "settings"));
+    $("#credRustSearch").addEventListener("input", renderCredRust);
+    $("#page-credits").addEventListener("click", (e) => {
+      const link = e.target.closest("a[data-url]");
+      if (link) { e.preventDefault(); safe(() => invoke("open_url", { url: link.dataset.url })); return; }
+      const lic = e.target.closest("button[data-lic]");
+      if (lic) { openLicense(lic.dataset.lic, lic); return; }
+      const cr = e.target.closest("button[data-crate]");
+      if (cr) openCrateLicense(Number(cr.dataset.crate), cr);
+    });
+    $("#licClose").addEventListener("click", closeLic);
+    $("#licDialog").addEventListener("click", (e) => { if (e.target === $("#licDialog")) closeLic(); });
+    document.addEventListener("keydown", (e) => {
+      if ($("#licDialog").hidden) return;
+      if (e.key === "Escape") { e.preventDefault(); closeLic(); return; }
+      if (e.key === "Tab") {
+        const f = [$("#licText"), $("#licClose")];
+        const i = f.indexOf(document.activeElement);
+        e.preventDefault();
+        f[e.shiftKey ? (i <= 0 ? f.length - 1 : i - 1) : (i + 1) % f.length].focus();
+      }
+    });
+    $("#page-help").addEventListener("click", (e) => {
+      const link = e.target.closest("a[data-url]");
+      if (link) { e.preventDefault(); safe(() => invoke("open_url", { url: link.dataset.url })); }
+    });
     $("#citingBody").addEventListener("click", (e) => {
       const link = e.target.closest("a[data-url]");
       if (!link) return;
@@ -2734,6 +2903,8 @@
       toast(t("keys.rejected", { name: k ? k.name : String(e.payload) }), true);
     });
     state.version = await safe(() => invoke("app_version"), "");
+    state.ojpMeta = await safe(() => invoke("get_ojp_meta"), null);
+    L.ojp.setMeta(state.ojpMeta);
     renderAbout();
     state.update = await safe(() => invoke("get_pending_update"), null);
     renderUpdate();

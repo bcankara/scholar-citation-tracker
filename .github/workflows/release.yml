@@ -57,6 +57,15 @@ jobs:
         shell: pwsh
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
+      # The Credits page lists the Rust crates compiled into the app; the files are generated from Cargo.lock.
+      - name: Check the generated licence files
+        shell: pwsh
+        run: node tools/gen_licenses.js --check
+
+      - name: Check the OJP badge contrast
+        shell: pwsh
+        run: node tools/check_ojp_contrast.js
+
       - name: Build and (for tags) draft the release
         id: tauri
         uses: tauri-apps/tauri-action@v1

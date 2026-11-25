@@ -12,7 +12,7 @@
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const nfmt = (n) => new Intl.NumberFormat(I.locale).format(n);
 
-  const SECTIONS = ["countries", "institutions", "venues", "fields", "types", "who", "influential"];
+  const SECTIONS = ["countries", "institutions", "venues", "ojp", "fields", "types", "who", "influential"];
   const LS_KEY = "sct.citers.exclude_self";
   const readExclude = () => { try { return localStorage.getItem(LS_KEY) === "1"; } catch { return false; } };
   const saveExclude = (v) => { try { localStorage.setItem(LS_KEY, v ? "1" : "0"); } catch { /* private window */ } };
@@ -26,7 +26,7 @@
     const r = B.range();
     return { from: r.from, to: r.to, article: S.article, excludeSelf: S.exclude };
   }
-  const NAMES = ["get_citers_meta", "get_citers_countries", "get_citers_institutions", "get_citers_venues", "get_citers_fields", "get_citers_types", "get_citers_who", "get_citers_influential"];
+  const NAMES = ["get_citers_meta", "get_citers_countries", "get_citers_institutions", "get_citers_venues", "get_citers_ojp", "get_citers_fields", "get_citers_types", "get_citers_who", "get_citers_influential"];
 
   async function load(f, key) {
     const seq = ++S.seq;
@@ -43,9 +43,9 @@
       return;
     }
     if (seq !== S.seq) return;
-    const [meta, countries, institutions, venues, fields, types, who, influential] = res;
+    const [meta, countries, institutions, venues, ojp, fields, types, who, influential] = res;
     for (const a of meta.articles) S.titles.set(a.key, a.title);
-    S.data = { meta, countries, institutions, venues, fields, types, who, influential };
+    S.data = { meta, countries, institutions, venues, ojp, fields, types, who, influential };
     draw();
   }
 
@@ -146,6 +146,22 @@
       if (pubs.length && !v.cov_publisher.needs_data) window.Charts.mount($("#ciPubs"), L.publishers(pubs, c, { labelWidth: labelW() }));
     });
     return section("venues", L.sentences.venues(v), body, L.caption(v.cov_venue.n, [{ what: "ci.w_venue", missing: v.cov_venue.missing }, { what: "ci.w_publisher", missing: v.cov_publisher.missing }]));
+  }
+
+  function buildOjp(d, jobs) {
+    const o = d.ojp;
+    const none = o.none_few + o.none_unscored;
+    const cap = t("ci.ojp_cap", { n: nfmt(o.n), a: nfmt(none), b: nfmt(o.none_absent), c: nfmt(o.none_no_journal), edition: L.ojp.vars().edition });
+    const help = ` <button type="button" class="btn btn-link ci-ojp-help">${esc(t("ojp.help_open"))}</button>`;
+    const section2 = (answer, body) => section("ojp", answer, body, "").replace(/<\/section>$/, `<p class="ci-cap">${esc(cap)}${help}</p></section>`);
+    if (!o.ranked) return section2("", slotMsg(t("ci.ojp_none")));
+    const rows = o.venues.map((x) => `<tr><td title="${esc(x.name)}">${esc(trunc(x.name, 44))}</td><td class="ci-t-ojpc">${L.ojp.badge(x) || "—"}</td><td class="num">${nfmt(x.n)}</td></tr>`).join("");
+    const body = `<div class="ci-row ci-r11">
+        ${col(t("ci.t_ojp_hist"), `<div class="ci-ch ci-h300" id="ciOjpHist"></div>`)}
+        ${col(t("ci.t_ojp_venues"), o.venues.length ? `<table class="ci-table ci-t-ojp"><thead><tr><th>${esc(t("ci.col_journal"))}</th><th class="ci-t-ojpc">OJP</th><th class="num">${esc(t("ci.col_n"))}</th></tr></thead><tbody>${rows}</tbody></table>` : slotMsg(t("ci.no_data")))}
+      </div>`;
+    jobs.push(() => window.Charts.mount($("#ciOjpHist"), L.ojpHist(o.hist, window.Charts.ctx()), { emptyText: t("ci.no_data") }));
+    return section2(L.ojp.answer(o), body);
   }
 
   function buildFields(d, jobs) {
@@ -262,7 +278,7 @@
     showMsg("");
     $("#ciIndex").hidden = false;
     const jobs = [];
-    host.innerHTML = [buildCountries(d, jobs), buildInstitutions(d, jobs), buildVenues(d, jobs), buildFields(d, jobs), buildTypes(d), buildWho(d), buildInfluential(d)].join("");
+    host.innerHTML = [buildCountries(d, jobs), buildInstitutions(d, jobs), buildVenues(d, jobs), buildOjp(d, jobs), buildFields(d, jobs), buildTypes(d), buildWho(d), buildInfluential(d)].join("");
     for (const j of jobs) { try { j(); } catch (e) { console.error(e); } }
     spy();
   }
@@ -307,7 +323,8 @@
     $("#ciIndex").addEventListener("click", (e) => { const b = e.target.closest("button[data-sec]"); if (b) goTo(b.dataset.sec); });
     $("#anTab-citers").addEventListener("click", (e) => {
       const v = e.target.closest(".ci-view");
-      if (v) { B.openList({ article: S.article, excludeSelf: S.exclude, sort: v.dataset.view === "influential" ? "cited" : "" }); return; }
+      if (v) { B.openList({ article: S.article, excludeSelf: S.exclude, sort: v.dataset.view === "influential" ? "cited" : v.dataset.view === "ojp" ? "ojp" : "" }); return; }
+      if (e.target.closest(".ci-ojp-help")) { B.openHelp("help-ojp"); return; }
       if (e.target.closest(".ci-refresh")) { B.refresh(); return; }
       if (e.target.closest(".ci-reset")) { S.article = ""; S.exclude = false; saveExclude(false); B.resetRange(); }
     });

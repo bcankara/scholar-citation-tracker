@@ -298,6 +298,10 @@ fn short_id(url: &str, prefix: &str) -> String {
     url.strip_prefix(prefix).unwrap_or(url).trim().to_string()
 }
 
+fn valid_source_id(id: &str) -> bool {
+    id.len() > 1 && id.starts_with('S') && id[1..].chars().all(|c| c.is_ascii_digit())
+}
+
 fn valid_openalex_id(id: &str) -> bool {
     id.len() > 1 && id.starts_with('W') && id[1..].chars().all(|c| c.is_ascii_digit())
 }
@@ -359,6 +363,7 @@ struct OaLocation {
 
 #[derive(Deserialize, Default)]
 struct OaSource {
+    id: Option<String>,
     display_name: Option<String>,
     issn_l: Option<String>,
     #[serde(default)]
@@ -687,6 +692,7 @@ pub fn parse_oa_citing(json: &str) -> Result<(Vec<CitingRecord>, Option<String>)
             let venue = src.display_name.clone().unwrap_or_default().trim().to_string();
             let publisher = src.host_organization_name.clone().unwrap_or_default().trim().to_string();
             let source_type = src.source_type.clone().unwrap_or_default().trim().to_ascii_lowercase();
+            let source_id = src.id.as_deref().map(|i| short_id(i, "https://openalex.org/")).filter(|i| valid_source_id(i)).unwrap_or_default();
             let issn_list = join_issns(src.issn_l.into_iter().chain(src.issn.into_iter().flatten()));
             let doi = w
                 .doi
@@ -729,6 +735,7 @@ pub fn parse_oa_citing(json: &str) -> Result<(Vec<CitingRecord>, Option<String>)
                 publisher,
                 source_type,
                 cited_by: w.cited_by_count.filter(|n| *n >= 0),
+                source_id,
             })
         })
         .collect();
@@ -3420,12 +3427,17 @@ mod tests {
     #[test]
     fn issns_are_read_from_citing_works() {
         let oa = r#"{"results":[{"id":"https://openalex.org/W1","title":"T","publication_date":"2024-05-06","publication_year":2024,
-            "primary_location":{"landing_page_url":"https://x","source":{"display_name":"Journal X","issn_l":"1569-8432","issn":["1569-8432","1872-826x"]}},"authorships":[]},
+            "primary_location":{"landing_page_url":"https://x","source":{"id":"https://openalex.org/S4210123456","display_name":"Journal X","issn_l":"1569-8432","issn":["1569-8432","1872-826x"]}},"authorships":[]},
             {"id":"https://openalex.org/W2","title":"U","publication_date":"2024-05-07","publication_year":2024,
-            "primary_location":{"source":{"display_name":"No ISSN"}},"authorships":[]}],"meta":{"next_cursor":null}}"#;
+            "primary_location":{"source":{"display_name":"No ISSN"}},"authorships":[]},
+            {"id":"https://openalex.org/W3","title":"V","publication_date":"2024-05-08","publication_year":2024,
+            "primary_location":{"source":{"id":"not-an-id","display_name":"Odd"}},"authorships":[]}],"meta":{"next_cursor":null}}"#;
         let (recs, _) = parse_oa_citing(oa).expect("oa");
         assert_eq!(recs[0].issn_list, "15698432,1872826X");
         assert_eq!(recs[1].issn_list, "");
+        // the OpenAlex source id is kept in its short form; a missing or malformed one is empty
+        assert_eq!(recs[0].source_id, "S4210123456");
+        assert_eq!((recs[1].source_id.as_str(), recs[2].source_id.as_str()), ("", ""));
     }
 
     /// Live check against OpenAlex (never Google):

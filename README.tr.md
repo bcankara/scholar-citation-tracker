@@ -15,6 +15,7 @@ Arayüz **Türkçe** ve **İngilizce** olarak sunulur. İlk açılışta dil, Wi
 - Scholar değişikliklerinin, geçmiş veriler açıksa atıf yapan yayınların kesin yayın tarihine göre takvimi ve tüm yılların ısı haritası.
 - Yıl sonu tahmin aralığı ve hedefle birlikte kesintisiz eğilim çizgisi, en hızlı yükselen makaleler, zaman içinde h ve i10.
 - Atıf yapanların ülke (dünya haritası), kurum, yayın yeri ve yayıncı, alan, yayın türü, açık erişim ve dile göre çözümlemesi; kimlerin atıf yaptığı (öz, ortak yazar, dış) ve etkili atıflar.
+- Dergisi bilinen her atıf yapan yayının yanında 0-100 arası bir **OJP** dergi puanı (sıralanabilir; Analiz ve dışa aktarımlarda da yer alır), onu açıklayan bir Yardım sayfası ve bir Lisanslar ve emeği geçenler sayfası.
 - Atıf yapan yayınların süzülebilir listesi (başlık DOI/OpenAlex kaydına bağlanır); her makale ve her Scholar değişikliğinden o makalenin Scholar'daki atıf listesine bağlantı.
 - Seçilebilir grafiklerle PDF rapor, Excel dışa aktarma ve haftalık özet bildirimi.
 - Türkçe ve İngilizce arayüz, açık ve koyu tema, uygulama içi imzalı güncellemeler.
@@ -80,6 +81,12 @@ Atıf yapan yayınların dergileri ve yayıncıları.
 
 <img src="docs/images/tr-citers-venues.png" alt="Yayın yerleri ve yayıncılar kartı" width="100%">
 
+#### Dergi prestiji (OJP)
+
+Atıf yapan yayınların dergilerinin OJP puanına göre dağılımı ve en çok atıf yapan dergiler, puanlarıyla.
+
+<img src="docs/images/tr-citers-ojp.png" alt="Beyazdan kırmızıya on basamaklı histogram ve en çok atıf yapan 8 derginin OJP rozetleriyle tablosu olan Dergi prestiji kartı" width="100%">
+
 #### Alanlar
 
 Alanların treemap görünümü ve yayınlarınız ile alanlar arasında ısı haritası.
@@ -110,6 +117,10 @@ Bir grafikte çubuğa tıklayınca liste süzülür. Etkin süzgeçler, tek tek 
 
 <img src="docs/images/tr-citing.png" alt="Ülke ve yayın yeri grafikleri, kaldırılabilir süzgeç çipleri ve 200 yayından 11'inin listelendiği Atıf yapanlar sayfası" width="100%">
 
+OJP sütunu, her atıf yapan yayının dergisinin puanını rozet olarak gösterir; sıralamak için başlığına tıklayın (puanı olmayan yayınlar her zaman sonda gelir). Rozetin üzerine gelince alan, puan yoksa nedeni görünür.
+
+<img src="docs/images/tr-citing-ojp.png" alt="Dergi OJP puanına göre sıralanmış, beyazdan kırmızıya rozetli Atıf yapanlar listesi" width="100%">
+
 ### Makaleler
 
 Her makale; geçmiş grafiği ve sayısındaki her değişiklik, eşleşen OpenAlex kaydı (DOI düzeltme yoluyla) ve ona atıf yapan yayınlarla açılır.
@@ -127,6 +138,14 @@ PDF için aralığı, dili ve grafikleri seçin; canlı önizleme bunları göst
 Ayarlar; profil, aralık, dil, veri klasörü, API anahtarları, geçmiş veriler ve dışa aktarmayı içerir. Hakkında bölümü sürümü gösterir ve güncellemeleri denetler; sonuç her zaman gösterilir.
 
 <img src="docs/images/tr-settings-about.png" alt="Uygulamanın güncel olduğunu gösteren, Hakkında bölümüne kaydırılmış Ayarlar" width="100%">
+
+### Yardım ile Lisanslar ve emeği geçenler
+
+**Yardım** sayfası OJP'yi (nedir, nasıl hesaplanır, ne değildir) açıklar ve diğer sayfalar için kısa notlar içerir. **Ayarlar > Hakkında > Lisanslar ve emeği geçenler** sayfası veri kaynaklarını lisanslarıyla, paketlenen bileşenleri ve uygulamaya derlenen her Rust kitaplığını, lisans metinleriyle birlikte listeler.
+
+<img src="docs/images/tr-help.png" alt="Yardım sayfası: OJP nedir ve rozet nasıl okunur" width="100%">
+
+<img src="docs/images/tr-credits.png" alt="Lisanslar ve emeği geçenler sayfası: uygulama, OpenAlex ve atıf bilgisiyle OJP veri seti" width="100%">
 
 ### Koyu tema
 
@@ -224,6 +243,28 @@ Analiz'in son sekmesi **Atıf yapanlar** "bana kim atıf yapıyor?" sorusunu kat
 
 Analiz > Takvim'deki yıl ısı haritası artık tüm yılları aynı anda gösterir.
 
+## OJP dergi puanı
+
+**OJP** (Open Journal Prestige, Açık Dergi Prestiji), uygulamanın her atıf yapan yayının dergisinin yanında gösterdiği 0 ile 100 arasında bir sayıdır.
+
+**Nedir**
+
+- Bir derginin, kendi alanındaki dergiler arasındaki göreli konumudur: 0 en düşük, 100 en yüksek konumdur. OJP 76 ise dergi, alanındaki her 100 dergiden yaklaşık 76'sından daha yüksek puanlıdır.
+- OpenAlex verisinden üretilmiş açık bir veri setindeki Article Network Score (ANS) değerinden hesaplanır: her alanda dergiler ANS'ye göre sıralanır ve sıra yüzdeliğe çevrilir (OJP = 100 x (daha düşük puanlı dergi sayısı + aynı puanlı dergi sayısının yarısı) / alandaki dergi sayısı, yuvarlanır). Her dergi tek bir alana aittir: makalelerinin en çok yer aldığı alan.
+- Beyazdan sarıya, sarıdan kırmızıya koyulaşan bir rozetle gösterilir; bilgiyi sayı taşır, renk yalnızca sayıyı yineler. Sınıf ya da dilim yoktur.
+- Göründüğü yerler: Atıf yapanlar listesi (sıralanabilir sütun), Analiz > Atıf yapanlar sekmesindeki bir kart (dağılım ve en çok atıf yapan dergiler), Excel dışa aktarımı (üç sütun ve "OJP hakkında" sayfası) ve isteğe bağlı olarak PDF rapor.
+- Veri: 2024 sürümü (2024'te, 2019-2023 yıllarında yayımlanmış makale ve derlemelere yapılan atıflar), 25 alanda 85.948 dergi. Uygulamanın içinde gelir, hiçbir şey indirilmez, yalnızca yeni bir uygulama sürümüyle değişir. 1.4.0 öncesinde saklanan satırlar, sonraki yenileme OpenAlex kaynak kimliğini saklayana kadar ISSN ile eşleştirilir. Dosyaya ilişkin notlar: `src-tauri/data/ojp/README.md`.
+
+**Ne değildir**
+
+- Web of Science, Scopus, SJR ya da JCR göstergesi **değildir**, Q1-Q4 çeyrekliği de değildir. Bunlara dönüştürülemez ve onların yerine bildirilmemelidir.
+- Türetildiği veri setinin resmî bir göstergesi değildir; veri setinin yazarı bu puanı incelememiş ve onaylamamıştır.
+- Dergileri betimler; makaleleri ya da kişileri değil. Atama, yükseltme, ödül, proje desteği ve kişilerin benzeri resmî değerlendirmelerinde kullanılmamalıdır.
+- Tek bir alan içindeki konumdur; farklı alanlardaki dergilerin puanları doğrudan karşılaştırılamaz.
+- Dönemde sayılan makalesi 20'nin altında olan, kaynak veride puanı ya da alanı bulunmayan veya sıralanan dergi sayısı 20'nin altında kalan alanlardaki dergilere OJP verilmez ve **NA** ("puan şu an hesaplanmamıştır") görünür: dergi biliniyor ama sıralanmadıysa kesikli çerçeveli, veride yoksa düz NA; nedeni ipucunda yazar; dergi dışı yayınların (kitap, ön baskı, tez) hücresi boştur. Bazı yazılım ve veri dergileri eşiğin altında kalır.
+
+Veri kaynağı ve lisansı [Lisanslar ve emeği geçenler](#lisanslar-ve-emeği-geçenler) bölümündedir; uygulamadaki Yardım sayfası aynı konuyu daha ayrıntılı anlatır.
+
 ## API anahtarları (isteğe bağlı)
 
 **Ayarlar > API anahtarları (isteğe bağlı)** ücretsiz bir OpenAlex anahtarı girmenizi sağlar. Uygulama anahtarsız da çalışır.
@@ -309,7 +350,11 @@ cargo tauri build --debug --no-bundle --config src-tauri/tauri.dev.conf.json
 
 `src-tauri/tauri.dev.conf.json` `io.github.bcankara.scholarcitationtracker.dev` tanımlayıcısını ve "Scholar Citation Tracker Dev" ürün adını belirler. Ayarları `%APPDATA%\io.github.bcankara.scholarcitationtracker.dev`, WebView verisi `%LOCALAPPDATA%\io.github.bcankara.scholarcitationtracker.dev` altında durur; tek-örnek kilidi `<tanımlayıcı>-sim`, otomatik başlatma değeri ise ürün adıyla adlandırılır. Bunun `settings.json` dosyasına açık bir geçici `data_dir` ile `"autostart": false, "auto_update": false` yazın, işiniz bitince `.dev` klasörlerini silin. Hata ayıklama derlemeleri ayrıca `SCT_KEYRING_SERVICE` (ayrı bir Kimlik Bilgileri Yöneticisi hizmet adı) ve `SCT_TEST_PDF_PATH` (rapor PDF'ini sormadan oraya yazar) değişkenlerine uyar; sürüm derlemeleri ikisini de yok sayar.
 
+`node tools/gen_licenses.js`, `ui/licenses/` klasörünü (uygulamaya derlenen Rust kitaplıkları ve lisansları; Lisanslar sayfası için) `src-tauri/Cargo.lock` dosyasından yeniden üretir; her bağımlılık değişikliğinden sonra çalıştırın. `node tools/gen_licenses.js --check` dosyalar güncel değilse başarısız olur (sürüm iş akışı bunu çalıştırır).
+
 `node tools/check_i18n.js`, Türkçe ve İngilizce metinlerin eşleştiğini, arayüzün kullandığı her metnin bulunduğunu ve kısaltılmış dönem etiketlerinin (30G, 12A, 3Y) kalmadığını denetler.
+
+`node tools/check_ojp_contrast.js`, OJP rozetinin karşıtlığını (sayı ile zemin, 10 basamak, açık ve koyu tema, rapor) CSS dosyalarından yeniden hesaplar ve 4,5:1 altında hata verir.
 
 ```
 cd src-tauri
@@ -331,13 +376,27 @@ Testler, test kodunun içinde yer alan küçük, elle yazılmış bir profil say
 
 Bu, resmî olmayan ve bağımsız bir projedir; Google ile bağlantılı değildir, Google tarafından desteklenmez veya onaylanmamıştır. Herkese açık profil sayfasını düşük bir istek sıklığıyla (varsayılan olarak 3 saatte bir) okur ve herhangi bir özel API kullanmaz. Google Scholar'ın resmî bir API'si yoktur; sayfa yapısı veya kullanım koşulları değişebilir ve bu durum uygulamayı her an bozabilir. Kullanımınızın Google'ın hizmet şartlarına uygun olmasından siz sorumlusunuz. Uygulama, kendi profilinizi izlemek için kişisel kullanıma yöneliktir; toplu veya yüksek sıklıklı veri çekme için kullanmayın.
 
-## Katkılar
+## Lisanslar ve emeği geçenler
+
+Aynı liste uygulamanın içinde de vardır (Ayarlar > Hakkında > Lisanslar ve emeği geçenler); her lisans metni oradan açılabilir.
+
+### Veri kaynakları
+
+- **OpenAlex** (https://openalex.org): atıf yapan yayınların künye bilgileri (dergi, yazar, kurum, ülke, alan). OpenAlex verisi CC0 ile kamuya açıktır.
+- **Opindx** (OJP puanları), aşağıya bakın.
+- **Natural Earth** (dünya haritası), aşağıya bakın.
+
+### Kitaplıklar, simge ve yazı tipleri
 
 Uygulama simgesi, Microsoft'un Fluent UI System Icons (MIT Lisansı) çalışmasını temel alır.
 
 Grafikler [Apache ECharts](https://echarts.apache.org/) 5.5.1 (Apache Lisansı 2.0) ile çizilir; lisansı ve bildirimiyle birlikte `ui/vendor/` içinde paketlidir (`echarts.min.js`, SHA-256 `e84270bd0cd5bdf60fefc26d00c2a391cb2e81f4d26a7a9ee16185a54773a3cf`, npm kayıt defterindeki `echarts@5.5.1` paketinden); çevrimdışı çalışır, hiçbir şey CDN'den yüklenmez.
 
 Dünya haritası: [Natural Earth](https://www.naturalearthdata.com/) 1:110m ülke sınırları (kamu malı), `nvkelso/natural-earth-vector` deposunun `v5.1.2` etiketi; `ui/vendor/world.geo.json` olarak sadeleştirildi (SHA-256 `5639a2568f0f14a602ba21da1310e9aebcc3dc6afb21417e4c96af7d64931e31`; özgün dosya `6866c877d39cba9c357620878839b336d569f8c662d3cfab4cb1dbe2d39c977f`); bildirim `ui/vendor/LICENSE-natural-earth.txt` içinde.
+
+OJP verisi: Weitzel, U. (2026). *Opindx: Open Journal Factor, Network Factor and Article Network Score* (veri sürümü 2026-09-v5) [Veri seti]. Zenodo. https://doi.org/10.5281/zenodo.23599869; [Creative Commons Atıf 4.0 Uluslararası (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/) lisansıyla kullanılmıştır. Yapılan değişiklikler: 2024 atıf yılı dosyasından yalnızca OpenAlex evrenindeki Article Network Score (Raw) sütunu ile dergi kimlik sütunları alındı (süzme için makale sayısı ve OpenAlex evreni işareti de okundu; Norveç kaydına dayanan hiçbir sütun kullanılmadı); puanlar alan içi yüzdelik sıraya (OJP, 0-100) dönüştürüldü; sayılan makalesi 20'nin altında olan, puanı ya da alanı bulunmayan ve sıralanan dergi sayısı 20'nin altında kalan alanlardaki dergilere puan verilmedi. OJP resmî bir Opindx göstergesi değildir; veri setinin yazarı bu türetilmiş çalışmayı incelememiş ve onaylamamıştır. Opindx'in burada kullanılan sütunlarının sayısal girdisi OpenAlex verisidir (CC0, https://openalex.org). Paketlenen dosya `src-tauri/data/ojp/ojp-2024.csv.gz` (SHA-256 `034462a329917013c8f250e30762dc5b99ce88664bcd790b2193f36414c04e1b`; kaynak dosya `scores_2024.csv` SHA-256 `788de513f9d69f0418aa5798e755314b1fcba2312c2f419beac1531d8f0a1ad4`); atıf metni `src-tauri/data/ojp/NOTICE.txt` içindedir.
+
+Uygulamaya derlenen Rust kitaplıklarının lisansları: `ui/licenses/rust-crates.json` ve metinleri `ui/licenses/rust-license-texts.json` (`tools/gen_licenses.js` ile üretilir; çoğu MIT ya da Apache-2.0, birkaçı MPL-2.0 ve Unicode-3.0). Yerel veritabanı SQLite'tır (kamu malı, `rusqlite` kitaplığı ile paketlenir). Uygulama yazı tipi içermez; Windows'ta yüklü Segoe UI ve Segoe Fluent Icons kullanılır. Uygulamanın kendisi [MIT lisansı](LICENSE) ile dağıtılır.
 
 ## Lisans
 

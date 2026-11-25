@@ -925,3 +925,84 @@ button.yh-c:hover, button.yh-c:focus-visible { outline: 1px solid var(--text); o
 .tm-tile:hover rect { stroke: var(--text); stroke-width: 1; }
 .cw-extra { padding-top: 8px; }
 .cw-extra .check { margin-left: 4px; }
+
+/* ---- OJP gauge (Open Journal Prestige): ten steps by tens, white to yellow to red; the number always carries the information ---- */
+:root {
+  --ojp-0: #ffffff; --ojp-1: #fffbe6; --ojp-2: #fff3bf; --ojp-3: #ffe680; --ojp-4: #ffd24a;
+  --ojp-5: #ffb833; --ojp-6: #ff9a2e; --ojp-7: #f4742b; --ojp-8: #c93a1f; --ojp-9: #a3162e;
+  --ojp-ink-a: #1a1a1a;
+  --ojp-ink-b: #ffffff;
+  --ojp-stroke: rgba(0, 0, 0, 0.16);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ojp-0: #343434; --ojp-1: #4b4630; --ojp-2: #6b5e22; --ojp-3: #94801a; --ojp-4: #c2a416;
+    --ojp-5: #f0c419; --ojp-6: #ffab2e; --ojp-7: #ff8a3d; --ojp-8: #ff6a4a; --ojp-9: #ff4d5e;
+    --ojp-ink-a: #ffffff;
+    --ojp-ink-b: #111111;
+    --ojp-stroke: rgba(255, 255, 255, 0.14);
+  }
+}
+.ojp { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 34px; height: 20px;
+  border-radius: 5px; font: 600 12px/20px var(--font-text); font-variant-numeric: tabular-nums; white-space: nowrap;
+  background: var(--ojp-bg); color: var(--ojp-fg); box-shadow: inset 0 0 0 1px var(--ojp-stroke); vertical-align: middle; cursor: default; }
+.ojp-b0 { --ojp-bg: var(--ojp-0); } .ojp-b1 { --ojp-bg: var(--ojp-1); } .ojp-b2 { --ojp-bg: var(--ojp-2); }
+.ojp-b3 { --ojp-bg: var(--ojp-3); } .ojp-b4 { --ojp-bg: var(--ojp-4); } .ojp-b5 { --ojp-bg: var(--ojp-5); }
+.ojp-b6 { --ojp-bg: var(--ojp-6); } .ojp-b7 { --ojp-bg: var(--ojp-7); } .ojp-b8 { --ojp-bg: var(--ojp-8); } .ojp-b9 { --ojp-bg: var(--ojp-9); }
+.ojp-b0, .ojp-b1, .ojp-b2, .ojp-b3, .ojp-b4, .ojp-b5, .ojp-b6, .ojp-b7 { --ojp-fg: var(--ojp-ink-a); }
+.ojp-b8, .ojp-b9 { --ojp-fg: var(--ojp-ink-b); }
+@media (prefers-color-scheme: dark) {
+  .ojp-b0, .ojp-b1, .ojp-b2 { --ojp-fg: var(--ojp-ink-a); }
+  .ojp-b3, .ojp-b4, .ojp-b5, .ojp-b6, .ojp-b7, .ojp-b8, .ojp-b9 { --ojp-fg: var(--ojp-ink-b); }
+}
+.ojp-none { background: transparent; color: var(--text-3); box-shadow: none; border: 1px dashed var(--text-3); font-weight: 400; }
+.ojp-dash { display: inline-block; width: 34px; text-align: center; color: var(--text-3); cursor: default; }
+.ojp-lg { width: 44px; height: 32px; border-radius: 7px; font: 600 18px/32px var(--font-display); overflow: hidden;
+  background-image: linear-gradient(currentColor, currentColor); background-repeat: no-repeat;
+  background-position: 0 100%; background-size: calc(var(--ojp-v, 0) * 1%) 3px; }
+.ojp-scale { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
+.ojp-scale i { display: inline-block; width: 18px; height: 10px; box-shadow: inset 0 0 0 1px var(--ojp-stroke); }
+.ojp-scale i:first-of-type { border-radius: 3px 0 0 3px; } .ojp-scale i:last-of-type { border-radius: 0 3px 3px 0; }
+@media print { .ojp, .ojp-scale i { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+
+.col-ojp { width: 76px; white-space: nowrap; }
+.th-help { width: 18px; height: 18px; margin-left: 4px; padding: 0; border: 0; border-radius: 9px; background: transparent; color: var(--text-3); cursor: pointer; vertical-align: middle; }
+.th-help:hover, .th-help:focus-visible { color: var(--accent); background: var(--subtle-hover); outline: 0; }
+.th-help .icon { font-size: 11px; }
+.ci-t-ojp th.ci-t-ojpc, .ci-t-ojp td.ci-t-ojpc { width: 50px; text-align: center; overflow: visible; }
+.ci-t-ojp th:nth-child(1) { width: auto; } .ci-t-ojp th.num { width: 88px; }
+
+/* Help and Licences pages */
+.help, .cred { max-width: 860px; display: flex; flex-direction: column; gap: 8px; }
+.cred { gap: 4px; }
+.help-card { padding: 16px 20px; }
+.help-card h2 { margin: 0 0 8px; font: 600 16px/24px var(--font-display); }
+.help-card p, .help-card li { margin: 0 0 8px; font-size: 14px; line-height: 20px; color: var(--text-2); user-select: text; }
+.help-card ul, .help-card ol { margin: 0 0 8px; padding-left: 20px; }
+.help-card p:last-child, .help-card ul:last-child, .help-card ol:last-child { margin-bottom: 0; }
+.help-ex { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; margin: 4px 0 12px; }
+.help-ex > span { display: inline-flex; gap: 8px; align-items: center; font-size: 12px; color: var(--text-2); }
+.help-dl { margin: 0; }
+.help-dl dt { font: 600 14px/20px var(--font-text); margin: 0; }
+.help-dl dd { margin: 0 0 10px; font-size: 14px; line-height: 20px; color: var(--text-2); user-select: text; }
+.help .sgroup-title:not(:first-child) { margin-top: 16px; }
+.cred-head { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.cred-head h2 { margin: 0; }
+.cred .scard { align-items: flex-start; }
+.cred .stext p { margin: 0 0 6px; font-size: 12px; line-height: 18px; color: var(--text-2); user-select: text; overflow-wrap: anywhere; }
+.cred .stext p:last-child { margin-bottom: 0; }
+.cred .stext .ojp-cite { font-size: 13px; color: var(--text); }
+.cred .sbtns { align-items: center; }
+.cred-rust { padding: 16px 20px; }
+.cred-rust .toolbar { margin: 8px 0; }
+.cred-table-wrap { max-height: 420px; overflow: auto; border-top: 1px solid var(--layer-stroke); }
+.cred-table-wrap .table th { position: sticky; top: 0; background: var(--pop-bg); z-index: 1; }
+.cred-table-wrap .table td { font-size: 12px; }
+.lic-card { max-width: min(760px, 100%); }
+.lic-text { margin: 0; max-height: 60vh; overflow: auto; padding: 12px; border-radius: 4px; background: var(--neutral-bg); font: 12px/18px Consolas, "Cascadia Mono", monospace; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.lic-sep { color: var(--text-3); }
+.table th[data-csort] { cursor: pointer; }
+.table th[data-csort]:hover { background: var(--subtle-hover); }
+.cred .stext { flex: 1 1 0; min-width: 0; }
+#credOjp { flex-wrap: wrap; }
+#credOjp .sbtns { flex: 1 1 100%; margin-left: 0; padding-left: 36px; justify-content: flex-start; }

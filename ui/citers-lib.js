@@ -560,8 +560,67 @@
     ];
   }
 
+  // ------------------------------------------------------------ OJP (Open Journal Prestige) gauge
+  // Rows carry { ojp, ojp_state, ojp_field, ojp_n }; the data edition and thresholds come from get_ojp_meta (set once by the page).
+  const ojp = {
+    meta: null,
+    setMeta(m) { ojp.meta = m || null; },
+    /** Score 0..100 -> colour step 0..9 (steps by tens, the last one holds 90-100). */
+    step: (score) => Math.max(0, Math.min(9, Math.floor(score / 10))),
+    vars() {
+      const m = ojp.meta || {};
+      return { edition: m.edition ?? "", cite_year: m.cite_year ?? "", from: m.window_from ?? "", to: m.window_to ?? "", min: m.min_pubs ?? "", min_field: m.min_field ?? "",
+        journals: m.journals != null ? nfmt(m.journals) : "", fields: m.fields ?? "", dataset_version: m.dataset_version ?? "", dataset_doi: m.dataset_doi ?? "" };
+    },
+    lines(row) {
+      const t = I.t, v = ojp.vars();
+      if (!row) return [];
+      if (row.ojp_state === "ranked" && row.ojp != null) {
+        return [t("ojp.tip_score", { score: row.ojp }), t("ojp.tip_field", { field: fieldName(row.ojp_field), n: nfmt(row.ojp_n || 0) }), t("ojp.tip_rank", v), t("ojp.tip_not")];
+      }
+      if (["few", "unscored", "absent"].includes(row.ojp_state)) return [t("ojp.none_" + row.ojp_state, v), t("ojp.tip_not")];
+      return [];
+    },
+    tip: (row) => ojp.lines(row).join("\n"),
+    /** HTML of the gauge; "" when the work is not in a journal. */
+    badge(row) {
+      if (!row) return "";
+      const ln = ojp.lines(row);
+      if (!ln.length) return "";
+      const title = esc(ln.join("\n")), aria = esc(ln.map((s) => s.replace(/\.$/, "")).join(". "));
+      if (row.ojp_state === "ranked" && row.ojp != null) return `<span class="ojp ojp-b${ojp.step(row.ojp)}" role="img" aria-label="${aria}" title="${title}">${esc(row.ojp)}</span>`;
+      if (row.ojp_state === "absent") return `<span class="ojp-dash" role="img" aria-label="${aria}" title="${title}">NA</span>`;
+      return `<span class="ojp ojp-none" role="img" aria-label="${aria}" title="${title}">NA</span>`;
+    },
+    /** Example badge for the Help page (large, with the meter along the bottom edge). */
+    sample: (score) => `<span class="ojp ojp-lg ojp-b${ojp.step(score)}" style="--ojp-v:${score}" role="img" aria-label="OJP ${score} / 100">${score}</span>`,
+    range: (i) => (i >= 9 ? "90–100" : `${i * 10}–${i * 10 + 9}`),
+    /** Sentence of the Analysis card and the report: coverage and the fullest range only (no average on purpose). */
+    answer: (o) => (o && o.ranked ? I.t("ci.ojp_answer", { n: nfmt(o.n), ranked: nfmt(o.ranked), range: ojp.range(o.mode), k: nfmt(o.hist[o.mode]) }) : ""),
+  };
+
+  /** Citing works per OJP step (10 bars filled with the gauge colours). hist: [n x 10] */
+  function ojpHist(hist, c) {
+    const total = sum(hist);
+    if (!total) return null;
+    const { tk, nf, t } = c;
+    const labels = hist.map((_, i) => ojp.range(i));
+    const option = Object.assign(baseOpt(c, { top: 22, right: 12, bottom: 4 }), {
+      xAxis: { type: "category", data: labels, axisTick: { show: false }, axisLine: { lineStyle: { color: tk.grid } }, axisLabel: axisTxt(c, { color: tk.text3, interval: 0, fontSize: 11 }) },
+      yAxis: { type: "value", minInterval: 1, axisLine: { show: false }, axisTick: { show: false }, axisLabel: axisTxt(c, { color: tk.text3 }), splitLine: { lineStyle: { color: tk.grid } } },
+      series: [{
+        type: "bar", cursor: "default", barMaxWidth: 34,
+        data: hist.map((v, i) => ({ value: v, itemStyle: { color: css("--ojp-" + i, "#cccccc"), borderColor: tk.text3, borderWidth: 1, borderRadius: [3, 3, 0, 0] } })),
+        label: { show: true, position: "top", color: tk.text2, fontWeight: 600, formatter: (q) => (q.value ? nf.format(q.value) : "") },
+        emphasis: { itemStyle: { opacity: 0.85 } },
+      }],
+    });
+    option.tooltip.formatter = (q) => tipHead(c, t("ci.ojp_tt", { range: labels[q.dataIndex], k: nf.format(hist[q.dataIndex]), pct: pct(hist[q.dataIndex], total) }));
+    return { option };
+  }
+
   window.CitersLib = {
-    esc, trunc, pct, sum, palette, bins, mix, hbars, yearsBars, publishers, matrix, worldMap, registerWorld, stackBar,
+    esc, trunc, pct, sum, palette, bins, mix, ojp, ojpHist, hbars, yearsBars, publishers, matrix, worldMap, registerWorld, stackBar,
     treemapSvg, mountTreemap, treemapModel, caption, sentences, typeBars,
     grammar: { possSuffix, pctPoss, locNum, numPoss, abl, joinFrom },
     names: { countryName, fieldName, typeName, typeKey, oaKey, langName },

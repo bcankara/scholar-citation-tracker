@@ -119,3 +119,22 @@ p b { font-weight: 600; color: var(--ink); }
 .sb-legend i { width: 7pt; height: 7pt; border-radius: 1.5pt; display: inline-block; }
 .sb-legend b { color: var(--ink); }
 .chart svg.tm { width: 100%; height: auto; }
+
+/* OJP gauge: always the light palette in the PDF */
+:root {
+  --ojp-0: #ffffff; --ojp-1: #fffbe6; --ojp-2: #fff3bf; --ojp-3: #ffe680; --ojp-4: #ffd24a;
+  --ojp-5: #ffb833; --ojp-6: #ff9a2e; --ojp-7: #f4742b; --ojp-8: #c93a1f; --ojp-9: #a3162e;
+  --ojp-ink-a: #1a1a1a; --ojp-ink-b: #ffffff; --ojp-stroke: rgba(0, 0, 0, 0.16);
+}
+.ojp { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 30px; height: 16px;
+  border-radius: 4px; font: 600 8pt/16px "Segoe UI", sans-serif; font-variant-numeric: tabular-nums; white-space: nowrap;
+  background: var(--ojp-bg); color: var(--ojp-fg); box-shadow: inset 0 0 0 1px var(--ojp-stroke); vertical-align: middle; }
+.ojp-b0 { --ojp-bg: var(--ojp-0); } .ojp-b1 { --ojp-bg: var(--ojp-1); } .ojp-b2 { --ojp-bg: var(--ojp-2); }
+.ojp-b3 { --ojp-bg: var(--ojp-3); } .ojp-b4 { --ojp-bg: var(--ojp-4); } .ojp-b5 { --ojp-bg: var(--ojp-5); }
+.ojp-b6 { --ojp-bg: var(--ojp-6); } .ojp-b7 { --ojp-bg: var(--ojp-7); } .ojp-b8 { --ojp-bg: var(--ojp-8); } .ojp-b9 { --ojp-bg: var(--ojp-9); }
+.ojp-b0, .ojp-b1, .ojp-b2, .ojp-b3, .ojp-b4, .ojp-b5, .ojp-b6, .ojp-b7 { --ojp-fg: var(--ojp-ink-a); }
+.ojp-b8, .ojp-b9 { --ojp-fg: var(--ojp-ink-b); }
+.ojp-none { background: transparent; color: var(--ink-3); box-shadow: none; border: 1px dashed var(--ink-3); font-weight: 400; }
+.ojp-dash { display: inline-block; width: 30px; text-align: center; color: var(--ink-3); }
+table.citing td.col-ojp, table.citing th.col-ojp { width: 40px; text-align: center; }
+.ojp-tbl td.ojpc, .ojp-tbl th.ojpc { width: 44px; text-align: center; }

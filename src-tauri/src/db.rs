@@ -98,6 +98,7 @@ CREATE TABLE IF NOT EXISTS backfill_citations(
     source_type TEXT NOT NULL DEFAULT '',
     cited_by INTEGER,
     enriched INTEGER NOT NULL DEFAULT 0,
+    source_id TEXT NOT NULL DEFAULT '',
     PRIMARY KEY(article_key, citing_id)
 );
 CREATE INDEX IF NOT EXISTS idx_backfill_date ON backfill_citations(citing_date);
@@ -175,7 +176,7 @@ pub fn open(path: &Path) -> Result<Connection> {
 
 /// Columns added after a table first existed: (table, column, definition). Databases created
 /// with the older column set get them here (idempotent: a column is only added when missing).
-const EXTRA_COLUMNS: [(&str, &str, &str); 20] = [
+const EXTRA_COLUMNS: [(&str, &str, &str); 21] = [
     ("backfill_citations", "venue", "TEXT NOT NULL DEFAULT ''"),
     ("backfill_citations", "doi", "TEXT NOT NULL DEFAULT ''"),
     ("backfill_citations", "url", "TEXT NOT NULL DEFAULT ''"),
@@ -199,6 +200,9 @@ const EXTRA_COLUMNS: [(&str, &str, &str); 20] = [
     ("backfill_citations", "source_type", "TEXT NOT NULL DEFAULT ''"),
     ("backfill_citations", "cited_by", "INTEGER"),
     ("backfill_citations", "enriched", "INTEGER NOT NULL DEFAULT 0"),
+    // 1.4.0: OpenAlex source id (S...) of the venue, the first key of the OJP lookup. Rows stored
+    // before get it at the next refresh; until then the ISSNs match.
+    ("backfill_citations", "source_id", "TEXT NOT NULL DEFAULT ''"),
 ];
 
 pub fn migrate(conn: &Connection) -> Result<()> {
@@ -886,6 +890,8 @@ pub struct CitingRecord {
     pub source_type: String,
     /// How often the citing work itself is cited (`None` when unknown).
     pub cited_by: Option<i64>,
+    /// OpenAlex source id of the venue (`S...`), empty when unknown.
+    pub source_id: String,
 }
 
 /// Inserts the citing rows of one article (the caller has removed the old ones).
@@ -895,8 +901,8 @@ fn insert_citing_rows(tx: &rusqlite::Transaction, key: &str, source: &str, citin
            (article_key, source, citing_id, citing_title, citing_date, date_precision,
             venue, doi, url, authors, countries, issn_list,
             institutions, authorships, author_orcids, topic, topic_field, topic_domain, work_type,
-            language, oa_status, publisher, source_type, cited_by, enriched)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,1)",
+            language, oa_status, publisher, source_type, cited_by, enriched, source_id)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,1,?25)",
     )?;
     for c in citing {
         ins.execute(params![
@@ -923,7 +929,8 @@ fn insert_citing_rows(tx: &rusqlite::Transaction, key: &str, source: &str, citin
             c.oa_status,
             c.publisher,
             c.source_type,
-            c.cited_by
+            c.cited_by,
+            c.source_id
         ])?;
     }
     Ok(())
@@ -1574,6 +1581,16 @@ pub struct CitingRow {
     pub self_cite: bool,
     /// Set by the command: not a self-citation, but an author is a co-author of one of the user's works.
     pub coauthor_cite: bool,
+    #[serde(skip)]
+    pub source_id: String,
+    /// OJP of the venue's journal (0-100), `None` when it has no score.
+    pub ojp: Option<u8>,
+    /// ranked | few | unscored | absent | no_journal
+    pub ojp_state: crate::ojp::State,
+    /// Field of the OJP ranking (English, as in the data), empty without a score.
+    pub ojp_field: String,
+    /// Ranked journals of that field.
+    pub ojp_n: u32,
 }
 
 /// Every stored citing work, newest first (one row per article and citing work).
@@ -1582,7 +1599,7 @@ pub fn citing_works(conn: &Connection) -> Result<Vec<CitingRow>> {
         "SELECT b.article_key, COALESCE(a.title,''), b.source, b.citing_id, b.citing_title, b.citing_date,
                 b.date_precision, b.venue, b.doi, b.url, b.authors, b.countries, b.issn_list,
                 b.institutions, b.author_orcids, b.topic, b.topic_field, b.topic_domain, b.work_type,
-                b.language, b.oa_status, b.publisher, b.source_type, b.cited_by, b.enriched
+                b.language, b.oa_status, b.publisher, b.source_type, b.cited_by, b.enriched, b.source_id
          FROM backfill_citations b LEFT JOIN articles a ON a.article_key=b.article_key
          ORDER BY b.citing_date DESC, b.citing_id ASC",
     )?;
@@ -1615,9 +1632,28 @@ pub fn citing_works(conn: &Connection) -> Result<Vec<CitingRow>> {
             enriched: r.get::<_, i64>(24)? != 0,
             self_cite: false,
             coauthor_cite: false,
+            source_id: r.get(25)?,
+            ojp: None,
+            ojp_state: crate::ojp::State::NoJournal,
+            ojp_field: String::new(),
+            ojp_n: 0,
         })
     })?;
-    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    let mut rows = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+    for r in &mut rows {
+        r.set_ojp(&crate::ojp::lookup(&r.source_id, &r.issn_list, &r.source_type));
+    }
+    Ok(rows)
+}
+
+impl CitingRow {
+    /// Copies the OJP facts of the row's journal.
+    pub fn set_ojp(&mut self, o: &crate::ojp::Ojp) {
+        self.ojp = o.ojp;
+        self.ojp_state = o.state;
+        self.ojp_field = o.field.clone();
+        self.ojp_n = o.n;
+    }
 }
 
 /// Last snapshot taken at or before `t` (no fallback).
@@ -2480,7 +2516,7 @@ mod tests {
         let cols: i64 = conn
             .query_row("SELECT COUNT(*) FROM pragma_table_info('backfill_citations')", [], |r| r.get(0))
             .expect("cols");
-        assert_eq!(cols, 12 + 13, "the six 1.2.0 columns' table plus the 1.3.0 ones");
+        assert_eq!(cols, 12 + 14, "the 1.2.0 table plus the 1.3.0 columns and the 1.4.0 source_id");
         let issn: String = conn
             .query_row("SELECT issn_list FROM backfill_citations WHERE citing_id='W1'", [], |r| r.get(0))
             .expect("issn column");

@@ -24,7 +24,7 @@ pub struct ReportOptions {
 }
 
 /// Chart ids the report knows.
-pub const CHART_IDS: [&str; 9] = ["trend", "period", "article", "index", "calendar", "dist", "citgeo", "citfields", "citself"];
+pub const CHART_IDS: [&str; 10] = ["trend", "period", "article", "index", "calendar", "dist", "citgeo", "citfields", "citself", "citojp"];
 
 /// The citing-works sections of the report (made with the report's own period, all articles, self-citations counted).
 #[derive(Debug, Clone, Serialize, Default)]
@@ -33,6 +33,7 @@ pub struct CitersReport {
     pub institutions: Option<crate::citers::EntityReport>,
     pub fields: Option<crate::citers::Fields>,
     pub who: Option<crate::citers::Who>,
+    pub ojp: Option<crate::citers::OjpReport>,
 }
 
 #[derive(Debug)]
@@ -84,6 +85,10 @@ pub struct ReportCiting {
     pub title: String,
     pub venue: String,
     pub article: String,
+    pub ojp: Option<u8>,
+    pub ojp_state: crate::ojp::State,
+    pub ojp_field: String,
+    pub ojp_n: u32,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -108,6 +113,8 @@ pub struct ReportData {
     pub analysis: Option<crate::insights::Analysis>,
     /// The data of the optional citing-works sections, only when one was asked for.
     pub citers: Option<CitersReport>,
+    /// OJP constants (edition, window, thresholds, dataset version and DOI) for the report texts.
+    pub ojp_meta: crate::ojp::Meta,
 }
 
 pub fn parse_day(s: &str) -> Option<NaiveDate> {
@@ -203,14 +210,23 @@ pub fn build(
         for c in db::citing_works(conn)? {
             if in_range(&c.date, &c.precision, from, to) {
                 citing_total += 1;
-                citing.push(ReportCiting { date: c.date, title: c.title, venue: c.venue, article: c.article_title });
+                citing.push(ReportCiting {
+                    date: c.date,
+                    title: c.title,
+                    venue: c.venue,
+                    article: c.article_title,
+                    ojp: c.ojp,
+                    ojp_state: c.ojp_state,
+                    ojp_field: c.ojp_field,
+                    ojp_n: c.ojp_n,
+                });
             }
         }
     }
     let charts: Vec<String> =
         CHART_IDS.iter().filter(|id| opts.charts.iter().any(|c| c == **id)).map(|id| id.to_string()).collect();
     let wants = |id: &str| charts.iter().any(|c| c == id);
-    let citers = if wants("citgeo") || wants("citfields") || wants("citself") {
+    let citers = if wants("citgeo") || wants("citfields") || wants("citself") || wants("citojp") {
         use chrono::Datelike;
         let year = chrono::Local::now().year();
         let f = || crate::citers::Filter { from: opts.from.trim().to_string(), to: opts.to.trim().to_string(), article: String::new(), exclude_self: false };
@@ -219,6 +235,7 @@ pub fn build(
             institutions: if wants("citgeo") { Some(crate::citers::build_institutions(conn, orcid, year, f())?) } else { None },
             fields: if wants("citfields") { Some(crate::citers::build_fields(conn, orcid, year, f())?) } else { None },
             who: if wants("citself") { Some(crate::citers::build_who(conn, orcid, year, f())?) } else { None },
+            ojp: if wants("citojp") { Some(crate::citers::build_ojp(conn, orcid, year, f())?) } else { None },
         })
     } else {
         None
@@ -245,6 +262,7 @@ pub fn build(
         citing_total,
         analysis,
         citers,
+        ojp_meta: crate::ojp::meta(),
     })
 }
 

@@ -10,6 +10,7 @@
   if (!raw) throw new Error("no report data");
   const d = JSON.parse(raw);
   window.I18N.setLang(d.lang);
+  if (window.CitersLib && window.CitersLib.ojp) window.CitersLib.ojp.setMeta(d.ojp_meta);
   const { t } = window.I18N;
   const loc = window.I18N.locale;
   const nf = new Intl.NumberFormat(loc);
@@ -175,6 +176,18 @@
       }
       parts.push(h);
     }
+    if (cc.ojp) {
+      const o = cc.ojp;
+      let h = `<h2>${esc(t("doc.ci_ojp"))}</h2>`;
+      if (!o.ranked) h += none;
+      else {
+        const rows = o.venues.map((x) => `<tr><td>${esc(x.name)}</td><td class="ojpc">${CI.ojp.badge(x) || "—"}</td><td class="num"><b>${nf.format(x.n)}</b></td></tr>`).join("");
+        h += `<p>${CI.ojp.answer(o)}</p>` + cbox(220, t("ci.t_ojp_hist"), () => CI.ojpHist(o.hist, Charts.ctx({ print: true })))
+          + (o.venues.length ? `<div class="chart"><h3>${esc(t("ci.t_ojp_venues"))}</h3><table class="ojp-tbl"><thead><tr><th>${esc(t("ci.col_journal"))}</th><th class="ojpc">OJP</th><th class="num">${esc(t("ci.col_n"))}</th></tr></thead><tbody>${rows}</tbody></table></div>` : "");
+      }
+      h += capP(t("ci.ojp_cap", { n: nf.format(o.n), a: nf.format(o.none_few + o.none_unscored), b: nf.format(o.none_absent), c: nf.format(o.none_no_journal), edition: CI.ojp.vars().edition }));
+      parts.push(h);
+    }
     if (cc.fields) {
       const f = cc.fields;
       let h = `<h2>${esc(t("doc.ci_fields"))}</h2>`;
@@ -214,12 +227,12 @@
   let citing = "";
   if (d.include_citing) {
     const shown = d.citing.slice(0, MAX_CITING);
-    const crow = shown.map((c) => `<tr><td class="date">${esc(fmtPeriod(c.date))}</td><td class="title">${esc(c.title || "—")}</td><td>${esc(c.venue || "—")}</td><td>${esc(c.article)}</td></tr>`).join("");
+    const crow = shown.map((c) => `<tr><td class="date">${esc(fmtPeriod(c.date))}</td><td class="title">${esc(c.title || "—")}</td><td>${esc(c.venue || "—")}</td><td class="col-ojp">${window.CitersLib.ojp.badge(c)}</td><td>${esc(c.article)}</td></tr>`).join("");
     citing = `<section>
       <h2>${esc(t("doc.citing"))}</h2>
       ${d.citing_total
         ? `<p class="small muted">${esc(t("doc.citing_intro", { n: nf.format(d.citing_total) }))}${d.citing.length > MAX_CITING ? " " + esc(t("doc.truncated", { n: nf.format(MAX_CITING) })) : ""}</p>
-           <table class="citing"><thead><tr><th>${esc(t("doc.col_date"))}</th><th>${esc(t("doc.col_ctitle"))}</th><th>${esc(t("doc.col_venue"))}</th><th>${esc(t("doc.col_article"))}</th></tr></thead><tbody>${crow}</tbody></table>`
+           <table class="citing"><thead><tr><th>${esc(t("doc.col_date"))}</th><th>${esc(t("doc.col_ctitle"))}</th><th>${esc(t("doc.col_venue"))}</th><th class="col-ojp">${esc(t("doc.col_ojp"))}</th><th>${esc(t("doc.col_article"))}</th></tr></thead><tbody>${crow}</tbody></table>`
         : `<div class="chart-empty">${esc(t("doc.citing_none"))}</div>`}
     </section>`;
   }
@@ -230,6 +243,7 @@
     <p>${esc(t("doc.method_citing"))}</p>
     <p>${esc(t("doc.method_diff"))}</p>
     ${d.charts && d.charts.length ? `<p>${esc(t("doc.method_charts"))}</p>` : ""}
+    ${d.include_citing || (d.citers && d.citers.ojp) ? `<p>${esc(t("doc.method_ojp", window.CitersLib.ojp.vars()))}</p>` : ""}
   </section>`;
 
   // Own footer (no browser header/footer): custom text left, "Page n/total" right.

@@ -15,6 +15,7 @@ The interface is available in **English** and **Turkish**. On first launch the l
 - A calendar of Scholar changes and, with historical data on, of citing works by exact publication date, plus a heatmap of all years.
 - A continuous trend line with a year-end forecast range and a goal, the fastest-rising articles, and h / i10 over time.
 - A "Citing works" analysis by country (world map), institution, venue and publisher, field, publication type, open access and language, who cites you (self, co-author, external) and influential citations.
+- A 0-100 **OJP** journal score next to every citing work whose journal is known (sortable, in the Analysis and in the exports), a Help page that explains it, and a Licences and credits page.
 - A filterable list of the citing works (title linked to DOI/OpenAlex); each article and each Scholar change links to that article's cited-by list on Scholar.
 - A PDF report with selectable charts, an Excel export and a weekly summary notification.
 - English and Turkish interface, light and dark theme, in-app signed updates.
@@ -80,6 +81,12 @@ The journals and publishers of the citing works.
 
 <img src="docs/images/en-citers-venues.png" alt="Venues and publishers card" width="100%">
 
+#### Journal prestige (OJP)
+
+How the citing works are spread over the OJP score of their journal, and the top citing journals with their scores.
+
+<img src="docs/images/en-citers-ojp.png" alt="Journal prestige card with a ten-step histogram from white to red and a table of the top 8 citing journals with OJP badges" width="100%">
+
 #### Fields
 
 A treemap of fields and a heatmap of your publications against fields.
@@ -110,6 +117,10 @@ Clicking a bar in a chart filters the list. Active filters appear as chips that 
 
 <img src="docs/images/en-citing.png" alt="Citing works page with charts by country and venue, removable filter chips and a list of 11 of 200 works" width="100%">
 
+The OJP column shows the score of each citing work's journal as a badge; click its header to sort (works without a score always come last), hover a badge for the field and the reason when there is none.
+
+<img src="docs/images/en-citing-ojp.png" alt="Citing works list sorted by journal OJP, with badges from white to red" width="100%">
+
 ### Articles
 
 Each article opens to its history chart and every change in its count, the matched OpenAlex record (with a way to correct the DOI) and the works citing it.
@@ -127,6 +138,14 @@ Choose the range, the language and the charts for a PDF; a live preview shows th
 Settings holds the profile, interval, language, data folder, API keys, historical data and export. About shows the version and checks for updates; the result is always shown.
 
 <img src="docs/images/en-settings-about.png" alt="Settings scrolled to About, showing that the app is up to date" width="100%">
+
+### Help, and Licences and credits
+
+The **Help** page explains OJP (what it is, how it is computed, what it is not) and has short notes on the other pages. **Settings > About > Licences and credits** lists the data sources with their licences, the bundled components and every Rust library compiled into the app, each with its licence text.
+
+<img src="docs/images/en-help.png" alt="Help page: what OJP is and how to read the badge" width="100%">
+
+<img src="docs/images/en-credits.png" alt="Licences and credits page: application, OpenAlex and the OJP dataset with its attribution" width="100%">
 
 ### Dark theme
 
@@ -224,6 +243,28 @@ The last Analysis tab, **Citing works**, answers "who cites me?" one category pe
 
 The year heat map in Analysis > Calendar now shows every year at once.
 
+## OJP journal score
+
+**OJP** (Open Journal Prestige) is a number from 0 to 100 that the app shows next to the journal of every citing work.
+
+**What it is**
+
+- The relative position of a journal among the journals of its own field: 0 is the lowest position, 100 the highest. An OJP of 76 means the journal scores higher than about 76 of every 100 journals of its field.
+- Computed from the Article Network Score (ANS) of an open dataset built on OpenAlex data: within each field the journals are ranked by ANS and the rank is turned into a percentile (OJP = 100 x (journals with a lower score + half of the journals with the same score) / journals in the field, rounded). Each journal belongs to one field, the one where most of its articles fall.
+- Shown as a badge that deepens from white through yellow to red; the number carries the information and the colour only repeats it. There are no classes or tiers.
+- Where it appears: the Citing works list (sortable column), a card in Analysis > Citing works (distribution and top journals), the Excel export (three columns and an "About OJP" sheet) and, optionally, the PDF report.
+- Data: the 2024 edition (citations made in 2024 to articles and reviews published in 2019-2023), 85,948 journals in 25 fields. It ships inside the app, nothing is downloaded, and it changes only with a new app version. Rows stored before 1.4.0 are matched by ISSN until the next refresh stores the OpenAlex source id. Notes on the file: `src-tauri/data/ojp/README.md`.
+
+**What it is not**
+
+- It is **not** a Web of Science, Scopus, SJR or JCR indicator and not a Q1-Q4 quartile. It cannot be converted to one and must not be reported in place of one.
+- It is not an official metric of the dataset it is derived from; the author of that dataset has not reviewed or endorsed it.
+- It describes journals, not articles or people, and must not be used for appointments, promotion, awards, funding or any other formal evaluation of people.
+- It is a position within one field; scores of journals in different fields are not directly comparable.
+- Journals with fewer than 20 counted articles in the window, without a score or field in the source data, or in fields with fewer than 20 ranked journals get no OJP and show **NA** ("score not calculated yet"): a dashed outline when the journal is known but not ranked, plain NA when it is not in the data, with the reason in the tooltip; works that are not in a journal (books, preprints, theses) have an empty cell. Some software and data journals fall below the threshold.
+
+The data source and its licence are listed under [Licences and credits](#licences-and-credits); the Help page of the app explains the same in more detail.
+
 ## API keys (optional)
 
 **Settings > API keys (optional)** takes a free OpenAlex key. The app works without one.
@@ -309,7 +350,11 @@ cargo tauri build --debug --no-bundle --config src-tauri/tauri.dev.conf.json
 
 `src-tauri/tauri.dev.conf.json` sets the identifier `io.github.bcankara.scholarcitationtracker.dev` and the product name "Scholar Citation Tracker Dev". Its settings live in `%APPDATA%\io.github.bcankara.scholarcitationtracker.dev`, its WebView data in `%LOCALAPPDATA%\io.github.bcankara.scholarcitationtracker.dev`, the single-instance mutex is `<identifier>-sim` and the autostart value is named after the product name. Put an explicit temporary `data_dir` and `"autostart": false, "auto_update": false` in its `settings.json`, and delete the `.dev` folders when you are done. Debug builds also honour `SCT_KEYRING_SERVICE` (use a separate Credential Manager service name) and `SCT_TEST_PDF_PATH` (write the report PDF there instead of asking where to save); release builds ignore both.
 
+`node tools/gen_licenses.js` regenerates `ui/licenses/` (the Rust crates compiled into the app with their licences, for the Credits page) from `src-tauri/Cargo.lock`; run it after every dependency change. `node tools/gen_licenses.js --check` fails when the files are out of date (the release workflow runs it).
+
 `node tools/check_i18n.js` checks that the Turkish and English strings match, that every string the UI uses exists, and that no abbreviated period labels (30G, 12A, 3Y) are left.
+
+`node tools/check_ojp_contrast.js` recomputes the contrast of the OJP badge (number against fill, 10 steps, light and dark theme, report) from the CSS and fails below 4.5:1.
 
 ```
 cd src-tauri
@@ -331,13 +376,27 @@ Pushing a tag `vX.Y.Z` that matches the version in `src-tauri/tauri.conf.json` s
 
 This is an unofficial, independent project. It is not affiliated with, endorsed by or sponsored by Google. It reads the publicly visible profile page at a low request rate (by default once every 3 hours) and does not use any private API. Google Scholar has no official API, and its pages or terms can change, which may break the app at any time. You are responsible for making sure your use complies with Google's terms of service. The app is intended for personal use, to follow your own profile; do not use it for bulk or high-frequency scraping.
 
-## Credits
+## Licences and credits
+
+The same list is in the app (Settings > About > Licences and credits), where every licence text can be opened.
+
+### Data sources
+
+- **OpenAlex** (https://openalex.org): metadata of the citing works (journal, authors, institutions, countries, fields). OpenAlex data is released under CC0.
+- **Opindx** (OJP scores), see below.
+- **Natural Earth** (world map), see below.
+
+### Libraries, icons and fonts
 
 The application icon is based on Fluent UI System Icons by Microsoft (MIT License).
 
 Charts are drawn with [Apache ECharts](https://echarts.apache.org/) 5.5.1 (Apache License 2.0), bundled in `ui/vendor/` with its license and notice (`echarts.min.js`, SHA-256 `e84270bd0cd5bdf60fefc26d00c2a391cb2e81f4d26a7a9ee16185a54773a3cf`, from the npm registry package `echarts@5.5.1`); it works offline and nothing is loaded from a CDN.
 
 World map: [Natural Earth](https://www.naturalearthdata.com/) 1:110m country boundaries (public domain), tag `v5.1.2` of `nvkelso/natural-earth-vector`, reduced to `ui/vendor/world.geo.json` (SHA-256 `5639a2568f0f14a602ba21da1310e9aebcc3dc6afb21417e4c96af7d64931e31`; source file `6866c877d39cba9c357620878839b336d569f8c662d3cfab4cb1dbe2d39c977f`); notice in `ui/vendor/LICENSE-natural-earth.txt`.
+
+OJP data: Weitzel, U. (2026). *Opindx: Open Journal Factor, Network Factor and Article Network Score* (dataset version 2026-09-v5) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.23599869, used under the [Creative Commons Attribution 4.0 International licence (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/). Changes made: from the file for citation year 2024 only the OpenAlex-universe Article Network Score (Raw) column and the journal identification columns were taken (the publication count and the OpenAlex-universe flag were also read, for filtering; no column derived from the Norwegian Register was used); the scores were converted to within-field percentile ranks (OJP, 0-100); journals with fewer than 20 counted articles, without a score or field, or in fields with fewer than 20 ranked journals were left without a score. OJP is not an official Opindx metric; the author of the dataset has not reviewed or endorsed this derived work. For the columns used here, the numerical input of Opindx is OpenAlex data (CC0, https://openalex.org). The bundled file is `src-tauri/data/ojp/ojp-2024.csv.gz` (SHA-256 `034462a329917013c8f250e30762dc5b99ce88664bcd790b2193f36414c04e1b`; source file `scores_2024.csv` SHA-256 `788de513f9d69f0418aa5798e755314b1fcba2312c2f419beac1531d8f0a1ad4`); attribution text in `src-tauri/data/ojp/NOTICE.txt`.
+
+Licences of the Rust libraries compiled into the app: `ui/licenses/rust-crates.json` and the texts in `ui/licenses/rust-license-texts.json` (generated by `tools/gen_licenses.js`; most are MIT or Apache-2.0, a few MPL-2.0 and Unicode-3.0). The local database is SQLite (public domain, bundled through the `rusqlite` crate). The app bundles no fonts; it uses Segoe UI and Segoe Fluent Icons as installed with Windows. The app itself is released under the [MIT licence](LICENSE).
 
 ## License
 

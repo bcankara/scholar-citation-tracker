@@ -6,6 +6,7 @@ mod db;
 mod export;
 mod i18n;
 mod insights;
+mod ojp;
 mod pdf;
 mod report;
 mod scheduler;
@@ -584,7 +585,7 @@ fn open_data_folder(app: AppHandle, state: State<'_, AppState>) -> CmdResult<()>
 /// Pages the app may open in the default browser. The app itself never fetches any of them;
 /// in particular Scholar's cited-by search is only opened for the user.
 fn url_allowed(url: &str) -> bool {
-    const ALLOWED: [&str; 7] = [
+    const ALLOWED: [&str; 11] = [
         "https://github.com/bcankara/scholar-citation-tracker",
         "https://scholar.google.com/citations",
         "https://scholar.google.com/scholar",
@@ -592,6 +593,11 @@ fn url_allowed(url: &str) -> bool {
         "https://doi.org/",
         "https://orcid.org/",
         "https://docs.openalex.org/",
+        "https://creativecommons.org/licenses/by/4.0/",
+        "https://www.sqlite.org/copyright.html",
+        // Repositories of the Rust libraries listed on the Credits page.
+        "https://github.com/",
+        "https://gitlab.com/",
     ];
     // Windows' Installed apps page, for the "Uninstall..." button (the app never uninstalls itself).
     const EXACT: [&str; 1] = ["ms-settings:appsfeatures"];
@@ -721,6 +727,23 @@ citers_command!(
     /// The most cited citing works.
     get_citers_influential, citers::build_influential, citers::Influential
 );
+
+citers_command!(
+    /// Citing works by the OJP of their journal: histogram, coverage and the top 8 journals.
+    get_citers_ojp, citers::build_ojp, citers::OjpReport
+);
+
+/// Constants of the OJP indicator (edition, window, thresholds, counts, dataset version and DOI).
+#[tauri::command]
+fn get_ojp_meta() -> ojp::Meta {
+    ojp::meta()
+}
+
+/// Attribution and statement of changes of the OJP data (CC BY 4.0), plain text.
+#[tauri::command]
+fn get_ojp_notice() -> &'static str {
+    ojp::NOTICE
+}
 
 /// The merged trend line (history scaled to the first snapshot, snapshots, forecast).
 #[tauri::command]
@@ -1251,6 +1274,9 @@ pub fn run() {
             get_citers_types,
             get_citers_who,
             get_citers_influential,
+            get_citers_ojp,
+            get_ojp_meta,
+            get_ojp_notice,
             get_trend,
             get_analysis,
             get_visit_summary,
@@ -1290,6 +1316,10 @@ mod tests {
         assert!(url_allowed("https://scholar.google.com/scholar?oi=bibs&hl=en&cites=1,2&scisbd=1"));
         assert!(url_allowed("https://scholar.google.com/citations?view_op=view_citation&user=x"));
         assert!(url_allowed("https://doi.org/10.1234/abc"));
+        assert!(url_allowed("https://creativecommons.org/licenses/by/4.0/"));
+        assert!(url_allowed("https://www.sqlite.org/copyright.html"));
+        assert!(url_allowed("https://github.com/serde-rs/serde"));
+        assert!(!url_allowed("https://creativecommons.org/"));
         assert!(!url_allowed("https://scholar.google.com/"));
         assert!(!url_allowed("http://scholar.google.com/scholar?x=1"));
         assert!(!url_allowed("javascript:alert(1)"));

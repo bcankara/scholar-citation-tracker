@@ -180,6 +180,9 @@ pub struct Raw {
     pub source_type: String,
     pub cited_by: Option<i64>,
     pub enriched: bool,
+    /// OpenAlex source id of the venue (empty before the first 1.4.0 refresh).
+    pub source_id: String,
+    pub issn_list: String,
 }
 
 /// Every stored citing row.
@@ -189,7 +192,7 @@ pub fn load_raws(conn: &Connection) -> Result<Vec<Raw>> {
                 b.date_precision, b.venue, b.doi, b.url, b.authors, b.countries,
                 b.institutions, b.authorships, b.author_orcids, b.topic, b.topic_field,
                 b.topic_domain, b.work_type, b.language, b.oa_status, b.publisher, b.source_type,
-                b.cited_by, b.enriched
+                b.cited_by, b.enriched, b.source_id, b.issn_list
          FROM backfill_citations b LEFT JOIN articles a ON a.article_key=b.article_key
          ORDER BY b.citing_date DESC, b.citing_id ASC, b.article_key ASC",
     )?;
@@ -219,6 +222,8 @@ pub fn load_raws(conn: &Connection) -> Result<Vec<Raw>> {
             source_type: r.get(21)?,
             cited_by: r.get(22)?,
             enriched: r.get::<_, i64>(23)? != 0,
+            source_id: r.get(24)?,
+            issn_list: r.get(25)?,
         })
     })?;
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
@@ -282,6 +287,8 @@ pub struct Work {
     pub source_type: String,
     pub cited_by: Option<i64>,
     pub enriched: bool,
+    /// OJP of the venue's journal.
+    pub ojp: crate::ojp::Ojp,
     /// The user's articles it cites (key, title), in key order.
     pub articles: Vec<(String, String)>,
     pub kind: Kind,
@@ -438,6 +445,11 @@ pub fn build_works(raws: &[Raw], article: &str, ctx: &Ctx) -> Vec<Work> {
             source_type: best.source_type.clone(),
             cited_by: best.cited_by,
             enriched: best.enriched,
+            ojp: crate::ojp::lookup(
+                all_rows.iter().map(|r| r.source_id.as_str()).find(|i| !i.is_empty()).unwrap_or(""),
+                all_rows.iter().map(|r| r.issn_list.as_str()).find(|i| !i.is_empty()).unwrap_or(""),
+                &best.source_type,
+            ),
             articles,
             kind: Kind::External,
         };
@@ -782,6 +794,97 @@ impl Model {
             source_types: ranked(kinds),
         }
     }
+}
+
+// ------------------------------------------------------------------ OJP
+
+/// One venue of the OJP card.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct OjpVenue {
+    pub name: String,
+    pub n: usize,
+    pub ojp: Option<u8>,
+    pub ojp_state: crate::ojp::State,
+    pub ojp_field: String,
+    pub ojp_n: u32,
+}
+
+/// Citing works by the OJP of their journal.
+#[derive(Debug, Clone, Serialize, PartialEq, Default)]
+pub struct OjpReport {
+    /// Works the section looks at (the filtered count).
+    pub n: usize,
+    /// Works whose journal has an OJP.
+    pub ranked: usize,
+    /// Works per step: 0-9, 10-19, ... 90-100.
+    pub hist: [usize; 10],
+    /// Index of the fullest step (the higher one on a tie); `None` when nothing is ranked.
+    pub mode: Option<usize>,
+    /// In a journal that is known but not ranked (few counted articles, or no score in the data).
+    pub none_few: usize,
+    pub none_unscored: usize,
+    /// In a journal missing from the data.
+    pub none_absent: usize,
+    /// Not in a journal.
+    pub none_no_journal: usize,
+    /// The 8 venues with most works among the works that are in a journal.
+    pub venues: Vec<OjpVenue>,
+}
+
+impl Model {
+    pub fn ojp(&self) -> OjpReport {
+        use crate::ojp::State;
+        let shown = self.shown();
+        let mut r = OjpReport { n: shown.len(), ..OjpReport::default() };
+        let mut venues: HashMap<String, OjpVenue> = HashMap::new();
+        for w in &shown {
+            match w.ojp.state {
+                State::Ranked => {
+                    if let Some(v) = w.ojp.ojp {
+                        r.ranked += 1;
+                        r.hist[crate::ojp::step(v)] += 1;
+                    }
+                }
+                State::Few => r.none_few += 1,
+                State::Unscored => r.none_unscored += 1,
+                State::Absent => r.none_absent += 1,
+                State::NoJournal => r.none_no_journal += 1,
+            }
+            if w.ojp.state != State::NoJournal && !w.venue.is_empty() {
+                venues
+                    .entry(w.venue.to_lowercase())
+                    .and_modify(|v| {
+                        v.n += 1;
+                        // a venue seen first without a score takes the score of a later work of it
+                        if v.ojp.is_none() && w.ojp.ojp.is_some() {
+                            v.ojp = w.ojp.ojp;
+                            v.ojp_state = w.ojp.state;
+                            v.ojp_field = w.ojp.field.clone();
+                            v.ojp_n = w.ojp.n;
+                        }
+                    })
+                    .or_insert_with(|| OjpVenue {
+                        name: w.venue.clone(),
+                        n: 1,
+                        ojp: w.ojp.ojp,
+                        ojp_state: w.ojp.state,
+                        ojp_field: w.ojp.field.clone(),
+                        ojp_n: w.ojp.n,
+                    });
+            }
+        }
+        let top = r.hist.iter().copied().max().unwrap_or(0);
+        r.mode = if top == 0 { None } else { r.hist.iter().rposition(|n| *n == top) };
+        let mut v: Vec<OjpVenue> = venues.into_values().collect();
+        v.sort_by(|a, b| b.n.cmp(&a.n).then(a.name.cmp(&b.name)));
+        v.truncate(8);
+        r.venues = v;
+        r
+    }
+}
+
+pub fn build_ojp(conn: &Connection, orcid: &str, year: i32, filter: Filter) -> Result<OjpReport> {
+    Ok(model(conn, orcid, year, filter)?.ojp())
 }
 
 // ------------------------------------------------------------------ fields
@@ -1579,7 +1682,7 @@ mod tests {
         let have = cols(&conn);
         for want in [
             "institutions", "authorships", "author_orcids", "topic", "topic_field", "topic_domain", "work_type",
-            "language", "oa_status", "publisher", "source_type", "cited_by", "enriched",
+            "language", "oa_status", "publisher", "source_type", "cited_by", "enriched", "source_id",
         ] {
             assert!(have.iter().any(|c| c == want), "{want} missing");
         }
@@ -1593,6 +1696,69 @@ mod tests {
         assert_eq!(rows[0].countries, "TR");
         drop(conn);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn source_id_is_stored_and_old_rows_fall_back_to_issns() {
+        let (dir, mut conn) = temp_db("ojpid");
+        snapshot(&mut conn);
+        // one old row (no source id, ISSN stored) and one refreshed row (source id, no ISSN)
+        conn.execute(
+            "INSERT INTO backfill_citations(article_key, source, citing_id, citing_title, citing_date, date_precision, issn_list, source_type, enriched, venue)
+             VALUES ('k1','openalex','WOLD','Old','2024-01-02','day','11111111','journal',1,'Invented Journal A')",
+            [],
+        )
+        .expect("old row");
+        let rec = CitingRecord {
+            citing_id: "WNEW".into(),
+            citing_title: "New".into(),
+            citing_date: "2025-05-05".into(),
+            date_precision: "day".into(),
+            source_type: "journal".into(),
+            venue: "Invented Journal B".into(),
+            source_id: "S2".into(),
+            ..CitingRecord::default()
+        };
+        let before = db::citing_works(&conn).expect("rows");
+        assert_eq!(before[0].source_id, "", "an old row has no source id");
+        db::refresh_citing(&mut conn, "k1", "openalex", &[rec]).expect("refresh");
+        let rows = db::citing_works(&conn).expect("rows");
+        assert_eq!(rows[0].source_id, "S2");
+        // no data file lookup is faked here: the real index is only asked for ids that cannot exist
+        assert_eq!(rows[0].ojp_state, crate::ojp::State::Absent, "unknown id, no ISSN, a journal source");
+        assert_eq!(db::unenriched_rows(&conn).expect("n"), 0, "a missing source id does not trigger a refresh");
+        let raws = load_raws(&conn).expect("raws");
+        assert_eq!(raws[0].source_id, "S2");
+        drop(conn);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ojp_report_counts_states_and_steps() {
+        use crate::ojp::{Ojp, State};
+        let ctx = Ctx::new("", "", [], 2026);
+        let mut ws = build_works(&[raw("k1", "A", "2025-01-02"), raw("k1", "B", "2025-02-02"), raw("k1", "C", "2025-03-02"), raw("k1", "D", "2025-04-02"), raw("k1", "E", "2025-05-02"), raw("k1", "F", "2025-06-02")], "", &ctx);
+        let set = |w: &mut Work, venue: &str, o: Ojp| {
+            w.venue = venue.into();
+            w.ojp = o;
+        };
+        let r = |v: u8| Ojp { ojp: Some(v), state: State::Ranked, field: "Medicine".into(), n: 100 };
+        ws.sort_by(|a, b| a.id.cmp(&b.id));
+        set(&mut ws[0], "Journal One", r(0));
+        set(&mut ws[1], "journal one", r(0));
+        set(&mut ws[2], "Journal Two", r(100));
+        set(&mut ws[3], "Journal Three", Ojp { state: State::Few, ..Ojp::default() });
+        set(&mut ws[4], "Journal Four", Ojp { state: State::Absent, ..Ojp::default() });
+        set(&mut ws[5], "A Book", Ojp::default());
+        let m = Model { works: ws, ctx, filter: Filter::default(), n_all: 6, article_counts: vec![] };
+        let o = m.ojp();
+        assert_eq!((o.n, o.ranked), (6, 3));
+        assert_eq!((o.hist[0], o.hist[9]), (2, 1), "0 is step 0, 100 is step 9");
+        assert_eq!(o.mode, Some(0));
+        assert_eq!((o.none_few, o.none_unscored, o.none_absent, o.none_no_journal), (1, 0, 1, 1));
+        assert_eq!(o.venues.len(), 4, "the book is not a venue");
+        assert_eq!((o.venues[0].name.as_str(), o.venues[0].n, o.venues[0].ojp), ("Journal One", 2, Some(0)));
+        assert!(OjpReport::default().mode.is_none());
     }
 
     fn snapshot(conn: &mut Connection) {

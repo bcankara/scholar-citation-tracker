@@ -68,6 +68,46 @@ fn citing_extra(c: &db::CitingRow, is_self: bool, is_co: bool, yes: &str, no: &s
     ]
 }
 
+/// The three OJP cells of one citing work: the score (empty when there is none, never 0 for "missing"),
+/// the localised field, and the note key of the reason when a known or expected journal has no score.
+fn ojp_cells(c: &db::CitingRow, lang: &str) -> (Option<u8>, String, Option<&'static str>) {
+    use crate::ojp::State;
+    let note = match c.ojp_state {
+        State::Few => Some("xl.ojp.few"),
+        State::Unscored => Some("xl.ojp.unscored"),
+        State::Absent => Some("xl.ojp.absent"),
+        State::Ranked | State::NoJournal => None,
+    };
+    match c.ojp {
+        Some(v) => (Some(v), crate::ojp::field_name(lang, &c.ojp_field), None),
+        None => (None, String::new(), note),
+    }
+}
+
+/// The "About OJP" sheet: one text per row.
+fn write_ojp_sheet(wb: &mut Workbook, lang: &str) -> Result<()> {
+    let tr = |k: &str| i18n::tr(lang, k);
+    let m = crate::ojp::meta();
+    let (ed, cy, from, to) = (m.edition.to_string(), m.cite_year.to_string(), m.window_from.to_string(), m.window_to.to_string());
+    let min = m.min_pubs.to_string();
+    let texts = [
+        tr("xl.ojp.n0").to_string(),
+        i18n::fmt(tr("xl.ojp.n1"), &[&ed, &cy, &from, &to]),
+        tr("xl.ojp.n2").to_string(),
+        i18n::fmt(tr("xl.ojp.n3"), &[m.dataset_version, m.dataset_doi]),
+        i18n::fmt(tr("xl.ojp.n4"), &[&min]),
+        tr("xl.ojp.n5").to_string(),
+    ];
+    let ws = wb.add_worksheet();
+    ws.set_name(tr("xl.sheet.ojp"))?;
+    let wrap = Format::new().set_text_wrap().set_align(FormatAlign::Top);
+    ws.set_column_width(0, 120.0)?;
+    for (i, t) in texts.iter().enumerate() {
+        ws.write_string_with_format(i as u32, 0, t, &wrap)?;
+    }
+    Ok(())
+}
+
 /// Country codes as `TR; US`, the same separator as the other list cells.
 fn countries_list(s: &str) -> String {
     s.split(',').map(str::trim).filter(|x| !x.is_empty()).collect::<Vec<_>>().join("; ")
@@ -174,7 +214,7 @@ pub fn write_xlsx(conn: &Connection, path: &Path, lang: &str, orcid: &str) -> Re
         ws.set_name(tr("xl.sheet.citing"))?;
         let rows = db::citing_works(conn)?;
         let flags = citers::flags(conn, orcid, Local::now().year())?;
-        let headers: Vec<&str> = (0..23).map(|i| tr(&format!("xl.c.{i}"))).collect();
+        let headers: Vec<&str> = (0..26).map(|i| tr(&format!("xl.c.{i}"))).collect();
         for (i, c) in rows.iter().enumerate() {
             let n = i as u32 + 1;
             match citing_excel(&c.date, &c.precision) {
@@ -205,13 +245,23 @@ pub fn write_xlsx(conn: &Connection, path: &Path, lang: &str, orcid: &str) -> Re
             if let Some(cb) = c.cited_by {
                 ws.write_number(n, 19, cb as f64)?;
             }
+            let (score, field, note) = ojp_cells(c, lang);
+            if let Some(v) = score {
+                ws.write_number(n, 23, f64::from(v))?;
+            }
+            if !field.is_empty() {
+                ws.write_string(n, 24, &field)?;
+            }
+            if let Some(k) = note {
+                ws.write_string(n, 25, tr(k))?;
+            }
         }
         write_headers(
             ws,
             &headers,
             &[
                 12.0, 14.0, 70.0, 34.0, 28.0, 40.0, 40.0, 12.0, 60.0, 22.0, 18.0, 8.0, 16.0, 20.0, 24.0, 30.0, 40.0, 26.0,
-                14.0, 10.0, 10.0, 12.0, 40.0,
+                14.0, 10.0, 10.0, 12.0, 40.0, 8.0, 30.0, 40.0,
             ],
             rows.len() as u32,
         )?;
@@ -246,6 +296,8 @@ pub fn write_xlsx(conn: &Connection, path: &Path, lang: &str, orcid: &str) -> Re
         }
         write_headers(ws, &headers, &[8.0, 20.0, 40.0], years.len() as u32)?;
     }
+
+    write_ojp_sheet(&mut wb, lang)?;
 
     wb.save(path).with_context(|| format!("could not write {}", path.display()))?;
     Ok(())
@@ -286,9 +338,67 @@ mod tests {
     }
 
     #[test]
+    fn ojp_cells_follow_the_state() {
+        use crate::ojp::{Ojp, State};
+        let row = |o: Ojp| {
+            let mut c = db::CitingRow::default();
+            c.set_ojp(&o);
+            c
+        };
+        let ranked = row(Ojp { ojp: Some(0), state: State::Ranked, field: "Medicine".into(), n: 50 });
+        assert_eq!(ojp_cells(&ranked, "tr"), (Some(0), "Tıp".to_string(), None), "a real 0 is written as 0");
+        assert_eq!(ojp_cells(&ranked, "en"), (Some(0), "Medicine".to_string(), None));
+        let few = row(Ojp { ojp: None, state: State::Few, field: "Medicine".into(), n: 0 });
+        assert_eq!(ojp_cells(&few, "en"), (None, String::new(), Some("xl.ojp.few")));
+        assert_eq!(ojp_cells(&row(Ojp { state: State::Unscored, ..Ojp::default() }), "en").2, Some("xl.ojp.unscored"));
+        assert_eq!(ojp_cells(&row(Ojp { state: State::Absent, ..Ojp::default() }), "en").2, Some("xl.ojp.absent"));
+        assert_eq!(ojp_cells(&row(Ojp::default()), "en"), (None, String::new(), None), "not in a journal: all empty");
+        for k in ["xl.ojp.few", "xl.ojp.unscored", "xl.ojp.absent"] {
+            assert_ne!(i18n::tr("en", k), "?");
+        }
+    }
+
+    /// Entry names of a zip file (central directory).
+    fn zip_names(bytes: &[u8]) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut i = 0;
+        while i + 46 < bytes.len() {
+            if bytes[i..i + 4] == [0x50, 0x4b, 0x01, 0x02] {
+                let nl = u16::from_le_bytes([bytes[i + 28], bytes[i + 29]]) as usize;
+                let el = u16::from_le_bytes([bytes[i + 30], bytes[i + 31]]) as usize;
+                let cl = u16::from_le_bytes([bytes[i + 32], bytes[i + 33]]) as usize;
+                out.push(String::from_utf8_lossy(&bytes[i + 46..i + 46 + nl]).to_string());
+                i += 46 + nl + el + cl;
+            } else {
+                i += 1;
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn workbook_has_the_ojp_columns_and_the_about_sheet() {
+        let dir = std::env::temp_dir().join(format!("sct-xlsx-ojp-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("dir");
+        let c = db::open(&dir.join("t.db")).expect("open");
+        c.execute_batch(
+            "INSERT INTO backfill_citations(article_key, source, citing_id, citing_title, citing_date, date_precision, venue, issn_list, source_type, enriched, source_id)
+               VALUES ('k1','openalex','W1','Invented work','2025-01-02','day','Invented Journal','00000000','journal',1,'S404');",
+        )
+        .expect("seed");
+        let path = dir.join("out.xlsx");
+        write_xlsx(&c, &path, "en", "").expect("xlsx");
+        let names = zip_names(&std::fs::read(&path).expect("file"));
+        assert!(names.iter().any(|n| n.ends_with("sheet6.xml")), "six sheets: {names:?}");
+        assert!(!names.iter().any(|n| n.ends_with("sheet7.xml")));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn sheet_names_fit_excel_limits() {
         for lang in [i18n::TR, i18n::EN] {
-            for k in ["xl.sheet.summary", "xl.sheet.articles", "xl.sheet.history", "xl.sheet.citing", "xl.sheet.yearly"] {
+            for k in ["xl.sheet.summary", "xl.sheet.articles", "xl.sheet.history", "xl.sheet.citing", "xl.sheet.yearly", "xl.sheet.ojp"] {
                 let name = i18n::tr(lang, k);
                 assert!(name.chars().count() <= 31, "{name}");
                 assert!(!name.contains(['[', ']', ':', '*', '?', '/', '\\']), "{name}");

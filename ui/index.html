@@ -18,6 +18,7 @@
       </div>
       <div class="nav-items nav-bottom">
         <button class="nav-item" data-page="log" data-i18n-title="nav.log" title=""><span class="nav-pill"></span><span class="icon">&#xE81C;</span><span class="nav-label" data-i18n="nav.log"></span></button>
+        <button class="nav-item" data-page="help" data-i18n-title="nav.help" title=""><span class="nav-pill"></span><span class="icon">&#xE897;</span><span class="nav-label" data-i18n="nav.help"></span></button>
         <button class="nav-item" data-page="settings" data-i18n-title="nav.settings" title=""><span class="nav-pill"></span><span class="icon">&#xE713;</span><span class="nav-label" data-i18n="nav.settings"></span></button>
       </div>
     </nav>
@@ -163,6 +164,14 @@
           <p class="secondary" data-i18n="cw.empty_text"></p>
         </div>
         <div id="citingData" hidden>
+          <div id="ojpIntroBar" class="infobar info" role="status" hidden>
+            <span class="icon ib-icon">&#xE946;</span>
+            <div class="ib-body"><div class="body" data-i18n="ojp.intro"></div></div>
+            <div class="sbtns">
+              <button id="ojpIntroMore" class="btn" type="button"><span data-i18n="ojp.intro_more"></span></button>
+              <button id="ojpIntroClose" class="btn btn-icon" type="button" data-i18n-aria="doibar.close" aria-label="Close"><span class="icon">&#xE711;</span></button>
+            </div>
+          </div>
           <div class="dist-grid">
             <div class="card chart-card"><div class="card-head"><div class="body-strong" data-i18n="dist.country"></div></div><div id="distCountry" class="chart-area hbars"></div></div>
             <div class="card chart-card"><div class="card-head"><div class="body-strong" data-i18n="dist.venue"></div></div><div id="distVenue" class="chart-area hbars"></div></div>
@@ -185,9 +194,10 @@
               <table class="table" id="citingTable">
                 <thead>
                   <tr>
-                    <th data-csort="date" class="col-date" data-i18n="cw.col_date"></th>
+                    <th data-csort="date" class="col-date" tabindex="0" data-i18n="cw.col_date"></th>
                     <th class="col-title" data-i18n="cw.col_title"></th>
                     <th data-i18n="cw.col_venue"></th>
+                    <th data-csort="ojp" class="col-ojp" tabindex="0"><span data-i18n="cw.col_ojp"></span><button id="citingOjpHelp" type="button" class="th-help" data-i18n-aria="ojp.help_open" data-i18n-title="ojp.help_open" aria-label="What is OJP?"><span class="icon">&#xE897;</span></button></th>
                     <th data-i18n="cw.col_cites"></th>
                   </tr>
                 </thead>
@@ -382,6 +392,7 @@
                 <button type="button" data-sec="countries" data-i18n="ci.idx_countries"></button>
                 <button type="button" data-sec="institutions" data-i18n="ci.idx_institutions"></button>
                 <button type="button" data-sec="venues" data-i18n="ci.idx_venues"></button>
+                <button type="button" data-sec="ojp" data-i18n="ci.idx_ojp"></button>
                 <button type="button" data-sec="fields" data-i18n="ci.idx_fields"></button>
                 <button type="button" data-sec="types" data-i18n="ci.idx_types"></button>
                 <button type="button" data-sec="who" data-i18n="ci.idx_who"></button>
@@ -452,6 +463,7 @@
               <div class="caption secondary" data-i18n="rep.citers_sub"></div>
               <div class="rep-checks" id="repCiters" role="group" data-i18n-aria="rep.group_citers" aria-label="Citing works">
                 <label class="check"><input type="checkbox" data-chart="citgeo"><span class="check-box"></span><span data-i18n="rep.c_citgeo"></span></label>
+                <label class="check"><input type="checkbox" data-chart="citojp"><span class="check-box"></span><span data-i18n="rep.c_citojp"></span></label>
                 <label class="check"><input type="checkbox" data-chart="citfields"><span class="check-box"></span><span data-i18n="rep.c_citfields"></span></label>
                 <label class="check"><input type="checkbox" data-chart="citself"><span class="check-box"></span><span data-i18n="rep.c_citself"></span></label>
               </div>
@@ -624,7 +636,7 @@
               <div class="body" id="aboutTitle"></div>
               <div class="caption secondary" data-i18n="about.sub"></div>
               <div class="caption secondary" data-i18n="about.uninstall_hint"></div>
-              <div class="caption about-links"><a href="#" class="ext-link" data-url="https://github.com/bcankara/scholar-citation-tracker" data-i18n="about.github"></a><span class="secondary" data-i18n="about.license"></span></div>
+              <div class="caption about-links"><a href="#" class="ext-link" data-url="https://github.com/bcankara/scholar-citation-tracker" data-i18n="about.github"></a><a href="#" id="aboutCredits" data-i18n="about.credits"></a></div>
             </div>
             <div class="sbtns">
               <button id="checkUpdateBtn" class="btn"><span class="icon">&#xE72C;</span><span id="checkUpdateText" data-i18n="about.check"></span></button>
@@ -642,7 +654,90 @@
           </div>
         </div>
       </section>
+
+      <section id="page-help" class="page" hidden>
+        <div class="help">
+          <div class="sgroup-title body-strong" id="help-ojp" data-i18n="help.g_ojp"></div>
+          <div class="card help-card" id="help-ojp-what"><h2 data-i18n="help.ojp_what_h"></h2><p data-hk="help.ojp_what_1"></p><p data-hk="help.ojp_what_2"></p></div>
+          <div class="card help-card" id="help-ojp-read"><h2 data-i18n="help.ojp_read_h"></h2><p data-hk="help.ojp_read_1"></p>
+            <div class="help-ex"><span class="ojp-scale"><span>0</span><i style="background:var(--ojp-0)"></i><i style="background:var(--ojp-1)"></i><i style="background:var(--ojp-2)"></i><i style="background:var(--ojp-3)"></i><i style="background:var(--ojp-4)"></i><i style="background:var(--ojp-5)"></i><i style="background:var(--ojp-6)"></i><i style="background:var(--ojp-7)"></i><i style="background:var(--ojp-8)"></i><i style="background:var(--ojp-9)"></i><span>100</span></span></div>
+            <div class="help-ex" id="helpOjpEx"></div>
+            <p data-hk="help.ojp_read_2"></p></div>
+          <div class="card help-card" id="help-ojp-how"><h2 data-i18n="help.ojp_how_h"></h2><p data-hk="help.ojp_how_1"></p><ol><li data-hk="help.ojp_how_2"></li><li data-hk="help.ojp_how_3"></li><li data-hk="help.ojp_how_4"></li><li data-hk="help.ojp_how_5"></li></ol><p data-hk="help.ojp_how_n"></p></div>
+          <div class="card help-card" id="help-ojp-limits"><h2 data-i18n="help.ojp_lim_h"></h2><ul><li data-hk="help.ojp_lim_1"></li><li data-hk="help.ojp_lim_2"></li><li data-hk="help.ojp_lim_3"></li><li data-hk="help.ojp_lim_4"></li></ul></div>
+          <div class="card help-card" id="help-ojp-not"><h2 data-i18n="help.ojp_not_h"></h2><ul><li data-hk="help.ojp_not_1"></li><li data-hk="help.ojp_not_2"></li><li data-hk="help.ojp_not_3"></li><li data-hk="help.ojp_not_4"></li><li data-hk="help.ojp_not_5"></li></ul></div>
+          <div class="card help-card" id="help-ojp-data"><h2 data-i18n="help.ojp_data_h"></h2><p data-hk="help.ojp_data_1"></p><p><span data-hk="help.ojp_data_2"></span> <button id="helpCredits" class="btn btn-link" type="button"><span data-i18n="help.open_credits"></span></button></p></div>
+          <div class="sgroup-title body-strong" data-i18n="help.g_app"></div>
+          <div class="card help-card" id="help-app"><dl class="help-dl"><dt data-i18n="help.f_panel_t"></dt><dd data-i18n="help.f_panel_d"></dd><dt data-i18n="help.f_articles_t"></dt><dd data-i18n="help.f_articles_d"></dd><dt data-i18n="help.f_citing_t"></dt><dd data-i18n="help.f_citing_d"></dd><dt data-i18n="help.f_analysis_t"></dt><dd data-i18n="help.f_analysis_d"></dd><dt data-i18n="help.f_report_t"></dt><dd data-i18n="help.f_report_d"></dd><dt data-i18n="help.f_counts_t"></dt><dd data-i18n="help.f_counts_d"></dd><dt data-i18n="help.f_data_t"></dt><dd data-i18n="help.f_data_d"></dd></dl></div>
+        </div>
+      </section>
+
+      <section id="page-credits" class="page" hidden>
+        <div class="cred">
+          <div class="cred-head"><button id="credBack" class="btn" type="button"><span class="icon">&#xE72B;</span><span data-i18n="cred.back"></span></button><h2 class="subtitle" data-i18n="cred.title"></h2></div>
+
+          <div class="sgroup-title body-strong" data-i18n="cred.g_app"></div>
+          <div class="scard" id="credApp">
+            <span class="icon sicon">&#xE946;</span>
+            <div class="stext"><div class="body" id="credAppT"></div><p data-i18n="cred.app_d"></p><p id="credAppCopy"></p></div>
+            <div class="sbtns"><button class="btn" type="button" data-lic="app"><span data-i18n="cred.view_licence"></span></button><a href="#" class="btn btn-link ext-link" data-url="https://github.com/bcankara/scholar-citation-tracker">GitHub</a></div>
+          </div>
+
+          <div class="sgroup-title body-strong" data-i18n="cred.g_data"></div>
+          <div class="scard" id="credOpenAlex">
+            <span class="icon sicon">&#xE774;</span>
+            <div class="stext"><div class="body">OpenAlex</div><p data-i18n="cred.openalex_d"></p></div>
+            <div class="sbtns"><a href="#" class="btn btn-link ext-link" data-url="https://openalex.org/">openalex.org</a></div>
+          </div>
+          <div class="scard" id="credOjp">
+            <span class="icon sicon">&#xE9D2;</span>
+            <div class="stext"><div class="body" id="credOjpT"></div><p data-hk="cred.ojp_d"></p><p class="ojp-cite" data-hk="cred.ojp_cite"></p><p data-hk="cred.ojp_changes"></p><p data-hk="cred.ojp_noendorse"></p></div>
+            <div class="sbtns"><a href="#" class="btn btn-link ext-link" id="credOjpDoi" data-url="">DOI</a><a href="#" class="btn btn-link ext-link" data-url="https://creativecommons.org/licenses/by/4.0/" data-i18n="cred.ccby"></a><button class="btn" type="button" data-lic="ojp"><span data-i18n="cred.view_notice"></span></button></div>
+          </div>
+          <div class="scard" id="credNE">
+            <span class="icon sicon">&#xE774;</span>
+            <div class="stext"><div class="body">Natural Earth</div><p data-i18n="cred.ne_d"></p></div>
+            <div class="sbtns"><button class="btn" type="button" data-lic="ne"><span data-i18n="cred.view_notice"></span></button></div>
+          </div>
+
+          <div class="sgroup-title body-strong" data-i18n="cred.g_bundled"></div>
+          <div class="scard" id="credECharts">
+            <span class="icon sicon">&#xE9D2;</span>
+            <div class="stext"><div class="body">Apache ECharts 5.5.1</div><p data-i18n="cred.echarts_d"></p></div>
+            <div class="sbtns"><button class="btn" type="button" data-lic="echarts"><span data-i18n="cred.view_licence"></span></button><button class="btn" type="button" data-lic="echarts-notice"><span data-i18n="cred.view_notice"></span></button><button class="btn" type="button" data-lic="echarts-d3"><span data-i18n="cred.view_d3"></span></button></div>
+          </div>
+          <div class="scard" id="credIcons">
+            <span class="icon sicon">&#xE790;</span>
+            <div class="stext"><div class="body">Fluent UI System Icons</div><p data-i18n="cred.icons_d"></p></div>
+            <div class="sbtns"><button class="btn" type="button" data-lic="icons"><span data-i18n="cred.view_licence"></span></button><a href="#" class="btn btn-link ext-link" data-url="https://github.com/microsoft/fluentui-system-icons">GitHub</a></div>
+          </div>
+          <div class="scard" id="credSqlite">
+            <span class="icon sicon">&#xE8B7;</span>
+            <div class="stext"><div class="body">SQLite</div><p data-i18n="cred.sqlite_d"></p></div>
+            <div class="sbtns"><a href="#" class="btn btn-link ext-link" data-url="https://www.sqlite.org/copyright.html">sqlite.org</a></div>
+          </div>
+          <div class="scard" id="credFonts">
+            <span class="icon sicon">&#xE8D2;</span>
+            <div class="stext"><div class="body" data-i18n="cred.fonts_t"></div><p data-i18n="cred.fonts_d"></p></div>
+          </div>
+
+          <div class="sgroup-title body-strong" data-i18n="cred.g_rust"></div>
+          <div class="card cred-rust" id="credRust">
+            <p class="caption secondary" id="credRustD"></p>
+            <div class="toolbar"><label class="search"><span class="icon">&#xE721;</span><input id="credRustSearch" type="search" data-i18n-placeholder="cred.rust_search" autocomplete="off"></label><span id="credRustCount" class="caption secondary"></span></div>
+            <div class="cred-table-wrap"><table class="table" id="credRustTable"><thead><tr><th data-i18n="cred.col_crate"></th><th data-i18n="cred.col_version"></th><th data-i18n="cred.col_licence"></th><th></th></tr></thead><tbody></tbody></table></div>
+          </div>
+        </div>
+      </section>
     </main>
+  </div>
+  <div id="licDialog" class="modal" hidden>
+    <div class="modal-card lic-card" role="dialog" aria-modal="true" aria-labelledby="licTitle">
+      <div id="licTitle" class="subtitle"></div>
+      <div id="licMeta" class="caption secondary"></div>
+      <pre id="licText" class="lic-text" tabindex="0"></pre>
+      <div class="modal-actions"><button id="licClose" class="btn btn-primary" type="button"><span data-i18n="cred.close"></span></button></div>
+    </div>
   </div>
   <div id="bfDialog" class="modal" hidden>
     <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="bfDlgTitle">

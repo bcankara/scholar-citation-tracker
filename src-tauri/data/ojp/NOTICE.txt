@@ -1,0 +1,23 @@
+OJP (Open Journal Prestige) data - attribution notice
+
+This file contains data derived from:
+  Weitzel, Utz (2026). Opindx: Open Journal Factor, Network Factor and Article Network Score
+  (dataset version 2026-09-v5) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.23599869
+  Licensed under Creative Commons Attribution 4.0 International (CC BY 4.0):
+  https://creativecommons.org/licenses/by/4.0/
+  Original file used: scores_2024.csv (SHA-256 788de513f9d69f0418aa5798e755314b1fcba2312c2f419beac1531d8f0a1ad4), citing year 2024.
+  Opindx numerical inputs for the columns used: OpenAlex (CC0), https://openalex.org
+
+Changes made to the original material (CC BY 4.0 section 3(a)(1)(B)):
+  - Only the OpenAlex-universe, Raw-treatment Article Network Score (column per_article_oa_raw) and journal
+    identification columns (openalex_id, issn_l, issns, title, oa_field) were kept; all other columns were dropped.
+  - All columns derived from the Norwegian Register (norwegian_*, in_n, share_n_*, per_article_n_*,
+    citations_n_*, norwegian_entries_json, norwegian_primary_id) were NOT used and are not included.
+  - Journals with undefined ANS, fewer than 20 articles/reviews in the five-year window, field "Unknown",
+    or in a field with fewer than 20 ranked journals were left without a score (reason few / unscored; 85948 journals have a score,
+    25139 are listed without one).
+  - A new value, ojp (0-100), was computed: the within-field mid-rank percentile of ANS,
+    ojp = round_half_up(100 * (L + E/2) / n), L = journals with lower ANS in the same field,
+    E = journals with equal ANS (including itself), n = ranked journals in the field.
+  - Whitespace after ';' in the ISSN list was removed.
+The author of Opindx did not review or endorse this derived work. OJP is not an official Opindx metric.
