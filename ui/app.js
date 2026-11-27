@@ -159,6 +159,7 @@
     nf = new Intl.NumberFormat(loc());
     $("#setupLang").value = window.I18N.lang;
     $("#setLang").value = window.I18N.lang;
+    $("#setTheme").value = window.SCTTheme.pref;
     renderHeader();
     renderPanel();
     renderArticles();
@@ -1120,6 +1121,8 @@
     $("#setBackfill").checked = !!s.backfill_enabled;
     $("#setInterval").value = s.interval_hours;
     $("#setLang").value = window.I18N.lang;
+    $("#setTheme").value = window.SCTTheme.pref;
+    $("#setBackdrop").checked = s.backdrop !== false;
     $("#setAutostart").checked = s.autostart;
     $("#setNotify").checked = s.notify;
     $("#setWeekly").checked = s.weekly_summary !== false;
@@ -1138,6 +1141,7 @@
       orcid,
       backfill_enabled: !!state.settings.backfill_enabled,
       language: $("#setLang").value,
+      theme: window.SCTTheme.pref,
       data_dir: state.dirPending ?? state.settings.data_dir,
       interval_hours: Math.max(1, Math.min(24, parseInt($("#setInterval").value, 10) || 3)),
       autostart: $("#setAutostart").checked,
@@ -2835,6 +2839,23 @@
     tabs[n].focus();
   }
 
+  /** Translucent window background on/off: applied and saved at once; the page background follows. */
+  async function chooseBackdrop(on) {
+    const active = await safe(() => invoke("set_backdrop", { enabled: on }), null);
+    if (active === null) { $("#setBackdrop").checked = !on; return; }
+    document.documentElement.classList.toggle("mica", active);
+    if (state.settings) state.settings.backdrop = on;
+  }
+
+  /** Applies and saves the theme at once (the Save button is not needed): page colours, charts, native title bar. */
+  async function chooseTheme(value) {
+    window.SCTTheme.set(value);
+    const pref = window.SCTTheme.pref;
+    $("#setTheme").value = pref;
+    const res = await safe(() => invoke("set_theme", { theme: pref }), null);
+    if (res && state.settings) state.settings.theme = res;
+  }
+
   /** Re-draws the charts of the visible page (colour scheme change). */
   function redrawCharts() {
     if (state.page === "panel") renderMini();
@@ -3121,9 +3142,10 @@
       safe(() => invoke("open_url", { url: link.dataset.url }));
     });
     $$("[data-export]").forEach((b) => b.addEventListener("click", () => exportCsv(b.dataset.export)));
-    // charts follow the colour scheme; their size follows their box (ResizeObserver in charts.js)
-    const dark = window.matchMedia("(prefers-color-scheme: dark)");
-    if (dark.addEventListener) dark.addEventListener("change", redrawCharts);
+    // charts follow the colour theme (Settings, or the OS in "system"); their size follows their box (ResizeObserver in charts.js)
+    window.SCTTheme.onChange(redrawCharts);
+    $("#setTheme").addEventListener("change", (e) => chooseTheme(e.target.value));
+    $("#setBackdrop").addEventListener("change", (e) => chooseBackdrop(e.target.checked));
     $("#articleBody").addEventListener("mouseover", (e) => { if (!e.target.closest("tr.detail")) hideTip(); });
   }
 
@@ -3154,8 +3176,12 @@
     window.I18N.setLang(navigator.language);
     wire();
     if (await safe(() => invoke("backdrop_mica"), false)) document.documentElement.classList.add("mica");
+    // the switch is only offered where the system really has a translucent backdrop (Windows 11, macOS)
+    $("#backdropCard").hidden = !(await safe(() => invoke("backdrop_supported"), false));
     state.settings = await safe(() => invoke("get_settings"), null);
     applyLang(state.settings?.language || navigator.language);
+    // settings.json is the source of truth; the localStorage copy only prevents a first-frame flash
+    if (state.settings?.theme) window.SCTTheme.set(state.settings.theme);
     await listen("status", (e) => {
       const was = state.status?.state;
       state.status = e.payload;

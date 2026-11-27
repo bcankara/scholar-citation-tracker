@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Scholar Citation Tracker</title>
+  <script src="theme-init.js"></script>
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
@@ -38,7 +39,8 @@
           <button id="bfPill" type="button" class="pill pill-running pill-btn" hidden><span class="pill-dot"></span><span id="bfPillText"></span></button>
           <span id="statusPill" class="pill"><span class="pill-dot"></span><span id="statusText"></span></span>
           <div class="nc-wrap">
-            <button id="ncBtn" type="button" class="btn btn-icon nc-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="ncPanel" data-i18n-title="nc.bell" aria-label="Notifications"><span class="icon">&#xEA8F;</span><span id="ncBadge" class="nc-badge" aria-hidden="true" hidden></span></button>
+            <button id="ncBtn" type="button" class="btn btn-icon nc-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="ncPanel" data-i18n-title="nc.bell" aria-label="Notifications"><span class="icon">&#xEA8F;</span></button>
+            <span id="ncBadge" class="nc-badge" aria-hidden="true" hidden></span>
             <div id="ncPanel" class="nc-panel" tabindex="-1" role="dialog" aria-modal="false" aria-labelledby="ncTitle" hidden>
               <div class="nc-head">
                 <div id="ncTitle" class="body-strong" data-i18n="nc.title"></div>
@@ -533,6 +535,22 @@
               <option value="tr">Türkçe</option>
               <option value="en">English</option>
             </select>
+          </div>
+
+          <div class="scard">
+            <span class="icon sicon">&#xE790;</span>
+            <div class="stext"><div class="body" data-i18n="settings.theme_title"></div><div class="caption secondary" data-i18n="settings.theme_sub"></div></div>
+            <select id="setTheme" class="input select">
+              <option value="system" data-i18n="settings.theme_system"></option>
+              <option value="light" data-i18n="settings.theme_light"></option>
+              <option value="dark" data-i18n="settings.theme_dark"></option>
+            </select>
+          </div>
+
+          <div class="scard" id="backdropCard" hidden>
+            <span class="icon sicon">&#xE7F4;</span>
+            <div class="stext"><div class="body" data-i18n="settings.backdrop_title"></div><div class="caption secondary" data-i18n="settings.backdrop_sub"></div></div>
+            <label class="switch"><input type="checkbox" id="setBackdrop"><span class="switch-track"><span class="switch-thumb"></span></span><span class="switch-label" data-i18n-on="settings.on" data-i18n-off="settings.off"></span></label>
           </div>
 
           <div class="sgroup-title body-strong" data-i18n="settings.group_data"></div>

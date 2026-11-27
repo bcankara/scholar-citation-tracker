@@ -46,6 +46,107 @@ fn backdrop_mica() -> bool {
     BACKDROP_ACTIVE.load(std::sync::atomic::Ordering::SeqCst)
 }
 
+/// First Windows build with Mica (Windows 11 21H2). Windows 10 builds are all below it.
+#[cfg_attr(not(windows), allow(dead_code))]
+const MICA_MIN_BUILD: u32 = 22000;
+
+/// Pure decision: does this Windows build have a Mica backdrop?
+#[cfg_attr(not(windows), allow(dead_code))]
+fn mica_supported_build(build: u32) -> bool {
+    build >= MICA_MIN_BUILD
+}
+
+/// The real Windows build number. `RtlGetVersion` is not subject to the manifest shim that
+/// makes `GetVersionEx` report an older version. None when the call fails.
+#[cfg(windows)]
+fn windows_build() -> Option<u32> {
+    #[repr(C)]
+    struct OsVersionInfo {
+        size: u32,
+        major: u32,
+        minor: u32,
+        build: u32,
+        platform: u32,
+        csd: [u16; 128],
+    }
+    #[link(name = "ntdll")]
+    extern "system" {
+        fn RtlGetVersion(info: *mut OsVersionInfo) -> i32;
+    }
+    let mut info = OsVersionInfo { size: std::mem::size_of::<OsVersionInfo>() as u32, major: 0, minor: 0, build: 0, platform: 0, csd: [0; 128] };
+    // SAFETY: `info` is a correctly sized, initialised OSVERSIONINFOW and outlives the call.
+    let status = unsafe { RtlGetVersion(&mut info) };
+    (status == 0).then_some(info.build)
+}
+
+/// True where the window can really have a translucent backdrop: Windows 11, and macOS.
+/// tauri's `set_effects` reports success on Windows 10 although nothing is applied, so the
+/// system is checked here instead of trusting its result.
+fn backdrop_supported_here() -> bool {
+    #[cfg(windows)]
+    {
+        windows_build().is_some_and(mica_supported_build)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        true
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        false
+    }
+}
+
+/// Whether Settings should offer the translucent-background switch.
+#[tauri::command]
+fn backdrop_supported() -> bool {
+    backdrop_supported_here()
+}
+
+/// Applies (`enabled`) or clears the translucent backdrop and returns whether it is active now.
+/// The window theme is set before the effect, so Mica takes the dark or light tint of the chosen
+/// theme.
+fn apply_backdrop(app: &AppHandle, enabled: bool, theme: &str) -> bool {
+    use tauri::window::{Effect, EffectsBuilder};
+    let Some(w) = app.get_webview_window("main") else { return false };
+    apply_theme(app, theme);
+    let on = enabled && backdrop_supported_here();
+    let result = if on {
+        #[cfg(target_os = "macos")]
+        let effects = EffectsBuilder::new()
+            .effect(Effect::UnderWindowBackground)
+            .state(tauri::window::EffectState::FollowsWindowActiveState)
+            .build();
+        #[cfg(not(target_os = "macos"))]
+        let effects = EffectsBuilder::new().effect(Effect::Mica).build();
+        w.set_effects(effects)
+    } else {
+        w.set_effects(None)
+    };
+    let active = match result {
+        Ok(()) => on,
+        Err(e) => {
+            eprintln!("window backdrop unavailable: {e}");
+            false
+        }
+    };
+    BACKDROP_ACTIVE.store(active, std::sync::atomic::Ordering::SeqCst);
+    active
+}
+
+/// Switches the translucent window background from Settings; saved at once. Returns whether the
+/// backdrop is active now (false when switched off or unsupported).
+#[tauri::command]
+fn set_backdrop(app: AppHandle, state: State<'_, AppState>, enabled: bool) -> CmdResult<bool> {
+    let snapshot = {
+        let mut s = lock(&state.settings);
+        s.backdrop = enabled;
+        s.clone()
+    };
+    settings::save(&state.config_path, &snapshot).map_err(|e| format!("{e:#}"))?;
+    Ok(apply_backdrop(&app, enabled, &snapshot.theme))
+}
+
 /// The host platform, so the UI can name the right thing ("Keychain" or "Credential Manager",
 /// "at login" or "when Windows starts"). Anything but Windows and macOS gets the neutral wording.
 #[tauri::command]
@@ -79,6 +180,36 @@ type CmdResult<T> = Result<T, String>;
 
 fn lang_of(state: &AppState) -> String {
     lock(&state.settings).language.clone()
+}
+
+/// Gives the native window frame (title bar, and the Mica or vibrancy backdrop with it) the
+/// chosen theme; "system" hands the choice back to the OS.
+fn apply_theme(app: &AppHandle, theme: &str) {
+    let t = match settings::normalize_theme(theme) {
+        "light" => Some(tauri::Theme::Light),
+        "dark" => Some(tauri::Theme::Dark),
+        _ => None,
+    };
+    if let Some(w) = app.get_webview_window("main") {
+        if let Err(e) = w.set_theme(t) {
+            eprintln!("window theme update failed: {e}");
+        }
+    }
+}
+
+/// Saves the theme chosen in Settings right away (no Save button needed) and applies it to the
+/// native window. Returns the normalized value.
+#[tauri::command]
+fn set_theme(app: AppHandle, state: State<'_, AppState>, theme: String) -> CmdResult<String> {
+    let theme = settings::normalize_theme(&theme).to_string();
+    let snapshot = {
+        let mut s = lock(&state.settings);
+        s.theme = theme.clone();
+        s.clone()
+    };
+    settings::save(&state.config_path, &snapshot).map_err(|e| format!("{e:#}"))?;
+    apply_theme(&app, &theme);
+    Ok(theme)
 }
 
 /// Updates everything native that shows text: tray menu, tooltip and window title.
@@ -587,6 +718,7 @@ async fn save_settings(
         backfill::start(&app, &bf, backfill::Mode::Missing);
     }
     apply_language(&app, &state);
+    apply_backdrop(&app, new.backdrop, &new.theme);
     if let Err(e) = app.emit("data-updated", ()) {
         eprintln!("data-updated event failed: {e}");
     }
@@ -1258,25 +1390,15 @@ pub fn run() {
             tray.build(app)?;
             apply_language(&handle, &state);
 
-            if let Some(w) = app.get_webview_window("main") {
-                #[cfg(target_os = "macos")]
-                use tauri::window::EffectState;
-                use tauri::window::{Effect, EffectsBuilder};
-
-                // Mica on Windows 11, the matching system vibrancy on macOS. When the effect is
-                // unavailable the flag stays false and the page draws its own opaque background.
-                #[cfg(target_os = "macos")]
-                let effects = EffectsBuilder::new()
-                    .effect(Effect::UnderWindowBackground)
-                    .state(EffectState::FollowsWindowActiveState)
-                    .build();
-                #[cfg(not(target_os = "macos"))]
-                let effects = EffectsBuilder::new().effect(Effect::Mica).build();
-
-                match w.set_effects(effects) {
-                    Ok(()) => BACKDROP_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst),
-                    Err(e) => eprintln!("window backdrop unavailable: {e}"),
-                }
+            {
+                // Window theme first, then the backdrop (see apply_backdrop). When the effect is
+                // unsupported or switched off the flag stays false and the page draws its own
+                // opaque background.
+                let (theme, backdrop) = {
+                    let s = lock(&state.settings);
+                    (s.theme.clone(), s.backdrop)
+                };
+                apply_backdrop(&handle, backdrop, &theme);
             }
 
             // Without a profile the window always opens, even for an autostart (--hidden) launch.
@@ -1306,6 +1428,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             backdrop_mica,
+            backdrop_supported,
+            set_backdrop,
+            set_theme,
             platform,
             get_overview,
             get_series,
@@ -1392,7 +1517,16 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::url_allowed;
+    use super::{mica_supported_build, url_allowed};
+
+    #[test]
+    fn mica_needs_windows_11() {
+        assert!(!mica_supported_build(0));
+        assert!(!mica_supported_build(19045)); // Windows 10 22H2
+        assert!(!mica_supported_build(21996));
+        assert!(mica_supported_build(22000)); // Windows 11 21H2
+        assert!(mica_supported_build(26100));
+    }
 
     #[test]
     fn open_url_allow_list() {

@@ -149,7 +149,9 @@ Ayarlar; profil, aralık, dil, veri klasörü, API anahtarları, geçmiş verile
 
 ### Koyu tema
 
-Arayüz, Windows'un açık/koyu ayarını izler.
+Arayüz varsayılan olarak işletim sisteminin açık/koyu ayarını izler. Ayarlar > Tema ("Tema / Theme") ayrıca "Açık / Light" ve "Koyu / Dark" seçeneklerini sunar; sistemden bağımsız olarak birini sabitler. Seçim sayfalara, grafiklere ve pencere başlık çubuğuna hemen uygulanır. PDF rapor her zaman açık renk paletiyle basılır.
+
+Pencerenin arka planı saydamdır (Windows 11'de Mica, macOS'te sistem saydamlığı). Ayarlar > "Saydam pencere arka planı (Mica) / Transparent window background (Mica)" bunu kapatıp düz, opak bir pencere sağlar; anahtar yalnızca sistemin desteklediği yerde görünür. Windows 10'da Mica yoktur, bu yüzden pencere her zaman opak arka planla açılır.
 
 <img src="docs/images/tr-dark-citers.png" alt="Dünya haritalı Ülkeler kartını gösteren koyu tema" width="100%">
 

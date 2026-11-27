@@ -28,7 +28,7 @@ const check = (label, { fills, a, b }, aSteps) => {
 const css = fs.readFileSync(path.join(ui, "app.css"), "utf8");
 const start = css.indexOf("--ojp-0:");
 const block = css.slice(css.lastIndexOf(":root", start), css.indexOf(".ojp {", start));
-const [light, dark] = block.split("@media (prefers-color-scheme: dark)");
+const [light, dark] = block.split(':root[data-theme="dark"]');
 check("app light", grab(light), [0, 1, 2, 3, 4, 5, 6, 7]);
 check("app dark", grab(dark), [0, 1, 2]);
 const rep = fs.readFileSync(path.join(ui, "report.css"), "utf8");

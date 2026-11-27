@@ -149,7 +149,9 @@ The **Help** page explains OJP (what it is, how it is computed, what it is not) 
 
 ### Dark theme
 
-The interface follows the Windows light/dark setting.
+By default the interface follows the operating system's light/dark setting. Settings > Theme ("Tema / Theme") also offers "Açık / Light" and "Koyu / Dark" to fix one of them regardless of the system; the choice applies at once to the pages, the charts and the window title bar. The PDF report is always printed on the light palette.
+
+The window has a translucent background (Mica on Windows 11, system vibrancy on macOS). Settings > "Saydam pencere arka planı (Mica) / Transparent window background (Mica)" turns it off for a plain opaque window; the switch only appears where the system supports it. Windows 10 has no Mica, so it always gets the opaque background.
 
 <img src="docs/images/en-dark-citers.png" alt="Dark theme showing the Countries card with a world map" width="100%">
 

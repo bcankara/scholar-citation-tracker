@@ -7,6 +7,17 @@ use serde::{Deserialize, Serialize};
 
 use crate::i18n;
 
+pub const THEME_SYSTEM: &str = "system";
+
+/// Maps any stored value to "system", "light" or "dark"; unknown values mean "system".
+pub fn normalize_theme(theme: &str) -> &'static str {
+    match theme.trim().to_ascii_lowercase().as_str() {
+        "light" => "light",
+        "dark" => "dark",
+        _ => THEME_SYSTEM,
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Settings {
@@ -14,6 +25,11 @@ pub struct Settings {
     pub profile_id: String,
     /// UI / backend language: "tr" or "en".
     pub language: String,
+    /// Colour theme: "system" (follow the OS, the default), "light" or "dark".
+    pub theme: String,
+    /// Translucent window background (Mica on Windows 11, vibrancy on macOS). On by default;
+    /// only has an effect where the system supports it.
+    pub backdrop: bool,
     pub data_dir: String,
     pub interval_hours: u32,
     pub autostart: bool,
@@ -34,6 +50,8 @@ impl Default for Settings {
         Settings {
             profile_id: String::new(),
             language: i18n::system_lang().to_string(),
+            theme: THEME_SYSTEM.to_string(),
+            backdrop: true,
             data_dir: String::new(),
             interval_hours: 3,
             autostart: true,
@@ -56,6 +74,7 @@ impl Settings {
             "en" => i18n::EN.to_string(),
             _ => i18n::system_lang().to_string(),
         };
+        self.theme = normalize_theme(&self.theme).to_string();
         self.interval_hours = self.interval_hours.clamp(1, 24);
         self.data_dir = self.data_dir.trim().to_string();
         if self.data_dir.is_empty() {
@@ -206,6 +225,39 @@ mod tests {
         std::fs::write(&file, "not json").expect("w");
         assert_eq!(load(&file, &base).interval_hours, 3);
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn theme_defaults_to_system_and_roundtrips() {
+        let dir = PathBuf::from("Tracker");
+        assert_eq!(Settings::default().theme, "system");
+        // a settings file written before the field existed loads as "system"
+        let old: Settings = serde_json::from_str("{\"profile_id\":\"AbC\"}").expect("parse");
+        assert_eq!(old.theme, "system");
+        for (input, want) in [("dark", "dark"), (" Light ", "light"), ("DARK", "dark"), ("", "system"), ("sepia", "system")] {
+            let mut s = Settings { theme: input.into(), ..Settings::default() };
+            s.normalize(&dir);
+            assert_eq!(s.theme, want, "{input:?}");
+        }
+        let base = std::env::temp_dir().join(format!("scholartakip_theme_{}", std::process::id()));
+        let file = base.join("settings.json");
+        let _ = std::fs::remove_dir_all(&base);
+        let mut s = Settings { theme: "dark".into(), ..Settings::default() };
+        s.normalize(&base);
+        save(&file, &s).expect("save");
+        assert_eq!(load(&file, &base).theme, "dark");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn backdrop_defaults_to_on_and_roundtrips() {
+        assert!(Settings::default().backdrop);
+        let old: Settings = serde_json::from_str("{\"profile_id\":\"AbC\"}").expect("parse");
+        assert!(old.backdrop);
+        let off: Settings = serde_json::from_str("{\"backdrop\":false}").expect("parse");
+        assert!(!off.backdrop);
+        let json = serde_json::to_string(&off).expect("ser");
+        assert!(!serde_json::from_str::<Settings>(&json).expect("de").backdrop);
     }
 
     #[test]

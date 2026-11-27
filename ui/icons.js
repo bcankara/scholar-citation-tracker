@@ -46,6 +46,7 @@
     E790: '<path d="M8 2.2c3.2 0 5.8 2.3 5.8 5.2 0 1.6-1.3 2.6-2.9 2.6h-.9c-.8 0-1.4.6-1.4 1.3 0 .3.1.6.3.9.2.2.3.5.3.8 0 .6-.5 1.1-1.2 1.1-3.2 0-5.8-2.7-5.8-5.9S4.8 2.2 8 2.2z"/><circle cx="5.6" cy="7.2" r=".8" fill="currentColor" stroke="none"/><circle cx="8" cy="5.4" r=".8" fill="currentColor" stroke="none"/><circle cx="10.6" cy="7.2" r=".8" fill="currentColor" stroke="none"/>', // icon set credit
     E7BA: '<path d="M8 2.4 1.9 13.2h12.2z"/><path d="M8 6.3v3.3"/><circle cx="8" cy="11.5" r=".75" fill="currentColor" stroke="none"/>', // warning, unmatched article
     E7E8: '<path d="M8 2.2v6"/><path d="M11.8 4.6a5.4 5.4 0 1 1-7.6 0"/>', // run at login
+    E7F4: '<rect x="1.8" y="2.8" width="12.4" height="8.2" rx="1.2"/><path d="M5.5 13.6h5M8 11v2.6"/>', // window background
     E80F: '<path d="M2.2 7.4 8 2.4l5.8 5"/><path d="M3.8 6.7v6.1c0 .4.3.7.7.7h7c.4 0 .7-.3.7-.7V6.7"/><path d="M6.5 13.5V9.5h3v4"/>', // Dashboard
     E81C: '<path d="M2.4 4h7M2.4 7.2h4.4M2.4 10.4h3.4"/><circle cx="11" cy="10.4" r="3.4"/><path d="M11 8.7v1.9l1.4.8"/>', // Fetch log, historical data
     E895: '<path d="M3 7.4a5 5 0 0 1 8.4-2.6l1.6 1.6"/><path d="M13.2 2.6v3.8H9.4"/><path d="M13 8.6a5 5 0 0 1-8.4 2.6L3 9.6"/><path d="M2.8 13.4V9.6h3.8"/>', // update available, auto-update
