@@ -37,9 +37,23 @@
         <div class="header-actions">
           <button id="bfPill" type="button" class="pill pill-running pill-btn" hidden><span class="pill-dot"></span><span id="bfPillText"></span></button>
           <span id="statusPill" class="pill"><span class="pill-dot"></span><span id="statusText"></span></span>
-          <button id="refreshBtn" class="btn btn-primary"><span class="icon">&#xE72C;</span><span data-i18n="header.refresh"></span></button>
+          <div class="nc-wrap">
+            <button id="ncBtn" type="button" class="btn btn-icon nc-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="ncPanel" data-i18n-title="nc.bell" aria-label="Notifications"><span class="icon">&#xEA8F;</span><span id="ncBadge" class="nc-badge" aria-hidden="true" hidden></span></button>
+            <div id="ncPanel" class="nc-panel" tabindex="-1" role="dialog" aria-modal="false" aria-labelledby="ncTitle" hidden>
+              <div class="nc-head">
+                <div id="ncTitle" class="body-strong" data-i18n="nc.title"></div>
+                <button id="ncClear" type="button" class="btn nc-clear"><span class="icon">&#xE74D;</span><span data-i18n="nc.clear"></span></button>
+              </div>
+              <div id="ncList" class="nc-list"></div>
+            </div>
+          </div>
+          <button id="refreshBtn" class="btn btn-primary" data-i18n-title="header.refresh_tip"><span class="icon">&#xE72C;</span><span data-i18n="header.refresh"></span></button>
         </div>
       </header>
+
+      <div id="backBar" class="backbar" hidden>
+        <button id="backBtn" type="button" class="btn" data-i18n-title="nav.back_tip"><span class="icon">&#xE72B;</span><span id="backText"></span></button>
+      </div>
 
       <div id="updateBar" class="infobar info" role="status" hidden>
         <span class="icon ib-icon">&#xE895;</span>
@@ -98,7 +112,7 @@
           <div class="empty-icon icon">&#xE9D9;</div>
           <div class="subtitle" data-i18n="empty.title"></div>
           <p class="secondary" data-i18n="empty.text"></p>
-          <button id="emptyRefresh" class="btn btn-primary"><span class="icon">&#xE72C;</span><span data-i18n="header.refresh"></span></button>
+          <button id="emptyRefresh" class="btn btn-primary" data-i18n-title="header.refresh_tip"><span class="icon">&#xE72C;</span><span data-i18n="header.refresh"></span></button>
         </div>
         <div id="panelData" hidden>
           <div id="kpis" class="kpis"></div>
@@ -737,6 +751,21 @@
       <div id="licMeta" class="caption secondary"></div>
       <pre id="licText" class="lic-text" tabindex="0"></pre>
       <div class="modal-actions"><button id="licClose" class="btn btn-primary" type="button"><span data-i18n="cred.close"></span></button></div>
+    </div>
+  </div>
+  <div id="updDialog" class="modal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="updDlgTitle">
+      <div class="modal-icon icon">&#xE895;</div>
+      <div id="updDlgTitle" class="subtitle"></div>
+      <p data-i18n="update.dlg_text"></p>
+      <div id="updDlgNotesWrap" hidden>
+        <div class="caption secondary" data-i18n="update.notes"></div>
+        <div id="updDlgNotes" class="upd-notes caption" tabindex="0"></div>
+      </div>
+      <div class="modal-actions">
+        <button id="updDlgLater" type="button" class="btn"><span data-i18n="update.later"></span></button>
+        <button id="updDlgNow" type="button" class="btn btn-primary"><span class="icon">&#xE896;</span><span data-i18n="update.now"></span></button>
+      </div>
     </div>
   </div>
   <div id="bfDialog" class="modal" hidden>

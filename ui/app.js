@@ -59,6 +59,8 @@
     keys: null,
     keyMsg: { openalex: null },
     firstDay: null,
+    nc: { events: [], unread: 0, open: false, seen: new Set() },
+    nav: { stack: [], keep: false, depth: 0, tok: 0 },
   };
 
   state.cal.month = new Date().getFullYear() + "-" + String(new Date().getMonth() + 1).padStart(2, "0");
@@ -175,6 +177,8 @@
     renderBudget();
     renderReportPage();
     renderReportPreview();
+    renderNc();
+    renderBack();
     state.open.forEach(drawDetail);
   }
 
@@ -270,13 +274,15 @@
     $("#checkUpdateText").textContent = t("about.checking");
     state.aboutRes = { kind: "checking", text: t("about.checking") };
     renderAboutResult();
-    let msg, err = false;
+    let msg, err = false, dialog = false;
     try {
       const r = await invoke("check_for_updates");
       if (r.status === "available") {
         state.update = r.info; renderUpdate();
         state.aboutRes = { kind: "available", text: "" };
         msg = t("about.available_toast", { version: r.info.version });
+        showUpdateDialog(r.info);
+        dialog = true; // the dialog says it; no toast on top of it
       } else if (r.status === "current") {
         state.aboutRes = { kind: "current", text: t("about.current", { version: state.version }) };
         msg = state.aboutRes.text;
@@ -297,7 +303,7 @@
       $("#checkUpdateText").textContent = t("about.check");
     }
     renderAboutResult();
-    toast(msg, err);
+    if (!dialog) toast(msg, err);
     $("#aboutResult").scrollIntoView({ block: "nearest", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   }
 
@@ -471,16 +477,17 @@
 
   /** Opens one article's detail row on the Articles page. */
   function openArticle(key) {
-    state.open.add(key);
-    showPage("articles");
+    go(() => { state.open.add(key); showPage("articles"); });
     setTimeout(() => {
       const row = $(`#articleBody tr.row[data-key="${CSS.escape(key)}"]`);
       if (row) row.scrollIntoView({ block: "center", behavior: "smooth" });
     }, 200);
   }
   function openAnalysis(tab) {
-    if (tab) state.an.tab = tab;
-    showPage("analysis");
+    go(() => {
+      if (tab) state.an.tab = tab;
+      showPage("analysis");
+    });
   }
 
   // ------------------------------------------------------------ panel: compact citation history
@@ -764,9 +771,11 @@
 
   /** Opens the Articles page filtered to the articles that have no DOI yet. */
   function showMissingDoi() {
-    state.doiOnly = true;
-    state.doiBarHidden = false;
-    showPage("articles");
+    go(() => {
+      state.doiOnly = true;
+      state.doiBarHidden = false;
+      showPage("articles");
+    });
   }
 
   // ------------------------------------------------------------ log
@@ -911,10 +920,12 @@
   function budgetAction(act) {
     if (act === "key") safe(() => invoke("open_url", { url: "https://openalex.org/" }));
     else if (act === "settings" || act === "mail") {
-      closeScan();
-      showPage("settings");
-      const target = act === "mail" ? $("#keyOaEmail") : $("#keyOa");
-      setTimeout(() => { target.scrollIntoView({ block: "center" }); target.focus(); }, 100);
+      go(() => {
+        closeScan();
+        showPage("settings");
+        const target = act === "mail" ? $("#keyOaEmail") : $("#keyOa");
+        setTimeout(() => { target.scrollIntoView({ block: "center" }); target.focus(); }, 100);
+      });
     }
   }
 
@@ -1762,14 +1773,16 @@
 
   /** Opens Analysis > Calendar on one day. */
   function openCalendarDay(day) {
-    const cal = state.cal;
-    cal.month = day.slice(0, 7);
-    cal.sel = { from: day, to: day };
-    cal.focus = day;
-    cal.year = null;
-    cal.shown = 120;
-    state.an.tab = "calendar";
-    if (state.page === "analysis") renderAnalysis(); else showPage("analysis");
+    go(() => {
+      const cal = state.cal;
+      cal.month = day.slice(0, 7);
+      cal.sel = { from: day, to: day };
+      cal.focus = day;
+      cal.year = null;
+      cal.shown = 120;
+      state.an.tab = "calendar";
+      if (state.page === "analysis") renderAnalysis(); else showPage("analysis");
+    });
   }
 
   // ---- day detail
@@ -1856,11 +1869,13 @@
   function openCitingFromDetail() {
     const s = state.cal.sel;
     if (!s) return;
-    Object.assign(state.cw, { article: state.cal.article, country: "", venue: "", query: "", shown: 200, date: "", period: null, type: "", oa: "", field: "", noSelf: false, sort: "date" });
-    if (s.from === s.to) state.cw.date = s.from;
-    else state.cw.period = { from: keyMsOf(s.from), to: keyMsOf(s.to) + DAY_MS - 1, label: s.whole ? monthLabel(s.from.slice(0, 7), true) : `${shortDay(s.from)} – ${shortDay(s.to)}` };
-    $("#citingSearch").value = "";
-    showPage("citing");
+    go(() => {
+      Object.assign(state.cw, { article: state.cal.article, country: "", venue: "", query: "", shown: 200, date: "", period: null, type: "", oa: "", field: "", noSelf: false, sort: "date" });
+      if (s.from === s.to) state.cw.date = s.from;
+      else state.cw.period = { from: keyMsOf(s.from), to: keyMsOf(s.to) + DAY_MS - 1, label: s.whole ? monthLabel(s.from.slice(0, 7), true) : `${shortDay(s.from)} – ${shortDay(s.to)}` };
+      $("#citingSearch").value = "";
+      showPage("citing");
+    });
   }
 
   // ---- works that only have a month or a year: never on a day
@@ -1996,7 +2011,7 @@
     $("#repFrom").value = isoDay(new Date(r.from ?? (hist ?? first)));
     $("#repTo").value = isoDay(new Date(r.to ?? Date.now()));
     $("#repLang").value = window.I18N.lang;
-    showPage("report");
+    go(() => showPage("report"));
   }
 
   // ------------------------------------------------------------ citing works page
@@ -2176,13 +2191,15 @@
   /** "view in list": the Citing works list with the period, article and self-citation state of the Analysis tab. */
   function openCitersList(o) {
     const r = anRange();
-    Object.assign(state.cw, {
-      article: o.article || "", query: "", shown: 200, country: "", venue: "", date: "", type: "", oa: "", field: "",
-      noSelf: !!o.excludeSelf, sort: o.sort === "cited" ? "cited" : o.sort === "ojp" ? "ojp" : "date", dir: -1,
-      period: r.from == null && r.to == null ? null : { from: r.from == null ? null : utcDayMs(r.from), to: r.to == null ? null : utcDayMs(r.to), label: anPeriodLabel() },
+    go(() => {
+      Object.assign(state.cw, {
+        article: o.article || "", query: "", shown: 200, country: "", venue: "", date: "", type: "", oa: "", field: "",
+        noSelf: !!o.excludeSelf, sort: o.sort === "cited" ? "cited" : o.sort === "ojp" ? "ojp" : "date", dir: -1,
+        period: r.from == null && r.to == null ? null : { from: r.from == null ? null : utcDayMs(r.from), to: r.to == null ? null : utcDayMs(r.to), label: anPeriodLabel() },
+      });
+      $("#citingSearch").value = "";
+      showPage("citing");
     });
-    $("#citingSearch").value = "";
-    showPage("citing");
   }
   /** Range of the Analysis period selector as local days for the get_citers_* commands (empty = open). */
   function anRangeDays() {
@@ -2432,6 +2449,8 @@
   // ------------------------------------------------------------ navigation / wiring
   function showPage(name) {
     const prev = state.page;
+    // only a cross-page link (go) keeps the way back; the sidebar and everything else starts afresh
+    if (!state.nav.keep) state.nav.stack.length = 0;
     state.page = name;
     // charts are created per page and disposed when it is left
     if (prev !== name) Charts.disposeIn($("#page-" + prev));
@@ -2452,6 +2471,218 @@
     if (name === "settings") { $("#infoBar").hidden = true; fillSettings(); loadKeyStatus(); }
     if (name === "help") renderHelp();
     if (name === "credits") loadCredits();
+    renderBack();
+  }
+
+  // ------------------------------------------------------------ back navigation
+  const NAV_MAX = 20;
+  const NAV_KEYS = { panel: "nav.panel", articles: "nav.articles", citing: "nav.citing", log: "nav.log", report: "nav.report", settings: "nav.settings", help: "nav.help", analysis: "nav.analysis" };
+  const navSig = () => state.page + (state.page === "analysis" ? ":" + state.an.tab : "");
+  function navName(e) {
+    const base = NAV_KEYS[e.page] ? t(NAV_KEYS[e.page]) : e.page;
+    return e.page === "analysis" ? base + " › " + t("an.tab_" + e.an.tab) : base;
+  }
+  /** What "back" has to restore: the page, the Analysis tab / period, the filters and the scroll position. */
+  function navSnap() {
+    const sc = $(".content"), c = state.cal;
+    return {
+      page: state.page, an: { ...state.an }, cw: { ...state.cw }, sort: { ...state.sort }, query: state.query, doiOnly: state.doiOnly,
+      open: [...state.open],
+      cal: { month: c.month, sel: c.sel ? { ...c.sel } : null, focus: c.focus, source: c.source, article: c.article, year: c.year, shown: c.shown, undatedOpen: c.undatedOpen },
+      scroll: sc ? sc.scrollTop : 0,
+    };
+  }
+  /** Runs a cross-page link. When it lands on another page (or Analysis tab) the place left is kept for the back button. */
+  function go(fn) {
+    const nav = state.nav;
+    if (nav.depth > 0) { fn(); return; }
+    const before = navSnap(), sig = navSig();
+    nav.depth++;
+    nav.keep = true;
+    try { fn(); } finally { nav.depth--; nav.keep = false; }
+    if (navSig() !== sig) {
+      nav.stack.push(before);
+      if (nav.stack.length > NAV_MAX) nav.stack.shift();
+      const sc = $(".content");
+      if (sc) sc.scrollTo({ top: 0, behavior: "instant" });
+    }
+    renderBack();
+  }
+  function renderBack() {
+    const top = state.nav.stack[state.nav.stack.length - 1];
+    $("#backBar").hidden = !top || state.page === "credits";
+    if (top) $("#backText").textContent = t("nav.back", { where: navName(top) });
+  }
+  function navBack() {
+    const nav = state.nav;
+    const e = nav.stack.pop();
+    if (!e) return false;
+    Object.assign(state.an, e.an);
+    Object.assign(state.cw, e.cw);
+    Object.assign(state.cal, e.cal);
+    state.sort = e.sort;
+    state.query = e.query;
+    state.doiOnly = e.doiOnly;
+    state.open.clear();
+    e.open.forEach((k) => state.open.add(k));
+    $("#searchBox").value = e.query;
+    $("#citingSearch").value = e.cw.query || "";
+    nav.keep = true;
+    try { showPage(e.page); } finally { nav.keep = false; }
+    if (e.page === "analysis") renderAnalysis();
+    renderBack();
+    // the pages fill in asynchronously: put the scroll position back until the person scrolls on their own
+    const sc = $(".content"), tok = ++nav.tok;
+    const restore = () => { if (sc && nav.tok === tok) sc.scrollTo({ top: e.scroll, behavior: "instant" }); };
+    restore();
+    [80, 300, 700].forEach((ms) => setTimeout(restore, ms));
+    return true;
+  }
+
+  // ------------------------------------------------------------ notification centre
+  const NC_ICON = { scholar: "\uE77B", citing: "\uE716", update: "\uE895", health: "\uE7BA", budget: "\uE916" };
+
+  async function loadEvents() {
+    const r = await safe(() => invoke("get_events"), null);
+    if (!r) return;
+    const nc = state.nc;
+    nc.events = r.events;
+    nc.unread = r.unread;
+    if (nc.open) {
+      // the list is in front of the person: what arrives meanwhile is read as soon as it is shown
+      r.events.forEach((e) => { if (!e.read) nc.seen.add(e.id); });
+      if (r.unread) { nc.unread = 0; await safe(() => invoke("mark_events_read"), null); }
+    }
+    renderNc();
+  }
+
+  /** Local day of a timestamp as the group heading: Today, Yesterday or the date. */
+  function ncDayLabel(iso) {
+    const d = new Date(iso), now = new Date();
+    const key = isoDay(d), today = isoDay(now);
+    const y = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    if (key === today) return t("nc.today");
+    if (key === isoDay(y)) return t("nc.yesterday");
+    return d.toLocaleDateString(loc(), { day: "numeric", month: "long", year: "numeric" });
+  }
+
+  const ncLine = (key, nav, inner, cls) => key
+    ? `<button type="button" class="nc-line${cls ? " " + cls : ""}" data-nc="${nav}" data-key="${esc(key)}">${inner}</button>`
+    : `<div class="nc-line${cls ? " " + cls : ""}">${inner}</div>`;
+
+  /** One event as { icon, warn, title, sub, nav, lines } for the list. */
+  function ncDescribe(e) {
+    const d = e.data || {};
+    switch (e.kind) {
+      case "scholar": {
+        const up = d.up || [], down = d.down || [], nw = d.new || [];
+        const upSum = up.reduce((a, x) => a + x.d, 0) + nw.reduce((a, x) => a + (x.n || 0), 0);
+        const downSum = -down.reduce((a, x) => a + x.d, 0);
+        const total = nf.format(d.total);
+        let title;
+        if (d.delta > 0) title = t("nc.sch_up", { n: nf.format(d.delta), total });
+        else if (upSum > 0) title = t("nc.sch_up", { n: nf.format(upSum), total });
+        else if (nw.length) title = t("nc.sch_new", { total });
+        else if (d.delta < 0) title = t("nc.sch_down", { n: nf.format(-d.delta), total });
+        else if (downSum > 0) title = t("nc.sch_down", { n: nf.format(downSum), total });
+        else title = t("nc.sch_flat", { total });
+        const lines = [
+          ...up.map((x) => ncLine(x.k, "article", `<span class="nc-lt">${esc(x.t)}</span>${chip("", x.d)}`)),
+          ...nw.map((x) => ncLine(x.k, "article", `<span class="nc-lt">${esc(t("nc.new_article", { title: x.t }))}</span>${x.n > 0 ? chip("", x.n) : ""}`)),
+          ...down.map((x) => ncLine(x.k, "article", `<span class="nc-lt">${esc(x.t)}</span>${chip("", x.d)}`)),
+        ];
+        return { icon: NC_ICON.scholar, title, nav: "articles", lines };
+      }
+      case "citing": {
+        const items = d.items || [];
+        const lines = items.map((x) => ncLine(x.k, "citing", `<span class="nc-lt">${esc(x.t || "?")}</span><span class="nc-ls">${esc([x.v, t("nc.cites", { article: x.a })].filter(Boolean).join(" · "))}</span>`, "stack"));
+        if (d.total > items.length) lines.push(`<div class="nc-more">${esc(t("nc.citing_more", { n: nf.format(d.total - items.length) }))}</div>`);
+        return { icon: NC_ICON.citing, title: t("nc.citing", { n: nf.format(d.total) }), nav: "citing", lines };
+      }
+      case "update": return { icon: NC_ICON.update, title: t("nc.update", { version: d.version || "" }), sub: t("nc.update_sub"), nav: "update", lines: [] };
+      case "health": return { icon: NC_ICON.health, warn: true, title: t("nc.health"), sub: t("nc.health_sub"), nav: "health", lines: [] };
+      case "budget": return { icon: NC_ICON.budget, warn: true, title: t("nc.budget"), sub: t("nc.budget_sub"), nav: "budget", lines: [] };
+      default: return null;
+    }
+  }
+
+  function renderNc() {
+    const nc = state.nc, n = nc.unread;
+    const badge = $("#ncBadge");
+    badge.hidden = n <= 0;
+    badge.textContent = n > 99 ? "99+" : String(n);
+    const btn = $("#ncBtn");
+    btn.setAttribute("aria-label", n > 0 ? t("nc.bell_unread", { n }) : t("nc.bell"));
+    btn.setAttribute("aria-expanded", nc.open ? "true" : "false");
+    $("#ncPanel").hidden = !nc.open;
+    if (!nc.open) return;
+    $("#ncClear").disabled = !nc.events.length;
+    let html = "", day = "";
+    for (const e of nc.events) {
+      const v = ncDescribe(e);
+      if (!v) continue;
+      const label = ncDayLabel(e.at);
+      if (label !== day) { day = label; html += `<div class="nc-day" role="heading" aria-level="3">${esc(label)}</div>`; }
+      html += `<div class="nc-ev${nc.seen.has(e.id) ? " unread" : ""}"><button type="button" class="nc-hd" data-nc="${v.nav}"><span class="icon nc-ic${v.warn ? " warn" : ""}">${v.icon}</span><span class="nc-tx"><span class="nc-t">${esc(v.title)}</span>${v.sub ? `<span class="nc-s">${esc(v.sub)}</span>` : ""}</span><span class="nc-time">${esc(fmtTime(e.at))}</span></button>${v.lines.length ? `<div class="nc-lines">${v.lines.join("")}</div>` : ""}</div>`;
+    }
+    $("#ncList").innerHTML = html || `<div class="nc-empty">${esc(t("nc.empty"))}</div>`;
+  }
+
+  async function openNc() {
+    const nc = state.nc;
+    nc.open = true;
+    nc.seen = new Set(nc.events.filter((e) => !e.read).map((e) => e.id));
+    renderNc();
+    await loadEvents();
+    const first = $("#ncList button");
+    (first || $("#ncPanel")).focus();
+  }
+  function closeNc(returnFocus) {
+    const nc = state.nc;
+    if (!nc.open) return;
+    nc.open = false;
+    nc.seen = new Set();
+    renderNc();
+    if (returnFocus) $("#ncBtn").focus();
+  }
+  /** Where an item leads: the article row, the Citing works list, Settings > About, the Fetch log, the API key card. */
+  function ncGo(what, key) {
+    closeNc(false);
+    go(() => {
+      if (what === "article") openArticle(key);
+      else if (what === "articles") showPage("articles");
+      else if (what === "citing") showCitingFor(key || "");
+      else if (what === "update") {
+        showPage("settings");
+        setTimeout(() => { const el = $("#aboutTitle"); if (el) el.scrollIntoView({ block: "center" }); }, 150);
+      } else if (what === "health") showPage("log");
+      else if (what === "budget") budgetAction("settings");
+    });
+  }
+
+  // ------------------------------------------------------------ update found: dialog
+  let updDlgOpener = null;
+  /** The first lines of the release notes, plain text, cut at a line end. */
+  function notesExcerpt(notes) {
+    const plain = String(notes || "").replace(/\r/g, "").replace(/^#{1,6}\s*/gm, "").replace(/\*\*/g, "").trim();
+    if (plain.length <= 600) return plain;
+    const cut = plain.slice(0, 600), i = cut.lastIndexOf("\n");
+    return (i > 300 ? cut.slice(0, i) : cut).trimEnd() + "…";
+  }
+  function showUpdateDialog(u) {
+    if (!u) return;
+    $("#updDlgTitle").textContent = t("update.dlg_title", { version: u.version });
+    const notes = notesExcerpt(u.notes);
+    $("#updDlgNotes").textContent = notes;
+    $("#updDlgNotesWrap").hidden = !notes;
+    updDlgOpener = document.activeElement && document.activeElement !== document.body ? document.activeElement : $("#checkUpdateBtn");
+    $("#updDialog").hidden = false;
+    $("#updDlgNow").focus();
+  }
+  function closeUpdateDialog() {
+    $("#updDialog").hidden = true;
+    if (updDlgOpener && updDlgOpener.focus) updDlgOpener.focus();
+    updDlgOpener = null;
   }
 
   // ------------------------------------------------------------ OJP intro bar, Help and Credits pages
@@ -2468,7 +2699,7 @@
   }
   /** Opens the Help page and scrolls to one of its blocks. */
   function openHelp(anchor) {
-    showPage("help");
+    go(() => showPage("help"));
     const el = anchor ? document.getElementById(anchor) : null;
     const sc = $(".content");
     if (el && sc) requestAnimationFrame(() => { sc.scrollTo({ top: sc.scrollTop + el.getBoundingClientRect().top - sc.getBoundingClientRect().top - 8, behavior: "auto" }); });
@@ -2567,9 +2798,11 @@
 
   /** Opens the Citing works page filtered to one article. */
   function showCitingFor(key) {
-    Object.assign(state.cw, { article: key, query: "", shown: 200, country: "", venue: "", date: "", period: null, type: "", oa: "", field: "", noSelf: false, sort: "date" });
-    $("#citingSearch").value = "";
-    showPage("citing");
+    go(() => {
+      Object.assign(state.cw, { article: key, query: "", shown: 200, country: "", venue: "", date: "", period: null, type: "", oa: "", field: "", noSelf: false, sort: "date" });
+      $("#citingSearch").value = "";
+      showPage("citing");
+    });
   }
 
   function clearFilter(box, st, kinds) {
@@ -2613,6 +2846,45 @@
 
   function wire() {
     $$(".nav-item").forEach((b) => b.addEventListener("click", () => showPage(b.dataset.page)));
+    // back navigation: the button, the mouse back button, Alt+Left
+    $("#backBtn").addEventListener("click", navBack);
+    window.addEventListener("mouseup", (e) => { if (e.button === 3) { e.preventDefault(); navBack(); } });
+    window.addEventListener("auxclick", (e) => { if (e.button === 3 || e.button === 4) e.preventDefault(); });
+    ["wheel", "pointerdown", "keydown"].forEach((ev) => window.addEventListener(ev, () => { state.nav.tok++; }, { passive: true, capture: true }));
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowLeft" || !e.altKey || e.ctrlKey || e.shiftKey || e.metaKey || !state.nav.stack.length) return;
+      const a = document.activeElement;
+      if (a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable)) return;
+      if ($(".modal:not([hidden])")) return;
+      e.preventDefault();
+      navBack();
+    });
+    // notification centre
+    $("#ncBtn").addEventListener("click", () => { if (state.nc.open) closeNc(true); else openNc(); });
+    $("#ncClear").addEventListener("click", async () => { await safe(() => invoke("clear_events"), null); await loadEvents(); (state.nc.open ? $("#ncPanel") : $("#ncBtn")).focus(); });
+    $("#ncList").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-nc]");
+      if (b) ncGo(b.dataset.nc, b.dataset.key);
+    });
+    document.addEventListener("mousedown", (e) => { if (state.nc.open && !e.target.closest(".nc-wrap")) closeNc(false); });
+    $(".nc-wrap").addEventListener("focusout", (e) => { if (state.nc.open && e.relatedTarget && !e.relatedTarget.closest(".nc-wrap")) closeNc(false); });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && state.nc.open && $("#updDialog").hidden) { e.preventDefault(); closeNc(true); }
+    });
+    // update dialog
+    $("#updDlgLater").addEventListener("click", closeUpdateDialog);
+    $("#updDlgNow").addEventListener("click", () => { closeUpdateDialog(); installUpdate(); });
+    $("#updDialog").addEventListener("click", (e) => { if (e.target === $("#updDialog")) closeUpdateDialog(); });
+    document.addEventListener("keydown", (e) => {
+      if ($("#updDialog").hidden) return;
+      if (e.key === "Escape") { e.preventDefault(); closeUpdateDialog(); return; }
+      if (e.key === "Tab") {
+        const f = [$("#updDlgNotes"), $("#updDlgLater"), $("#updDlgNow")].filter((x) => x.offsetParent !== null);
+        const i = f.indexOf(document.activeElement);
+        e.preventDefault();
+        f[e.shiftKey ? (i <= 0 ? f.length - 1 : i - 1) : (i + 1) % f.length].focus();
+      }
+    });
     $("#refreshBtn").addEventListener("click", refreshNow);
     $("#emptyRefresh").addEventListener("click", refreshNow);
     $("#setupForm").addEventListener("submit", startSetup);
@@ -2776,7 +3048,7 @@
     } else {
       $("#uninstallBtn").hidden = true;
     }
-    $("#healthOpenLog").addEventListener("click", () => showPage("log"));
+    $("#healthOpenLog").addEventListener("click", () => go(() => showPage("log")));
     // citing works
     $("#citingSearch").addEventListener("input", (e) => { state.cw.query = e.target.value; state.cw.shown = 200; renderCiting(); });
     $("#citingArticle").addEventListener("change", (e) => { state.cw.article = e.target.value; state.cw.shown = 200; renderCiting(); });
@@ -2891,6 +3163,7 @@
       if (was && was !== "idle" && e.payload.state === "idle") loadHealth();
     });
     await listen("update-available", (e) => { state.update = e.payload; renderUpdate(); });
+    await listen("events-changed", loadEvents);
     await listen("update-progress", (e) => {
       const p = e.payload;
       if (p.done) { updateProgressUi(t("update.installing"), 100); return; }
@@ -2924,6 +3197,7 @@
     renderUpdate();
     await hydrateScan();
     await loadStatus();
+    loadEvents();
     await refreshAll();
     $("#page-panel").hidden = false;
     setInterval(renderHeader, 30000);

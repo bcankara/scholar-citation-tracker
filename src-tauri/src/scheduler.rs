@@ -121,10 +121,15 @@ async fn check_health(app: &AppHandle, sh: &Shared) {
             // Remember it even when notifications are switched off, so enabling them later
             // does not fire for an old incident.
             db::set_state(&conn, db::STATE_HEALTH_NOTIFIED, &db::ts(now))?;
+            // the notification centre always records it
+            db::record_event(&conn, now, "health", &db::ts(now), &serde_json::json!({}))?;
         }
         Ok(h.notify)
     })
     .await;
+    if matches!(decision, Some(Ok(true))) {
+        crate::events::announce(app);
+    }
     match decision {
         Some(Ok(true)) if settings.notify => {
             let lang = settings.language.clone();
@@ -327,6 +332,11 @@ async fn attempt(app: &AppHandle, sh: &Shared) -> Result<String, (&'static str, 
         .map_err(|e| ("parse", i18n::trf(&lang, "log.store_failed", &[&format!("{e:#}")])))?;
 
     set_tray_tooltip(app, &lang, Some(stored.total));
+    if let Some(data) = stored.change.as_ref().and_then(db::scholar_event_data) {
+        // the notification centre records every change, whatever the "notify" setting says
+        let (app_ev, ev_path) = (app.clone(), path.clone());
+        let _ = blocking(move || crate::events::record(&app_ev, &db::db_path_in(&ev_path), "scholar", "", &data)).await;
+    }
     if settings.notify {
         if let Some((title, body)) = stored
             .change

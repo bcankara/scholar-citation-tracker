@@ -55,12 +55,13 @@ pub const PLATFORM_TABLE: &[(&str, &str, &str)] = &[];
 pub const TABLE: &[(&str, &str, &str)] = &[
     // tray
     ("tray.open", "Paneli aç", "Open dashboard"),
-    ("tray.refresh", "Şimdi güncelle", "Refresh now"),
+    ("tray.refresh", "Şimdi kontrol et", "Check now"),
     ("tray.folder", "Veri klasörünü aç", "Open data folder"),
     ("tray.quit", "Çıkış", "Quit"),
     ("tray.tooltip_total", "{0} — Toplam atıf: {1}", "{0} — Total citations: {1}"),
     // notifications
     ("notif.new_citations", "+{0} yeni atıf (toplam {1})", "+{0} new citations (total {1})"),
+    ("notif.citation_change", "Atıf değişikliği: −{0} (toplam {1})", "Citation change: −{0} (total {1})"),
     ("notif.new_article_title", "Yeni makale eklendi (toplam {0})", "New article added (total {0})"),
     ("notif.new_article_line", "Yeni makale: {0}", "New article: {0}"),
     (

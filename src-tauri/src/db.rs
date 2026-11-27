@@ -70,7 +70,8 @@ CREATE TABLE IF NOT EXISTS article_matches(
     openalex_id TEXT,
     s2_id TEXT, -- s2_id and s2_count: kept for old databases, no longer written
     openalex_count INTEGER,
-    s2_count INTEGER
+    s2_count INTEGER,
+    tried_count INTEGER -- Scholar citation count when OpenAlex was last asked about the article
 );
 CREATE TABLE IF NOT EXISTS backfill_citations(
     article_key TEXT NOT NULL,
@@ -121,6 +122,14 @@ CREATE TABLE IF NOT EXISTS article_overrides(
 CREATE TABLE IF NOT EXISTS app_state(
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS app_events(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    at TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    uniq TEXT NOT NULL DEFAULT '',
+    data TEXT NOT NULL DEFAULT '{}',
+    read INTEGER NOT NULL DEFAULT 0
 );
 ";
 
@@ -176,7 +185,7 @@ pub fn open(path: &Path) -> Result<Connection> {
 
 /// Columns added after a table first existed: (table, column, definition). Databases created
 /// with the older column set get them here (idempotent: a column is only added when missing).
-const EXTRA_COLUMNS: [(&str, &str, &str); 21] = [
+const EXTRA_COLUMNS: [(&str, &str, &str); 22] = [
     ("backfill_citations", "venue", "TEXT NOT NULL DEFAULT ''"),
     ("backfill_citations", "doi", "TEXT NOT NULL DEFAULT ''"),
     ("backfill_citations", "url", "TEXT NOT NULL DEFAULT ''"),
@@ -203,6 +212,10 @@ const EXTRA_COLUMNS: [(&str, &str, &str); 21] = [
     // 1.4.0: OpenAlex source id (S...) of the venue, the first key of the OJP lookup. Rows stored
     // before get it at the next refresh; until then the ISSNs match.
     ("backfill_citations", "source_id", "TEXT NOT NULL DEFAULT ''"),
+    // 1.6.0: the Scholar citation count of the article when OpenAlex was last asked about it
+    // (NULL for rows written before). The daily refresh retries an unmatched article when this
+    // count has grown.
+    ("article_matches", "tried_count", "INTEGER"),
 ];
 
 pub fn migrate(conn: &Connection) -> Result<()> {
@@ -235,6 +248,7 @@ pub fn clear_all(conn: &mut Connection) -> Result<()> {
          DELETE FROM backfill_citations;
          DELETE FROM backfill_runs;
          DELETE FROM article_overrides;
+         DELETE FROM app_events;
          DELETE FROM app_state;",
     )?;
     tx.commit()?;
@@ -730,10 +744,12 @@ pub struct Change {
     pub total_delta: i64,
     /// (title, increase) for articles whose count went up, largest first.
     pub increases: Vec<(String, i64)>,
-    /// (title, decrease as a positive number) for articles whose count went down. Never notified.
+    /// (title, decrease as a positive number) for articles whose count went down.
     pub decreases: Vec<(String, i64)>,
     /// Titles of articles first seen in this snapshot.
     pub new_articles: Vec<String>,
+    /// Article key of every title named above (the notification centre links to the article).
+    pub keys: std::collections::HashMap<String, String>,
 }
 
 /// Compares a snapshot with the one before it. `None` for the very first snapshot.
@@ -754,7 +770,7 @@ pub fn change_since_previous(conn: &Connection, snapshot_id: i64) -> Result<Opti
         snap_from_row,
     )?;
     let mut st = conn.prepare(
-        "SELECT a.title, c.citations, o.citations
+        "SELECT a.title, c.citations, o.citations, a.article_key
          FROM article_citations c
          JOIN articles a ON a.article_key=c.article_key
          LEFT JOIN article_citations o ON o.article_key=c.article_key AND o.snapshot_id=?2
@@ -765,6 +781,7 @@ pub fn change_since_previous(conn: &Connection, snapshot_id: i64) -> Result<Opti
             r.get::<_, String>(0)?,
             r.get::<_, i64>(1)?,
             r.get::<_, Option<i64>>(2)?,
+            r.get::<_, String>(3)?,
         ))
     })?;
     let mut change = Change {
@@ -773,7 +790,10 @@ pub fn change_since_previous(conn: &Connection, snapshot_id: i64) -> Result<Opti
         ..Change::default()
     };
     for row in rows {
-        let (title, now, before) = row?;
+        let (title, now, before, key) = row?;
+        if before.is_none_or(|b| b != now) {
+            change.keys.insert(title.clone(), key);
+        }
         match before {
             None => {
                 change.new_articles.push(title.clone());
@@ -801,10 +821,12 @@ pub fn shorten(s: &str, max: usize) -> String {
     }
 }
 
-/// Builds the notification (title, body) in `lang`. `None` when nothing changed.
+/// Builds the notification (title, body) in `lang`. `None` when nothing changed. A snapshot
+/// that only lowered counts gets text too ("Citation change: −1 (total 137)").
 pub fn notification_text(c: &Change, lang: &str) -> Option<(String, String)> {
     let increase_sum: i64 = c.increases.iter().map(|(_, d)| d).sum();
-    if c.total_delta <= 0 && increase_sum <= 0 && c.new_articles.is_empty() {
+    let decrease_sum: i64 = c.decreases.iter().map(|(_, d)| d).sum();
+    if c.total_delta == 0 && increase_sum <= 0 && decrease_sum <= 0 && c.new_articles.is_empty() {
         return None;
     }
     let total = c.total.to_string();
@@ -812,8 +834,11 @@ pub fn notification_text(c: &Change, lang: &str) -> Option<(String, String)> {
         i18n::trf(lang, "notif.new_citations", &[&c.total_delta.to_string(), &total])
     } else if increase_sum > 0 {
         i18n::trf(lang, "notif.new_citations", &[&increase_sum.to_string(), &total])
-    } else {
+    } else if !c.new_articles.is_empty() {
         i18n::trf(lang, "notif.new_article_title", &[&total])
+    } else {
+        let down = if c.total_delta < 0 { -c.total_delta } else { decrease_sum };
+        i18n::trf(lang, "notif.citation_change", &[&down.to_string(), &total])
     };
     let mut lines: Vec<String> = c
         .increases
@@ -825,9 +850,9 @@ pub fn notification_text(c: &Change, lang: &str) -> Option<(String, String)> {
             lines.push(i18n::trf(lang, "notif.new_article_line", &[&shorten(t, 45)]));
         }
     }
+    lines.extend(c.decreases.iter().map(|(t, d)| format!("{} \u{2212}{}", shorten(t, 45), d)));
     lines.truncate(3);
-    Some((title, lines.join("
-")))
+    Some((title, lines.join("\n")))
 }
 
 // ------------------------------------------------------- historical backfill
@@ -999,6 +1024,13 @@ pub fn store_backfill_article(
             rec.openalex_count
         ],
     )?;
+    // what Scholar showed for the article when OpenAlex was asked (see `retry_targets`)
+    tx.execute(
+        "UPDATE article_matches SET tried_count=(SELECT c.citations FROM article_citations c
+                                                  WHERE c.article_key=?1 ORDER BY c.snapshot_id DESC LIMIT 1)
+         WHERE article_key=?1",
+        params![rec.article_key],
+    )?;
     if let Some(source) = &rec.source {
         insert_citing_rows(&tx, &rec.article_key, source, citing)?;
     }
@@ -1083,9 +1115,10 @@ pub fn unenriched_rows(conn: &Connection) -> Result<i64> {
     )?)
 }
 
-/// True when at least one article is matched (the refresh has work to do).
+/// True when the daily refresh has work: an article is matched (its citing list is read again)
+/// or an unmatched one is due for another look-up.
 pub fn has_refresh_targets(conn: &Connection) -> Result<bool> {
-    Ok(!refresh_targets(conn)?.is_empty())
+    Ok(!refresh_targets(conn)?.is_empty() || !retry_targets(conn, Utc::now())?.is_empty())
 }
 
 /// An article of the latest snapshot that backfill should look up.
@@ -1114,6 +1147,39 @@ pub fn backfill_targets(conn: &Connection, only_missing: bool) -> Result<Vec<Bac
          ORDER BY c.citations DESC, a.title ASC"
     ))?;
     let rows = st.query_map(params![latest.id], |r| {
+        Ok(BackfillTarget {
+            key: r.get(0)?,
+            title: r.get(1)?,
+            year: r.get(2)?,
+        })
+    })?;
+    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+/// Days after which the daily refresh asks OpenAlex again about an article it could not find.
+pub const RETRY_UNMATCHED_DAYS: i64 = 7;
+
+/// Unmatched articles the daily refresh looks up again: no match yet and no manual DOI (the user's
+/// DOI has its own path), and either the last attempt is `RETRY_UNMATCHED_DAYS` old or Scholar's
+/// count has grown since that attempt (a newly citing work usually means the article is indexed
+/// by now). Rows from before 1.6.0 have no stored count; for them only the age counts.
+pub fn retry_targets(conn: &Connection, now: DateTime<Utc>) -> Result<Vec<BackfillTarget>> {
+    let Some(latest) = latest_snapshot(conn)? else {
+        return Ok(Vec::new());
+    };
+    let cutoff = ts(now - Duration::days(RETRY_UNMATCHED_DAYS));
+    let mut st = conn.prepare(
+        "SELECT a.article_key, a.title, a.year
+         FROM article_citations c
+         JOIN articles a ON a.article_key=c.article_key
+         JOIN article_matches m ON m.article_key=a.article_key
+         LEFT JOIN article_overrides o ON o.article_key=a.article_key
+         WHERE c.snapshot_id=?1 AND m.source IS NULL
+           AND (o.doi IS NULL OR o.doi='')
+           AND (m.matched_at <= ?2 OR (m.tried_count IS NOT NULL AND c.citations > m.tried_count))
+         ORDER BY c.citations DESC, a.title ASC",
+    )?;
+    let rows = st.query_map(params![latest.id, cutoff], |r| {
         Ok(BackfillTarget {
             key: r.get(0)?,
             title: r.get(1)?,
@@ -1159,6 +1225,113 @@ pub fn backfill_target_for(conn: &Connection, key: &str) -> Result<Option<Backfi
             },
         )
         .optional()?)
+}
+
+// ------------------------------------------------------- notification centre
+
+/// Events kept in the notification centre (the newest ones).
+pub const EVENTS_KEEP: i64 = 200;
+
+/// One entry of the in-app notification list. `data` is language independent; the window words it.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct EventRow {
+    pub id: i64,
+    pub at: String,
+    /// "scholar" | "citing" | "update" | "health" | "budget"
+    pub kind: String,
+    pub data: serde_json::Value,
+    pub read: bool,
+}
+
+/// Adds an event and trims the list to `EVENTS_KEEP`. With a non-empty `uniq`, an event of the same
+/// kind and key is not added twice (one update notice per version, one budget notice per day).
+/// Returns whether a row was written.
+pub fn record_event(conn: &Connection, at: DateTime<Utc>, kind: &str, uniq: &str, data: &serde_json::Value) -> Result<bool> {
+    if !uniq.is_empty() {
+        let seen: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM app_events WHERE kind=?1 AND uniq=?2)",
+            params![kind, uniq],
+            |r| r.get(0),
+        )?;
+        if seen {
+            return Ok(false);
+        }
+    }
+    conn.execute(
+        "INSERT INTO app_events(at, kind, uniq, data) VALUES (?1,?2,?3,?4)",
+        params![ts(at), kind, uniq, data.to_string()],
+    )?;
+    conn.execute(
+        "DELETE FROM app_events WHERE id NOT IN (SELECT id FROM app_events ORDER BY id DESC LIMIT ?1)",
+        params![EVENTS_KEEP],
+    )?;
+    Ok(true)
+}
+
+/// The events, newest first.
+pub fn list_events(conn: &Connection) -> Result<Vec<EventRow>> {
+    let mut st = conn.prepare("SELECT id, at, kind, data, read FROM app_events ORDER BY at DESC, id DESC LIMIT ?1")?;
+    let rows = st.query_map(params![EVENTS_KEEP], |r| {
+        let data: String = r.get(3)?;
+        Ok(EventRow {
+            id: r.get(0)?,
+            at: r.get(1)?,
+            kind: r.get(2)?,
+            data: serde_json::from_str(&data).unwrap_or(serde_json::Value::Null),
+            read: r.get::<_, i64>(4)? != 0,
+        })
+    })?;
+    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+pub fn unread_events(conn: &Connection) -> Result<i64> {
+    Ok(conn.query_row("SELECT COUNT(*) FROM app_events WHERE read=0", [], |r| r.get(0))?)
+}
+
+pub fn mark_events_read(conn: &Connection) -> Result<()> {
+    conn.execute("UPDATE app_events SET read=1 WHERE read=0", [])?;
+    Ok(())
+}
+
+pub fn clear_events(conn: &Connection) -> Result<()> {
+    conn.execute("DELETE FROM app_events", [])?;
+    Ok(())
+}
+
+/// Most entries of one kind that a "scholar" event carries (the list stays readable).
+const EVENT_ITEMS: usize = 30;
+
+/// The notification-centre record of one snapshot comparison: the new total, and per article the
+/// rises, the falls and the new articles. `None` when nothing changed.
+pub fn scholar_event_data(c: &Change) -> Option<serde_json::Value> {
+    if c.total_delta == 0 && c.increases.is_empty() && c.decreases.is_empty() && c.new_articles.is_empty() {
+        return None;
+    }
+    let key = |t: &str| c.keys.get(t).cloned().unwrap_or_default();
+    let delta = |v: &[(String, i64)], sign: i64| -> Vec<serde_json::Value> {
+        v.iter()
+            .filter(|(t, _)| !c.new_articles.contains(t))
+            .take(EVENT_ITEMS)
+            .map(|(t, d)| serde_json::json!({"k": key(t), "t": t, "d": d * sign}))
+            .collect()
+    };
+    // a new article that already has citations is listed as "new" (with its count), not twice
+    let new: Vec<serde_json::Value> = c
+        .new_articles
+        .iter()
+        .take(EVENT_ITEMS)
+        .map(|t| {
+            let n = c.increases.iter().find(|(it, _)| it == t).map_or(0, |(_, d)| *d);
+            serde_json::json!({"k": key(t), "t": t, "n": n})
+        })
+        .collect();
+    Some(serde_json::json!({
+        "total": c.total,
+        "delta": c.total_delta,
+        "up": delta(&c.increases, 1),
+        "down": delta(&c.decreases, -1),
+        "new": new,
+    }))
 }
 
 // ------------------------------------------------------- manual overrides
@@ -2116,6 +2289,7 @@ mod tests {
                 .collect(),
             decreases: vec![],
             new_articles: vec![],
+            keys: Default::default(),
         };
         let (_, body) = notification_text(&c, "en").expect("text");
         assert_eq!(body.lines().count(), 3);
@@ -2170,7 +2344,7 @@ mod tests {
     }
 
     #[test]
-    fn decreases_are_recorded_but_never_notified_alone() {
+    fn decreases_alone_are_notified_and_listed_with_their_sign() {
         let mut conn = mem();
         insert_snapshot(&mut conn, "P", t("2026-11-20T10:00:00Z"), &profile(vec![art("k1", "One", 10), art("k2", "Two", 5)], 1)).expect("s1");
         let down = insert_snapshot(&mut conn, "P", t("2026-11-20T13:00:00Z"), &profile(vec![art("k1", "One", 8), art("k2", "Two", 5)], 1)).expect("second");
@@ -2178,14 +2352,150 @@ mod tests {
         assert_eq!(c.total_delta, -2);
         assert_eq!(c.decreases, vec![("One".to_string(), 2)]);
         assert!(c.increases.is_empty());
-        assert!(notification_text(&c, "tr").is_none() && notification_text(&c, "en").is_none());
-        // one article up and another down in the same snapshot: the net, and only the risen article
+        let (title, body) = notification_text(&c, "tr").expect("text");
+        assert_eq!(title, "Atıf değişikliği: −2 (toplam 13)");
+        assert_eq!(body, "One −2");
+        let (title, body) = notification_text(&c, "en").expect("text");
+        assert_eq!(title, "Citation change: −2 (total 13)");
+        assert_eq!(body, "One \u{2212}2");
+        // one article up and another down in the same snapshot: the net, the risen article first, then the fallen one
         let both = insert_snapshot(&mut conn, "P", t("2026-11-20T16:00:00Z"), &profile(vec![art("k1", "One", 7), art("k2", "Two", 9)], 1)).expect("s3");
         let c = change_since_previous(&conn, both).expect("c").expect("some");
         assert_eq!((c.total_delta, c.increases.len(), c.decreases.len()), (3, 1, 1));
         let (title, body) = notification_text(&c, "en").expect("text");
         assert_eq!(title, "+3 new citations (total 16)");
-        assert!(body.contains("Two +4") && !body.contains("One"), "{body}");
+        assert_eq!(body.lines().collect::<Vec<_>>(), vec!["Two +4", "One \u{2212}1"]);
+        // a net-zero swap (+1 and -1) is still a change worth showing
+        let swap = Change {
+            total: 20,
+            total_delta: 0,
+            increases: vec![("A".into(), 1)],
+            decreases: vec![("B".into(), 1)],
+            ..Change::default()
+        };
+        assert!(notification_text(&swap, "en").is_some());
+        assert!(notification_text(&Change { total: 20, ..Change::default() }, "en").is_none());
+    }
+
+    #[test]
+    fn scholar_event_lists_rises_falls_and_new_articles_with_their_keys() {
+        let mut conn = mem();
+        insert_snapshot(&mut conn, "P", t("2026-11-20T10:00:00Z"), &profile(vec![art("k1", "One", 10), art("k2", "Two", 5), art("k4", "Four", 2)], 1)).expect("s1");
+        let id = insert_snapshot(&mut conn, "P", t("2026-11-20T13:00:00Z"), &profile(vec![art("k1", "One", 11), art("k2", "Two", 4), art("k3", "Three", 2), art("k4", "Four", 2)], 1)).expect("s2");
+        let c = change_since_previous(&conn, id).expect("c").expect("some");
+        let d = scholar_event_data(&c).expect("data");
+        assert_eq!(d["total"], 19);
+        assert_eq!(d["delta"], 2);
+        assert_eq!(d["up"], serde_json::json!([{"k": "k1", "t": "One", "d": 1}]), "a new article is not listed as a rise");
+        assert_eq!(d["down"], serde_json::json!([{"k": "k2", "t": "Two", "d": -1}]));
+        assert_eq!(d["new"], serde_json::json!([{"k": "k3", "t": "Three", "n": 2}]));
+        // nothing changed: no event
+        let same = insert_snapshot(&mut conn, "P", t("2026-11-20T16:00:00Z"), &profile(vec![art("k1", "One", 11), art("k2", "Two", 4), art("k3", "Three", 2), art("k4", "Four", 2)], 1)).expect("s3");
+        let c = change_since_previous(&conn, same).expect("c").expect("some");
+        assert!(scholar_event_data(&c).is_none());
+    }
+
+    #[test]
+    fn events_are_deduplicated_trimmed_read_and_cleared() {
+        let conn = mem();
+        let at = |m: i64| t("2026-11-20T10:00:00Z") + Duration::minutes(m);
+        assert!(record_event(&conn, at(0), "update", "1.6.0", &serde_json::json!({"version": "1.6.0"})).expect("rec"));
+        assert!(!record_event(&conn, at(1), "update", "1.6.0", &serde_json::json!({})).expect("dup"), "same kind and key twice");
+        assert!(record_event(&conn, at(2), "update", "1.7.0", &serde_json::json!({})).expect("other version"));
+        assert!(record_event(&conn, at(3), "budget", "1.6.0", &serde_json::json!({})).expect("other kind"));
+        assert_eq!(unread_events(&conn).expect("n"), 3);
+        let list = list_events(&conn).expect("list");
+        assert_eq!(list.iter().map(|e| e.kind.as_str()).collect::<Vec<_>>(), vec!["budget", "update", "update"], "newest first");
+        assert_eq!(list[2].data["version"], "1.6.0");
+        mark_events_read(&conn).expect("read");
+        assert_eq!(unread_events(&conn).expect("n"), 0);
+        assert!(list_events(&conn).expect("list").iter().all(|e| e.read));
+        // only the newest EVENTS_KEEP stay
+        for i in 0..(EVENTS_KEEP + 15) {
+            record_event(&conn, at(10 + i), "scholar", "", &serde_json::json!({"i": i})).expect("rec");
+        }
+        let list = list_events(&conn).expect("list");
+        assert_eq!(list.len() as i64, EVENTS_KEEP);
+        assert_eq!(list[0].data["i"], EVENTS_KEEP + 14);
+        assert_eq!(unread_events(&conn).expect("n"), EVENTS_KEEP, "the new ones are unread");
+        clear_events(&conn).expect("clear");
+        assert!(list_events(&conn).expect("list").is_empty());
+    }
+
+    #[test]
+    fn migration_is_idempotent_and_adds_the_events_table_and_tried_count() {
+        let dir = std::env::temp_dir().join(format!("sct-mig-{}", std::process::id()));
+        let path = dir.join("x.db");
+        let _ = std::fs::remove_dir_all(&dir);
+        // a database as 1.5.0 left it: article_matches without tried_count, no events table
+        std::fs::create_dir_all(&dir).expect("dir");
+        {
+            let c = Connection::open(&path).expect("open");
+            c.execute_batch(
+                "CREATE TABLE article_matches(article_key TEXT PRIMARY KEY, source TEXT, external_id TEXT, doi TEXT, score REAL,
+                    match_method TEXT, matched_at TEXT NOT NULL, openalex_id TEXT, s2_id TEXT, openalex_count INTEGER, s2_count INTEGER);
+                 INSERT INTO article_matches(article_key, matched_at) VALUES ('k', '2026-01-01T00:00:00Z');",
+            )
+            .expect("old");
+        }
+        for _ in 0..2 {
+            let c = open(&path).expect("open twice");
+            let n: i64 = c.query_row("SELECT COUNT(*) FROM app_events", [], |r| r.get(0)).expect("events table");
+            assert_eq!(n, 0);
+            let tc: Option<i64> = c.query_row("SELECT tried_count FROM article_matches WHERE article_key='k'", [], |r| r.get(0)).expect("column");
+            assert_eq!(tc, None, "old rows have no count");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn unmatched_articles_are_retried_when_old_or_when_scholar_count_grew() {
+        let mut conn = mem();
+        let now = t("2026-12-01T12:00:00Z");
+        let unmatched = |conn: &mut Connection, key: &str, at: DateTime<Utc>| {
+            store_backfill_article(conn, &MatchRecord { article_key: key.into(), ..MatchRecord::default() }, at, &[]).expect("store");
+        };
+        insert_snapshot(
+            &mut conn,
+            "P",
+            t("2026-11-01T10:00:00Z"),
+            &profile(vec![art("k1", "Matched", 9), art("k2", "Recent", 8), art("k3", "Grows", 7), art("k4", "Old", 6), art("k5", "Manual", 5), art("k6", "Never", 4), art("k7", "Legacy", 3)], 1),
+        )
+        .expect("s1");
+        store_backfill_article(
+            &mut conn,
+            &MatchRecord { article_key: "k1".into(), source: Some("openalex".into()), external_id: Some("W1".into()), ..MatchRecord::default() },
+            now - Duration::days(30),
+            &[],
+        )
+        .expect("matched");
+        unmatched(&mut conn, "k2", now - Duration::days(2));
+        unmatched(&mut conn, "k3", now - Duration::days(2));
+        unmatched(&mut conn, "k4", now - Duration::days(8));
+        unmatched(&mut conn, "k5", now - Duration::days(30));
+        unmatched(&mut conn, "k7", now - Duration::days(3));
+        set_override_doi(&conn, "k5", Some("10.1/manual"), now).expect("override");
+        // a row written by 1.5.0 has no stored count: only its age can make it due
+        conn.execute("UPDATE article_matches SET tried_count=NULL WHERE article_key='k7'", []).expect("legacy");
+        let keys = |conn: &Connection| retry_targets(conn, now).expect("targets").into_iter().map(|t| t.key).collect::<Vec<_>>();
+        assert_eq!(keys(&conn), vec!["k4"], "only the article whose last attempt is 8 days old");
+        // Scholar now counts one more citation for k3 and k7: k3 (count known) is due, k7 (count unknown) is not
+        insert_snapshot(
+            &mut conn,
+            "P",
+            t("2026-11-30T10:00:00Z"),
+            &profile(vec![art("k1", "Matched", 9), art("k2", "Recent", 8), art("k3", "Grows", 8), art("k4", "Old", 6), art("k5", "Manual", 6), art("k6", "Never", 4), art("k7", "Legacy", 4)], 1),
+        )
+        .expect("s2");
+        assert_eq!(keys(&conn), vec!["k3", "k4"], "k3 grew; k5 has a manual DOI, k6 has no attempt row, k1 is matched, k7 has no stored count");
+        // after the retry the attempt is recorded again: k3 waits for the next growth or 7 days
+        unmatched(&mut conn, "k3", now);
+        unmatched(&mut conn, "k4", now);
+        assert!(keys(&conn).is_empty());
+        let tc: i64 = conn.query_row("SELECT tried_count FROM article_matches WHERE article_key='k3'", [], |r| r.get(0)).expect("count");
+        assert_eq!(tc, 8, "the Scholar count of the attempt is stored");
+        assert!(has_refresh_targets(&conn).expect("has"), "the matched article keeps the refresh going");
+        assert!(retry_targets(&conn, now + Duration::days(7)).expect("later").iter().any(|t| t.key == "k3"), "due again after a week");
     }
 
     #[test]

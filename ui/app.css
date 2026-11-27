@@ -1017,3 +1017,37 @@ button.yh-c:hover, button.yh-c:focus-visible { outline: 1px solid var(--text); o
 .cred .stext { flex: 1 1 0; min-width: 0; }
 #credOjp { flex-wrap: wrap; }
 #credOjp .sbtns { flex: 1 1 100%; margin-left: 0; padding-left: 36px; justify-content: flex-start; }
+
+/* ------------------------------------------------------------ notification centre, back bar, update dialog */
+.nc-wrap { position: relative; display: inline-flex; }
+.nc-btn { position: relative; }
+.nc-badge { position: absolute; top: -6px; right: -6px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; box-sizing: border-box; background: var(--accent); color: var(--on-accent); font: 600 10px/16px var(--font-text); text-align: center; font-variant-numeric: tabular-nums; pointer-events: none; }
+.nc-panel { position: absolute; top: calc(100% + 8px); right: 0; z-index: 60; width: 400px; max-width: calc(100vw - 48px); max-height: min(520px, 70vh); display: flex; flex-direction: column; background: var(--pop-bg); border: 1px solid var(--layer-stroke); border-radius: 8px; box-shadow: var(--shadow-pop); animation: enter 150ms var(--ease); }
+.nc-panel:focus { outline: none; }
+.nc-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 10px 8px 16px; border-bottom: 1px solid var(--layer-stroke); }
+.nc-clear { height: 28px; padding: 0 10px; font-size: 12px; }
+.nc-list { overflow-y: auto; padding: 0 8px 8px; min-height: 0; }
+.nc-day { font-size: 12px; line-height: 16px; font-weight: 600; color: var(--text-2); padding: 12px 8px 4px; }
+.nc-ev { border-radius: 6px; }
+.nc-hd { display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 8px; border: 0; border-radius: 6px; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.nc-hd:hover, button.nc-line:hover { background: var(--subtle-hover); }
+.nc-hd:focus-visible, button.nc-line:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.nc-ic { color: var(--accent); margin-top: 2px; }
+.nc-ic.warn { color: var(--warn); }
+.nc-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.nc-t { font-weight: 600; overflow-wrap: anywhere; }
+.nc-s { font-size: 12px; line-height: 16px; color: var(--text-2); overflow-wrap: anywhere; }
+.nc-time { font-size: 12px; line-height: 20px; color: var(--text-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.nc-ev.unread .nc-t::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; background: var(--accent); vertical-align: 1px; }
+.nc-lines { display: flex; flex-direction: column; gap: 2px; padding: 0 8px 6px 38px; }
+.nc-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 4px 8px; border: 0; border-radius: 4px; background: transparent; color: inherit; text-align: left; font-size: 13px; line-height: 18px; }
+button.nc-line { cursor: pointer; }
+.nc-line.stack { flex-direction: column; align-items: flex-start; gap: 0; }
+.nc-lt { min-width: 0; overflow-wrap: anywhere; }
+.nc-ls { font-size: 12px; line-height: 16px; color: var(--text-2); overflow-wrap: anywhere; }
+.nc-more { font-size: 12px; line-height: 16px; color: var(--text-3); padding: 2px 8px; }
+.nc-empty { padding: 24px 16px; text-align: center; color: var(--text-2); }
+.backbar { margin: -4px 0 12px; }
+.backbar .btn { height: 28px; padding: 0 12px 0 8px; }
+.upd-notes { max-height: 160px; overflow: auto; margin-top: 4px; padding: 8px; border-radius: 4px; background: var(--neutral-bg); white-space: pre-wrap; user-select: text; color: var(--text-2); }
+.upd-notes:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

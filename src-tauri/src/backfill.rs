@@ -24,6 +24,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::db::{self, CitingRecord};
+use crate::events;
 use crate::i18n;
 use crate::scheduler::lock;
 use crate::secrets::{self, KeyKind, Keys};
@@ -1347,6 +1348,9 @@ pub enum Mode {
     /// Daily light run: re-reads the citing lists of articles that are already matched, using
     /// the stored OpenAlex id. No matching, no author set.
     Refresh,
+    /// Part of the daily refresh: looks up again the articles OpenAlex did not have at the last
+    /// attempt (see `db::retry_targets`).
+    Retry,
 }
 
 impl Mode {
@@ -1356,7 +1360,8 @@ impl Mode {
             Mode::Missing => "missing",
             Mode::All => "all",
             Mode::Article(_) => "article",
-            Mode::Refresh => "refresh",
+            // the retry belongs to the daily refresh: the window and the budget pause treat it alike
+            Mode::Refresh | Mode::Retry => "refresh",
         }
     }
 }
@@ -1522,6 +1527,8 @@ pub struct RunSummary {
 /// A newly found citing work, as the notification needs it.
 #[derive(Debug, Clone, Default, Serialize, PartialEq)]
 pub struct NewCiting {
+    /// Key of the article that was cited (the notification centre links to it).
+    pub article_key: String,
     pub article: String,
     pub title: String,
     pub venue: String,
@@ -1532,10 +1539,11 @@ pub struct NewCiting {
 const KEEP_NEW: usize = 6;
 
 /// Adds `fresh` citing works of `article` to the summary (newest first, capped).
-fn note_new(sum: &mut RunSummary, article: &str, fresh: Vec<CitingRecord>) {
+fn note_new(sum: &mut RunSummary, key: &str, article: &str, fresh: Vec<CitingRecord>) {
     sum.new_total += fresh.len();
     for c in fresh {
         sum.new_citing.push(NewCiting {
+            article_key: key.to_string(),
             article: article.to_string(),
             title: c.citing_title,
             venue: c.venue,
@@ -1565,6 +1573,7 @@ pub async fn run_articles(
     let mut conn = db::open(db_path)?;
     let targets = match &mode {
         Mode::Article(key) => db::backfill_target_for(&conn, key)?.into_iter().collect(),
+        Mode::Retry => db::retry_targets(&conn, Utc::now())?,
         m => db::backfill_targets(&conn, *m == Mode::Missing)?,
     };
     if targets.is_empty() {
@@ -1605,7 +1614,7 @@ pub async fn run_articles(
     }
     // In "missing" mode, works already taken by earlier matches stay taken.
     let excluded = match &mode {
-        Mode::Missing => db::matched_openalex_ids(&conn)?,
+        Mode::Missing | Mode::Retry => db::matched_openalex_ids(&conn)?,
         Mode::Article(key) => db::matched_openalex_ids_except(&conn, key)?,
         Mode::All | Mode::Refresh => HashSet::new(),
     };
@@ -1674,7 +1683,7 @@ pub async fn run_articles(
                     sum.records += citing.len();
                     // A DOI correction changes which work an article is tied to: not "new" citations.
                     if !matches!(mode, Mode::Article(_)) {
-                        note_new(&mut sum, &target.title, fresh);
+                        note_new(&mut sum, &target.key, &target.title, fresh);
                     }
                     scan.article_end("article_done", &key, &title, |p| {
                         p.oa_count = rec.openalex_count;
@@ -1825,7 +1834,7 @@ async fn refresh_articles(
                 Ok(fresh) => {
                     sum.matched += 1;
                     sum.records += citing.len();
-                    note_new(&mut sum, &target.title, fresh);
+                    note_new(&mut sum, &target.key, &target.title, fresh);
                     scan.article_end("article_done", &key, &title, |p| {
                         p.oa_count = Some(citing.len() as i64);
                         p.method = "refresh".to_string();
@@ -1988,14 +1997,17 @@ fn on_budget_pause(app: &AppHandle, path: &Path, mode_name: &str, has_key: bool,
         eprintln!("budget pause not stored: {e:#}");
     }
     let _ = app.emit("openalex-budget", &pause);
-    if user && notify {
-        let today = now.format("%Y-%m-%d").to_string();
-        if db::get_state(&conn, STATE_BUDGET_NOTIFIED).ok().flatten().as_deref() != Some(today.as_str()) {
-            let _ = db::set_state(&conn, STATE_BUDGET_NOTIFIED, &today);
-            let body = i18n::tr(lang, if has_key { "notif.budget_body_key" } else { "notif.budget_body" });
-            if let Err(e) = app.notification().builder().title(i18n::tr(lang, "notif.budget_title")).body(body).show() {
-                eprintln!("notification failed: {e}");
-            }
+    let today = now.format("%Y-%m-%d").to_string();
+    // the notification centre notes the pause once a day, whoever started the scan
+    let data = serde_json::json!({ "key": has_key, "resume_at": pause.resume_at });
+    if matches!(db::record_event(&conn, now, "budget", &today, &data), Ok(true)) {
+        events::announce(app);
+    }
+    if user && notify && db::get_state(&conn, STATE_BUDGET_NOTIFIED).ok().flatten().as_deref() != Some(today.as_str()) {
+        let _ = db::set_state(&conn, STATE_BUDGET_NOTIFIED, &today);
+        let body = i18n::tr(lang, if has_key { "notif.budget_body_key" } else { "notif.budget_body" });
+        if let Err(e) = app.notification().builder().title(i18n::tr(lang, "notif.budget_title")).body(body).show() {
+            eprintln!("notification failed: {e}");
         }
     }
 }
@@ -2149,6 +2161,44 @@ fn notify_new_citing(app: &AppHandle, lang: &str, sum: &RunSummary) {
     let lines: Vec<String> = sum.new_citing.iter().take(2).map(|c| citing_line(lang, c)).collect();
     if let Err(e) = app.notification().builder().title(title).body(lines.join("\n")).show() {
         eprintln!("notification failed: {e}");
+    }
+}
+
+/// What the notification centre keeps of a run that found new citing works (`None` when it found none).
+fn citing_event_data(sum: &RunSummary) -> Option<serde_json::Value> {
+    if sum.new_total == 0 {
+        return None;
+    }
+    let items: Vec<serde_json::Value> = sum
+        .new_citing
+        .iter()
+        .map(|c| serde_json::json!({ "k": c.article_key, "a": c.article, "t": c.title, "v": c.venue, "d": c.date }))
+        .collect();
+    Some(serde_json::json!({ "total": sum.new_total, "items": items }))
+}
+
+/// Joins the two parts of the daily refresh (citing lists, then the look-up of unmatched articles).
+fn merge_summaries(first: Option<RunSummary>, second: Option<RunSummary>) -> Option<RunSummary> {
+    match (first, second) {
+        (None, x) | (x, None) => x,
+        (Some(a), Some(b)) => {
+            let mut new_citing = a.new_citing;
+            new_citing.extend(b.new_citing);
+            new_citing.sort_by(|x, y| y.date.cmp(&x.date).then(x.title.cmp(&y.title)));
+            new_citing.truncate(KEEP_NEW);
+            Some(RunSummary {
+                total: a.total + b.total,
+                matched: a.matched + b.matched,
+                unmatched: a.unmatched + b.unmatched,
+                failed: a.failed + b.failed,
+                records: a.records + b.records,
+                by_orcid: a.by_orcid + b.by_orcid,
+                new_total: a.new_total + b.new_total,
+                new_citing,
+                cancelled: b.cancelled,
+                paused_budget: b.paused_budget,
+            })
+        }
     }
 }
 
@@ -2327,8 +2377,17 @@ pub fn start_as(app: &AppHandle, sh: &Arc<Shared>, mode: Mode, user: bool) -> St
             ..Progress::default()
         });
         let stores_citing = !matches!(mode, Mode::Article(_));
+        let is_refresh = mode == Mode::Refresh;
         let unenriched_before = db::open(&path).and_then(|c| db::unenriched_rows(&c)).unwrap_or(0);
-        let result = run_articles(&path, mode, &http, &lang, &settings.orcid, &on_progress).await;
+        let mut result = run_articles(&path, mode, &http, &lang, &settings.orcid, &on_progress).await;
+        // The daily refresh also looks up again the articles OpenAlex did not have last time,
+        // unless the first part was stopped or ran into the budget (the same pacing and pauses apply).
+        if is_refresh && !http.is_cancelled() && matches!(&result, Ok(s) if s.as_ref().is_none_or(|s| !s.cancelled && !s.paused_budget)) {
+            match run_articles(&path, Mode::Retry, &http, &lang, &settings.orcid, &on_progress).await {
+                Ok(second) => result = result.map(|first| merge_summaries(first, second)),
+                Err(e) => eprintln!("retry of unmatched articles failed: {}", secrets::redact(&format!("{e:#}"), &[])),
+            }
+        }
         if let Err(e) = &result {
             eprintln!("backfill failed: {}", secrets::redact(&format!("{e:#}"), &[]));
         }
@@ -2367,8 +2426,15 @@ pub fn start_as(app: &AppHandle, sh: &Arc<Shared>, mode: Mode, user: bool) -> St
                 })
                 .await;
             }
-            if settings.notify && !sum.cancelled && !sum.paused_budget {
-                notify_new_citing(&app, &lang, sum);
+            if !sum.cancelled && !sum.paused_budget {
+                // the notification centre records new citing works whatever the "notify" setting says
+                if let Some(data) = citing_event_data(sum) {
+                    let (ev_app, ev_path) = (app.clone(), path.clone());
+                    let _ = tauri::async_runtime::spawn_blocking(move || events::record(&ev_app, &ev_path, "citing", "", &data)).await;
+                }
+                if settings.notify {
+                    notify_new_citing(&app, &lang, sum);
+                }
             }
         }
         // The last event: the run is over. The panel keeps its summary until the user closes it.
@@ -2892,6 +2958,7 @@ mod tests {
     #[test]
     fn new_citing_notification_line_names_the_venue() {
         let c = NewCiting {
+            article_key: "k".into(),
             article: "Mine".into(),
             title: "An invented citing study".into(),
             venue: "Journal of Invented Results".into(),
@@ -2918,12 +2985,31 @@ mod tests {
             date_precision: "day".into(),
             ..CitingRecord::default()
         };
-        note_new(&mut sum, "A", vec![mk("1", "2025-01-01"), mk("2", "2025-03-01")]);
-        note_new(&mut sum, "B", (3..12).map(|i| mk(&i.to_string(), "2024-01-01")).collect());
+        note_new(&mut sum, "ka", "A", vec![mk("1", "2025-01-01"), mk("2", "2025-03-01")]);
+        note_new(&mut sum, "kb", "B", (3..12).map(|i| mk(&i.to_string(), "2024-01-01")).collect());
         assert_eq!(sum.new_total, 11);
         assert_eq!(sum.new_citing.len(), KEEP_NEW);
         assert_eq!(sum.new_citing[0].date, "2025-03-01");
         assert_eq!(sum.new_citing[0].article, "A");
+    }
+
+    #[test]
+    fn citing_event_and_merged_refresh_summary() {
+        let nc = |k: &str, d: &str| NewCiting { article_key: k.into(), article: format!("Art {k}"), title: "T".into(), venue: "V".into(), date: d.into() };
+        let a = RunSummary { total: 3, matched: 3, records: 10, new_total: 1, new_citing: vec![nc("k1", "2026-01-01")], ..RunSummary::default() };
+        let b = RunSummary { total: 2, matched: 1, unmatched: 1, records: 4, new_total: 2, new_citing: vec![nc("k2", "2026-05-01"), nc("k3", "2025-01-01")], paused_budget: true, ..RunSummary::default() };
+        let m = merge_summaries(Some(a.clone()), Some(b.clone())).expect("merged");
+        assert_eq!((m.total, m.matched, m.unmatched, m.records, m.new_total), (5, 4, 1, 14, 3));
+        assert_eq!(m.new_citing.iter().map(|c| c.article_key.as_str()).collect::<Vec<_>>(), vec!["k2", "k1", "k3"], "newest first");
+        assert!(m.paused_budget && !m.cancelled, "the flags of the part that ended the run");
+        assert_eq!(merge_summaries(None, Some(b.clone())), Some(b));
+        assert_eq!(merge_summaries(Some(a.clone()), None), Some(a));
+        assert_eq!(merge_summaries(None, None), None);
+        let d = citing_event_data(&m).expect("data");
+        assert_eq!(d["total"], 3);
+        assert_eq!(d["items"][0]["k"], "k2");
+        assert_eq!(d["items"][0]["a"], "Art k2");
+        assert!(citing_event_data(&RunSummary::default()).is_none());
     }
 
     #[test]

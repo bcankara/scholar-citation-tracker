@@ -14,6 +14,8 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
+use crate::db;
+use crate::events;
 use crate::scheduler::lock;
 use crate::settings::Settings;
 
@@ -71,6 +73,26 @@ fn failure(e: &tauri_plugin_updater::Error) -> CheckResult {
     }
 }
 
+/// Notes the found update in the notification centre (once per version).
+fn record_event(app: &AppHandle, info: &UpdateInfo) {
+    let Some(state) = app.try_state::<crate::AppState>() else {
+        return;
+    };
+    let (path, has_profile) = {
+        let s = lock(&state.settings);
+        (db::db_path_in(&s.data_path()), !s.profile_id.is_empty())
+    };
+    if !has_profile {
+        return;
+    }
+    let data = serde_json::json!({
+        "version": info.version,
+        "notes": info.notes.as_deref().map(events::notes_excerpt),
+    });
+    let (app, version) = (app.clone(), info.version.clone());
+    tauri::async_runtime::spawn_blocking(move || events::record(&app, &path, "update", &version, &data));
+}
+
 /// Asks the feed for a newer version. A found update is kept for `install_update` and announced
 /// with the `update-available` event.
 pub async fn check(app: &AppHandle) -> CheckResult {
@@ -83,6 +105,7 @@ pub async fn check(app: &AppHandle) -> CheckResult {
         Ok(Some(update)) => {
             let info = info_of(&update);
             *lock(&pending.update) = Some(update);
+            record_event(app, &info);
             if let Err(e) = app.emit("update-available", &info) {
                 eprintln!("update-available event failed: {e}");
             }

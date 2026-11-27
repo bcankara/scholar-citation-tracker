@@ -3,6 +3,7 @@
 mod backfill;
 mod citers;
 mod db;
+mod events;
 mod export;
 mod i18n;
 mod insights;
@@ -253,6 +254,34 @@ async fn get_recent_citations(state: State<'_, AppState>, limit: Option<usize>) 
 #[tauri::command]
 async fn get_log(state: State<'_, AppState>) -> CmdResult<Vec<db::LogRow>> {
     with_db(&state, |conn| db::recent_log(conn, 200)).await
+}
+
+/// The notification centre: events newest first and how many are unread.
+#[derive(Serialize)]
+struct EventList {
+    events: Vec<db::EventRow>,
+    unread: i64,
+}
+
+#[tauri::command]
+async fn get_events(state: State<'_, AppState>) -> CmdResult<EventList> {
+    with_db(&state, |conn| {
+        Ok(EventList {
+            events: db::list_events(conn)?,
+            unread: db::unread_events(conn)?,
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+async fn mark_events_read(state: State<'_, AppState>) -> CmdResult<()> {
+    with_db(&state, |conn| db::mark_events_read(conn)).await
+}
+
+#[tauri::command]
+async fn clear_events(state: State<'_, AppState>) -> CmdResult<()> {
+    with_db(&state, |conn| db::clear_events(conn)).await
 }
 
 #[tauri::command]
@@ -1288,6 +1317,9 @@ pub fn run() {
             get_scan_state,
             debug_scan_demo,
             get_log,
+            get_events,
+            mark_events_read,
+            clear_events,
             get_status,
             get_settings,
             save_settings,
